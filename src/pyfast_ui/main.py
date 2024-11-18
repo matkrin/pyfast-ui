@@ -1,6 +1,7 @@
 import sys
+from typing import override
 from PySide6.QtCore import QSize, Slot
-from PySide6.QtGui import QIcon, QIntValidator, Qt
+from PySide6.QtGui import QIntValidator, QKeyEvent, QKeySequence, QShortcut, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -10,14 +11,11 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QSizePolicy,
-    QSplitter,
     QStyle,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvas
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
 
@@ -80,12 +78,6 @@ class MovieWindow(QWidget):
         self.img_plot = self.ax.imshow(
             self.ft.data[self.current_frame_num], interpolation="none"
         )
-        # self.ax.tick_params(  # pyright: ignore[reportUnknownMemberType]
-        #     left=False,
-        #     bottom=False,
-        #     labelleft=False,
-        #     labelbottom=False,
-        # )
         self.ax.get_xaxis().set_visible(False)
         self.ax.get_yaxis().set_visible(False)
         self.img_plot.figure.tight_layout(pad=0)
@@ -172,6 +164,14 @@ class MovieWindow(QWidget):
 
         _ = self.curr_frame_input.returnPressed.connect(self.on_current_frame_return)
 
+        # Keyboard shortcuts
+        shortcut_next = QShortcut(QKeySequence(Qt.CTRL | Qt.Key_Period), self)
+        shortcut_next.activated.connect(self.on_next_btn_clicked)
+        shortcut_prev = QShortcut(QKeySequence(Qt.CTRL | Qt.Key_Comma), self)
+        shortcut_prev.activated.connect(self.on_prev_btn_clicked)
+        shortcut_prev = QShortcut(QKeySequence(Qt.ALT | Qt.Key_Space), self)
+        shortcut_prev.activated.connect(self.on_play_btn_clicked)
+
     def update_frame(self) -> None:
         self.img_plot.set_data(self.ft.data[self.current_frame_num])
         self.img_plot.figure.canvas.draw()
@@ -232,20 +232,6 @@ class MovieWindow(QWidget):
         self.timer.stop()
 
 
-#
-    # def play_movie(self):
-    #     if self.current_frame_num < self.num_frames - 1:
-    #         self.current_frame_num += 1
-    #     else:
-    #         self.current_frame_num = 0
-    #
-    #     self.update_frame()
-    #     t = np.linspace(0, 10, 101)
-    #     # Shift the sinusoid as a function of time.
-    #     self._line.set_data(t, np.sin(t + time.time()))
-    #     self._line.figure.canvas.draw()
-
-
 def main():
     app = QApplication(sys.argv)
     window = MainGui()
@@ -255,60 +241,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# import sys
-# import time
-#
-# import numpy as np
-#
-#
-#
-# class ApplicationWindow(QtWidgets.QMainWindow):
-#     def __init__(self):
-#         super().__init__()
-#         self._main = QtWidgets.QWidget()
-#         self.setCentralWidget(self._main)
-#         layout = QtWidgets.QVBoxLayout(self._main)
-#
-#         static_canvas = FigureCanvas(Figure(figsize=(5, 3)))
-#         # Ideally one would use self.addToolBar here, but it is slightly
-#         # incompatible between PyQt6 and other bindings, so we just add the
-#         # toolbar as a plain widget instead.
-#         layout.addWidget(NavigationToolbar(static_canvas, self))
-#         layout.addWidget(static_canvas)
-#
-#         dynamic_canvas = FigureCanvas(Figure(figsize=(5, 3)))
-#         layout.addWidget(dynamic_canvas)
-#         layout.addWidget(NavigationToolbar(dynamic_canvas, self))
-#
-#         self._static_ax = static_canvas.figure.subplots()
-#         t = np.linspace(0, 10, 501)
-#         self._static_ax.plot(t, np.tan(t), ".")
-#
-#         self._dynamic_ax = dynamic_canvas.figure.subplots()
-#         t = np.linspace(0, 10, 101)
-#         # Set up a Line2D.
-#         self._line, = self._dynamic_ax.plot(t, np.sin(t + time.time()))
-#         self._timer = dynamic_canvas.new_timer(50)
-#         self._timer.add_callback(self._update_canvas)
-#         self._timer.start()
-#
-#     def _update_canvas(self):
-#         t = np.linspace(0, 10, 101)
-#         # Shift the sinusoid as a function of time.
-#         self._line.set_data(t, np.sin(t + time.time()))
-#         self._line.figure.canvas.draw()
-#
-#
-# if __name__ == "__main__":
-#     # Check whether there is already a running QApplication (e.g., if running
-#     # from an IDE).
-#     qapp = QtWidgets.QApplication.instance()
-#     if not qapp:
-#         qapp = QtWidgets.QApplication(sys.argv)
-#
-#     app = ApplicationWindow()
-#     app.show()
-#     app.activateWindow()
-#     app.raise_()
-#     qapp.exec()
