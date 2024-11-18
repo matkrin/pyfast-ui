@@ -1,5 +1,6 @@
 import sys
 from typing import override
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -215,15 +216,15 @@ class MainGui(QMainWindow):
         self.plot_windows[0].recreate_plot()
 
         print(f"{ft.data.shape=}")
-        if image_range == None:
-            first = 0
-            last = -1
-        elif "u" and "d" in export_channels:
-            first = image_range[0] * 2
-            last = image_range[1] * 2
-        else:
-            first = image_range[0]
-            last = image_range[1]
+        # if image_range == None:
+        #     first = 0
+        #     last = -1
+        # elif "u" and "d" in export_channels:
+        #     first = image_range[0] * 2
+        #     last = image_range[1] * 2
+        # else:
+        #     first = image_range[0]
+        #     last = image_range[1]
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
