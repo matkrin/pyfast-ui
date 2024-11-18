@@ -1,37 +1,25 @@
-import copy
-import os
 import sys
-from PySide6.QtCore import QSize, Slot
-from PySide6.QtGui import QKeySequence, QShortcut, Qt
+from typing import override
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
-    QFrame,
     QGroupBox,
-    QHBoxLayout,
-    QLabel,
     QMainWindow,
     QPushButton,
-    QSizePolicy,
-    QSpinBox,
-    QStyle,
     QVBoxLayout,
     QWidget,
 )
 
-from matplotlib.backends.backend_qtagg import FigureCanvas
-from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
-
-# from matplotlib.backends.qt_compat import QtWidgets
-from matplotlib.figure import Figure
+import numpy as np
 
 import pyfastspm as pf
-from pyfastspm.artefact_removal.conv_mat import FastMovie
 
 from pyfast_ui.creep_group import CreepGroup
 from pyfast_ui.drift_group import DriftGroup
 from pyfast_ui.fft_filters_group import FFTFiltersGroup
 from pyfast_ui.import_group import ImportGroup
+from pyfast_ui.movie_window import MovieWindow
 
 FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
@@ -56,7 +44,7 @@ class MainGui(QMainWindow):
 
         self.central_layout.addWidget(self.open_btn)
 
-        self.plot_windows: list[QWidget] = []
+        self.plot_windows: list[MovieWindow] = []
 
         self.import_group = ImportGroup(None, True)
         self.fft_filters_group = FFTFiltersGroup(
@@ -69,10 +57,10 @@ class MainGui(QMainWindow):
             display_spectrum=True,
         )
         export_group = QGroupBox("Export")
-        creep_group = CreepGroup("sin")
+        self.creep_group = CreepGroup("sin")
         streak_removal_group = QGroupBox("Streak Removal")
         crop_group = QGroupBox("Crop")
-        drift_group = DriftGroup(
+        self.drift_group = DriftGroup(
             fft_drift=True, drifttype="common", stepsize=100, known_drift=False
         )
         image_correction_group = QGroupBox("Image Correction")
@@ -81,11 +69,14 @@ class MainGui(QMainWindow):
 
         self.central_layout.addWidget(self.import_group)
         self.central_layout.addWidget(self.fft_filters_group)
-        self.central_layout.addWidget(creep_group)
-        self.central_layout.addWidget(drift_group)
+        self.central_layout.addWidget(self.creep_group)
+        self.central_layout.addWidget(self.drift_group)
 
+        # Connect signals
         _ = self.import_group.apply_btn.clicked.connect(self.on_import_btn_click)
-        _ = self.fft_filters_group.apply_btn.clicked.connect(self.on_apply_fft_filter)
+        _ = self.fft_filters_group.apply_btn.clicked.connect(self.on_fft_filter_apply)
+        _ = self.creep_group.apply_btn.clicked.connect(self.on_creep_apply)
+        _ = self.drift_group.apply_btn.clicked.connect(self.on_drift_apply)
 
     def on_open_btn_click(self) -> None:
         ft = pf.FastMovie(FAST_FILE, y_phase=0)
@@ -109,7 +100,7 @@ class MainGui(QMainWindow):
         else:
             print("No file chosen.")
 
-    def on_apply_fft_filter(self) -> None:
+    def on_fft_filter_apply(self) -> None:
         print("FFT filter applied")
         ft = self.plot_windows[0].ft
         ft.data = self.plot_windows[0].ft_raw_data
@@ -135,180 +126,112 @@ class MainGui(QMainWindow):
         ft.reshape_to_movie()
         self.plot_windows[0].img_plot.set_clim(ft.data.min(), ft.data.max())
 
+    def on_creep_apply(self) -> None:
+        print("Creep correction applied")
+        ft = self.plot_windows[0].ft
+        creep_mode = self.creep_group.creep_mode
+        if self.import_group.is_image_range:
+            image_range = self.import_group.image_range
+        else:
+            image_range = None
+        print(f"{image_range=}")
 
-class MovieWindow(QWidget):
-    def __init__(self, fast_movie: FastMovie) -> None:
-        super().__init__()
-        self.filename = os.path.basename(fast_movie.h5file.filename)
-        self.setWindowTitle(self.filename)
+        # Basic settings -> Streak removal for interlacing
+        remove_streaks = False
+        # Basic setting -> Export
+        export_movie = True
+        export_frames = False
+        # Advanced settings
+        guess_ind = 0.3
+        weight_boundary = 0.0
+        creep_num_cols = 3
+        known_input = None
+        initial_guess = (0.3,)
+        known_params = None
 
-        layout = QVBoxLayout()
-        self.setLayout(layout)
+        if creep_mode == "bezier":
+            creep = pf.Creep(ft, index_to_linear=guess_ind)
+            opt, grid = creep.fit_creep_bez(
+                col_inds=np.linspace(
+                    ft.data.shape[2] * 0.25, ft.data.shape[2] * 0.75, creep_num_cols
+                ).astype(int),
+                w=weight_boundary,
+                known_input=known_input,
+            )
 
-        self.ft_raw_data = copy.deepcopy(fast_movie.data)
-        self.ft = fast_movie
-        self.ft.reshape_to_movie()
-        print(self.ft.data)
-        self.num_frames = self.ft.data.shape[0]
-        print(self.num_frames)
+        elif creep_mode != "bezier" and creep_mode != "None":
+            creep = pf.Creep(ft, index_to_linear=guess_ind, creep_mode=creep_mode)
+            grid = creep.fit_creep(initial_guess, known_params=known_params)
+        else:
+            grid = None
 
-        self.canvas = FigureCanvas(Figure(figsize=(5, 5)))
-        layout.addWidget(NavigationToolbar(self.canvas, self))
-        layout.addWidget(self.canvas)
-
-        self.current_frame_num = 0
-        self.ax = self.canvas.figure.subplots()
-        self.img_plot = self.ax.imshow(
-            self.ft.data[self.current_frame_num], interpolation="none"
+        interpolation_matrix_up, interpolation_matrix_down = pf.interpolate(
+            ft, grid=grid, give_grid=True
         )
-        self.ax.get_xaxis().set_visible(False)
-        self.ax.get_yaxis().set_visible(False)
-        self.img_plot.figure.tight_layout(pad=0)
 
-        prev_btn = QPushButton()
-        prev_btn.setIcon(self.style().standardIcon(QStyle.SP_MediaSeekBackward))
-        prev_btn.setIconSize(QSize(30, 30))
-        prev_btn.setFixedSize(35, 35)
-        prev_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
+        if export_movie or export_frames:
+            imrange = image_range
 
-        next_btn = QPushButton()
-        next_btn.setIcon(self.style().standardIcon(QStyle.SP_MediaSeekForward))
-        next_btn.setIconSize(QSize(30, 30))
-        next_btn.setFixedSize(35, 35)
-        prev_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
+        pf.interpolate(
+            ft,
+            grid=grid,
+            image_range=imrange,
+            interpolation_matrix_up=interpolation_matrix_up,
+            interpolation_matrix_down=interpolation_matrix_down,
+        )
 
-        first_btn = QPushButton()
-        first_btn.setIcon(self.style().standardIcon(QStyle.SP_MediaSkipBackward))
-        first_btn.setIconSize(QSize(30, 30))
-        first_btn.setFixedSize(35, 35)
+        if remove_streaks:
+            edge_removal = [
+                [-1.0 / 12.0],
+                [3.0 / 12.0],
+                [8.0 / 12.0],
+                [3.0 / 12.0],
+                [-1.0 / 12.0],
+            ]
+            pf.conv_mat(ft, edge_removal, image_range=imrange)
 
-        last_btn = QPushButton()
-        last_btn.setIcon(self.style().standardIcon(QStyle.SP_MediaSkipForward))
-        last_btn.setIconSize(QSize(30, 30))
-        last_btn.setFixedSize(35, 35)
+        self.plot_windows[0].img_plot.set_clim(ft.data.min(), ft.data.max())
 
-        self.curr_frame_input = QSpinBox(self)
-        self.curr_frame_input.setRange(0, 5000)
-        self.curr_frame_input.setValue(0)
-        self.current_frame_lbl = QLabel(f"/{self.num_frames}")
+    def on_drift_apply(self) -> None:
+        ft = self.plot_windows[0].ft
+        print(f"{ft.data.shape=}")
+        fft_drift = self.drift_group.fft_drift
+        stepsize = self.drift_group.stepsize
+        drifttype = self.drift_group.drift_type
+        known_drift = self.drift_group.known_drift
 
-        separator = QFrame()
-        separator.setFrameShape(QFrame.VLine)  # Vertical line
-        separator.setFixedWidth(2)
+        # Basic settings -> Channels to export
+        export_channels = "udi"
 
-        play_btn = QPushButton()
-        play_btn.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
-        play_btn.setIconSize(QSize(30, 30))
-        play_btn.setFixedSize(35, 35)
-
-        pause_btn = QPushButton()
-        pause_btn.setIcon(self.style().standardIcon(QStyle.SP_MediaPause))
-        pause_btn.setIconSize(QSize(30, 30))
-        pause_btn.setFixedSize(35, 35)
-
-        self.fps_input = QSpinBox(self)
-        self.fps_input.setRange(1, 50)
-        self.fps_input.setValue(24)
-        fps_lbl = QLabel("fps")
-
-        # Layout
-        control_layout = QHBoxLayout()
-        layout.addLayout(control_layout)
-
-        control_layout.addWidget(play_btn)
-        control_layout.addWidget(pause_btn)
-
-        control_layout.addWidget(self.fps_input)
-        control_layout.addWidget(fps_lbl)
-        control_layout.addWidget(separator)
-
-        control_layout.addWidget(first_btn)
-        control_layout.addWidget(prev_btn)
-        control_layout.addWidget(next_btn)
-        control_layout.addWidget(last_btn)
-        control_layout.addWidget(self.curr_frame_input)
-        control_layout.addWidget(self.current_frame_lbl)
-
-        # Strech the canvas when window resizes
-        layout.setStretch(1, 2)
-        control_layout.setStretch(10, 2)
-
-        # Connect signals
-        _ = prev_btn.clicked.connect(self.on_prev_btn_clicked)
-        _ = next_btn.clicked.connect(self.on_next_btn_clicked)
-        _ = first_btn.clicked.connect(self.on_first_btn_clicked)
-        _ = last_btn.clicked.connect(self.on_last_btn_clicked)
-        _ = play_btn.clicked.connect(self.on_play_btn_clicked)
-        _ = pause_btn.clicked.connect(self.on_pause_btn_clicked)
-
-        _ = self.curr_frame_input.valueChanged.connect(self.on_current_frame_changed)
-        _ = self.fps_input.valueChanged.connect(self.on_play_btn_clicked)
-
-        # Keyboard shortcuts
-        shortcut_next = QShortcut(QKeySequence(Qt.CTRL | Qt.Key_Period), self)
-        shortcut_next.activated.connect(self.on_next_btn_clicked)
-        shortcut_prev = QShortcut(QKeySequence(Qt.CTRL | Qt.Key_Comma), self)
-        shortcut_prev.activated.connect(self.on_prev_btn_clicked)
-        shortcut_prev = QShortcut(QKeySequence(Qt.ALT | Qt.Key_Space), self)
-        shortcut_prev.activated.connect(self.on_play_btn_clicked)
-
-    def update_frame(self) -> None:
-        self.img_plot.set_data(self.ft.data[self.current_frame_num])
-        self.img_plot.figure.canvas.draw()
-        self.curr_frame_input.setValue(self.current_frame_num)
-        self.current_frame_lbl.setText(f"/{self.num_frames - 1}")
-
-    @Slot()
-    def on_prev_btn_clicked(self) -> None:
-        if self.current_frame_num > 0:
-            self.current_frame_num -= 1
+        if self.import_group.is_image_range:
+            image_range = self.import_group.image_range
         else:
-            self.current_frame_num = self.num_frames - 1
+            image_range = None
+        print(f"{image_range=}")
 
-        self.update_frame()
+        if fft_drift:
+            driftrem = pf.Drift(ft, stepsize=stepsize, boxcar=True)
+            ft.data, drift_path = driftrem.correct(drifttype, known_drift=known_drift)
+        self.plot_windows[0].recreate_plot()
 
-    @Slot()
-    def on_next_btn_clicked(self) -> None:
-        if self.current_frame_num < self.num_frames - 1:
-            self.current_frame_num += 1
+        print(f"{ft.data.shape=}")
+        if image_range == None:
+            first = 0
+            last = -1
+        elif "u" and "d" in export_channels:
+            first = image_range[0] * 2
+            last = image_range[1] * 2
         else:
-            self.current_frame_num = 0
+            first = image_range[0]
+            last = image_range[1]
 
-        self.update_frame()
+    @override
+    def closeEvent(self, event: QCloseEvent) -> None:
+        for plot_window in self.plot_windows:
+            _ = plot_window.close()
+        QCoreApplication.quit()
 
-    @Slot()
-    def on_first_btn_clicked(self) -> None:
-        self.current_frame_num = 0
-        self.update_frame()
 
-    @Slot()
-    def on_last_btn_clicked(self) -> None:
-        self.current_frame_num = self.num_frames - 1
-        self.update_frame()
-
-    @Slot()
-    def on_current_frame_changed(self, value) -> None:
-        if value > self.num_frames - 1:
-            self.current_frame_num = self.num_frames - 1
-        elif value < 0:
-            self.current_frame_num = 0
-        else:
-            self.current_frame_num = value
-
-        self.update_frame()
-
-    @Slot()
-    def on_play_btn_clicked(self) -> None:
-        fps = self.fps_input.value()
-        update_time = 1 / fps * 1000
-
-        self.timer = self.canvas.new_timer(update_time)
-        self.timer.add_callback(self.on_next_btn_clicked)
-        self.timer.start()
-
-    @Slot()
-    def on_pause_btn_clicked(self) -> None:
-        self.timer.stop()
 
 
 def main():

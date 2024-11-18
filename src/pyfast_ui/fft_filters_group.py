@@ -39,6 +39,7 @@ class FFTFiltersGroup(QGroupBox):
 
         self.apply_btn = QPushButton("Apply")
 
+        # Add Widgets to Layout
         layout.addWidget(self._filter_x)
         layout.addWidget(self._filter_y)
         layout.addWidget(self._filter_x_overtones)

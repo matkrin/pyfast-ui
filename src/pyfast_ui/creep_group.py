@@ -1,5 +1,5 @@
 from typing import Literal, TypeAlias
-from PySide6.QtWidgets import QButtonGroup, QGroupBox, QRadioButton, QVBoxLayout
+from PySide6.QtWidgets import QButtonGroup, QGroupBox, QPushButton, QRadioButton, QVBoxLayout
 
 
 CreepModeType: TypeAlias = None | Literal["sin", "bezier", "root"]
@@ -36,11 +36,14 @@ class CreepGroup(QGroupBox):
             case "root":
                 self._root.setChecked(True)
 
+        self.apply_btn = QPushButton("Apply")
+
         # Add radio buttons to the layout
         layout.addWidget(self._none)
         layout.addWidget(self._sin)
         layout.addWidget(self._bezier)
         layout.addWidget(self._root)
+        layout.addWidget(self.apply_btn)
 
     @property
     def creep_mode(self) -> CreepModeType:
