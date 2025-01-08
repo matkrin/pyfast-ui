@@ -1,4 +1,9 @@
-from PySide6.QtWidgets import QCheckBox, QGroupBox, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QGridLayout,
+    QGroupBox,
+    QPushButton,
+)
 
 
 class FFTFiltersGroup(QGroupBox):
@@ -13,7 +18,7 @@ class FFTFiltersGroup(QGroupBox):
         display_spectrum: bool,
     ) -> None:
         super().__init__("FFT Filters")
-        layout = QVBoxLayout()
+        layout = QGridLayout()
         self.setLayout(layout)
 
         self._filter_x = QCheckBox("Filter x", self)
@@ -40,14 +45,16 @@ class FFTFiltersGroup(QGroupBox):
         self.apply_btn = QPushButton("Apply")
 
         # Add Widgets to Layout
-        layout.addWidget(self._filter_x)
-        layout.addWidget(self._filter_y)
-        layout.addWidget(self._filter_x_overtones)
-        layout.addWidget(self._filter_high_pass)
-        layout.addWidget(self._filter_pump)
-        layout.addWidget(self._filter_noise)
-        layout.addWidget(self._display_spectrum)
-        layout.addWidget(self.apply_btn)
+        # Column 0
+        layout.addWidget(self._filter_x, 0, 0)
+        layout.addWidget(self._filter_y, 1, 0)
+        layout.addWidget(self._filter_x_overtones, 2, 0)
+        layout.addWidget(self._display_spectrum, 3, 0)
+        # Column 1
+        layout.addWidget(self._filter_high_pass, 0, 1)
+        layout.addWidget(self._filter_pump, 1, 1)
+        layout.addWidget(self._filter_noise, 2, 1)
+        layout.addWidget(self.apply_btn, 4, 0, 1, 2)
 
     @property
     def filterparams(self) -> list[bool]:

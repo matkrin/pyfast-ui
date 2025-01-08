@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 class MovieWindow(QWidget):
     def __init__(self, fast_movie: FastMovie) -> None:
         super().__init__()
-        self.filename = os.path.basename(fast_movie.h5file.filename)
+        self.filename = os.path.basename(fast_movie.filename)
         self.setWindowTitle(self.filename)
 
         layout = QVBoxLayout()
