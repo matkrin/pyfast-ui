@@ -1,6 +1,7 @@
 
 import copy
 import os
+from typing import final
 
 from PySide6.QtCore import QSize, Slot
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 
+@final
 class MovieWindow(QWidget):
     def __init__(self, fast_movie: FastMovie) -> None:
         super().__init__()

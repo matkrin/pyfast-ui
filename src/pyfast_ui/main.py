@@ -22,6 +22,7 @@ from pyfast_ui.export_group import ExportGroup
 from pyfast_ui.fft_filters_group import FFTFiltersGroup
 from pyfast_ui.import_group import ImportGroup
 from pyfast_ui.movie_window import MovieWindow
+from pyfast_ui.phase_group import PhaseGroup
 
 FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
@@ -48,7 +49,14 @@ class MainGui(QMainWindow):
 
         self.plot_windows: list[MovieWindow] = []
 
-        self.import_group = ImportGroup(None, True)
+        self.import_group = ImportGroup(image_range=None, apply_auto_xphase=True)
+        self.phase_group = PhaseGroup(
+            apply_auto_xphase=True,
+            additional_x_phase=0,
+            manual_y_phase=0,
+            index_frame_to_correlate=0,
+            sigma_gauss=0,
+        )
         self.fft_filters_group = FFTFiltersGroup(
             filter_x=True,
             filter_y=True,
@@ -80,6 +88,7 @@ class MainGui(QMainWindow):
         )
 
         self.central_layout.addWidget(self.import_group)
+        self.central_layout.addWidget(self.phase_group)
         self.central_layout.addWidget(self.fft_filters_group)
         self.central_layout.addWidget(self.creep_group)
         self.central_layout.addWidget(self.drift_group)
@@ -87,6 +96,7 @@ class MainGui(QMainWindow):
 
         # Connect signals
         _ = self.import_group.apply_btn.clicked.connect(self.on_import_btn_click)
+        _ = self.phase_group.apply_btn.clicked.connect(self.on_phase_apply)
         _ = self.fft_filters_group.apply_btn.clicked.connect(self.on_fft_filter_apply)
         _ = self.creep_group.apply_btn.clicked.connect(self.on_creep_apply)
         _ = self.drift_group.apply_btn.clicked.connect(self.on_drift_apply)
@@ -114,11 +124,33 @@ class MainGui(QMainWindow):
         else:
             print("No file chosen.")
 
-    def on_fft_filter_apply(self) -> None:
-        print("FFT filter applied")
+    def on_phase_apply(self) -> None:
         ft = self.plot_windows[0].ft
         ft.data = self.plot_windows[0].ft_raw_data
         ft.mode = "timeseries"
+
+        apply_auto_xphase = self.phase_group.apply_auto_xphase
+        index_frame_to_correlate = self.phase_group.index_frame_to_correlate
+        sigma_gauss = self.phase_group.sigma_gauss
+        additional_x_phase = self.phase_group.additional_x_phase
+        manual_y_phase = self.phase_group.manual_y_phase
+
+        _x_phase = ft.correct_phase(
+            apply_auto_xphase=apply_auto_xphase,
+            index_frame_to_correlate=index_frame_to_correlate,
+            sigma_gauss=sigma_gauss,
+            additional_x_phase=additional_x_phase,
+            manual_y_phase=manual_y_phase,
+        )
+
+        ft.reshape_to_movie()
+        self.plot_windows[0].img_plot.set_clim(ft.data.min(), ft.data.max())
+
+    def on_fft_filter_apply(self) -> None:
+        ft = self.plot_windows[0].ft
+        ft.data = self.plot_windows[0].ft_raw_data
+        ft.mode = "timeseries"
+
         filterparams = self.fft_filters_group.filterparams
         if any(self.fft_filters_group.filterparams):
             pf.filter_movie(
@@ -156,7 +188,7 @@ class MainGui(QMainWindow):
         export_movie = True
         export_frames = False
         # Advanced settings
-        guess_ind = 0.3
+        guess_ind = 0.2
         weight_boundary = 0.0
         creep_num_cols = 3
         known_input = None
@@ -246,8 +278,8 @@ class MainGui(QMainWindow):
         color_map = self.export_group.color_map
         contrast = self.export_group.contrast
         fps_factor = self.export_group.fps_factor
-        scaling= self.export_group.scaling
-        auto_label=self.export_group.auto_label
+        scaling = self.export_group.scaling
+        auto_label = self.export_group.auto_label
 
         frame_export_images = self.export_group.frame_export_images
         frame_export_channel = self.export_group.frame_export_channel
