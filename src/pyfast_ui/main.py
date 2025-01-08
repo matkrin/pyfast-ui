@@ -18,11 +18,12 @@ import pyfastspm as pf
 
 from pyfast_ui.creep_group import CreepGroup
 from pyfast_ui.drift_group import DriftGroup
+from pyfast_ui.export_group import ExportGroup
 from pyfast_ui.fft_filters_group import FFTFiltersGroup
 from pyfast_ui.import_group import ImportGroup
 from pyfast_ui.movie_window import MovieWindow
 
-FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 
 class MainGui(QMainWindow):
@@ -57,7 +58,6 @@ class MainGui(QMainWindow):
             filter_noise=False,
             display_spectrum=True,
         )
-        export_group = QGroupBox("Export")
         self.creep_group = CreepGroup("sin")
         streak_removal_group = QGroupBox("Streak Removal")
         crop_group = QGroupBox("Crop")
@@ -66,18 +66,31 @@ class MainGui(QMainWindow):
         )
         image_correction_group = QGroupBox("Image Correction")
         image_filters_group = QGroupBox("2D Filters")
-        export_group = QGroupBox("Export")
+        self.export_group = ExportGroup(
+            export_movie=True,
+            export_frames=False,
+            frame_export_images=(0, 1),
+            frame_export_channel="ui",
+            contrast=(0.1, 0.99),
+            scaling=(2.0, 2.0),
+            fps_factor=5,
+            color_map="inferno",
+            frame_export_format="tiff",
+            auto_label=True,
+        )
 
         self.central_layout.addWidget(self.import_group)
         self.central_layout.addWidget(self.fft_filters_group)
         self.central_layout.addWidget(self.creep_group)
         self.central_layout.addWidget(self.drift_group)
+        self.central_layout.addWidget(self.export_group)
 
         # Connect signals
         _ = self.import_group.apply_btn.clicked.connect(self.on_import_btn_click)
         _ = self.fft_filters_group.apply_btn.clicked.connect(self.on_fft_filter_apply)
         _ = self.creep_group.apply_btn.clicked.connect(self.on_creep_apply)
         _ = self.drift_group.apply_btn.clicked.connect(self.on_drift_apply)
+        _ = self.export_group.apply_btn.clicked.connect(self.on_export_apply)
 
     def on_open_btn_click(self) -> None:
         ft = pf.FastMovie(FAST_FILE, y_phase=0)
@@ -226,13 +239,50 @@ class MainGui(QMainWindow):
         #     first = image_range[0]
         #     last = image_range[1]
 
+    def on_export_apply(self) -> None:
+        ft = self.plot_windows[0].ft
+        export_movie = self.export_group.export_movie
+        export_frames = self.export_group.export_frames
+        color_map = self.export_group.color_map
+        contrast = self.export_group.contrast
+        fps_factor = self.export_group.fps_factor
+        scaling= self.export_group.scaling
+        auto_label=self.export_group.auto_label
+
+        frame_export_images = self.export_group.frame_export_images
+        frame_export_channel = self.export_group.frame_export_channel
+        frame_export_format = self.export_group.frame_export_format
+
+        if self.import_group.is_image_range:
+            image_range = self.import_group.image_range
+        else:
+            image_range = None
+
+        if export_movie:
+            ft.export_movie(
+                color_map=color_map,
+                contrast=contrast,
+                fps_factor=fps_factor,
+                image_range=image_range,
+                scaling=scaling,
+                auto_label=auto_label,
+            )
+
+        if export_frames:
+            ft.export_frame(
+                images=frame_export_images,
+                channel=frame_export_channel,
+                color_map=color_map,
+                file_format=frame_export_format,
+                contrast=contrast,
+                scaling=scaling,
+            )
+
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
         for plot_window in self.plot_windows:
             _ = plot_window.close()
         QCoreApplication.quit()
-
-
 
 
 def main():
