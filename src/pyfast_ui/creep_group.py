@@ -47,10 +47,10 @@ class CreepGroup(QGroupBox):
 
         # Add radio buttons to the layout
         layout.addWidget(self._none, 0, 0)
-        layout.addWidget(self._sin, 1, 0)
-        layout.addWidget(self._bezier, 0, 1)
-        layout.addWidget(self._root, 1, 1)
-        layout.addWidget(self.apply_btn, 2, 0, 1, 2)
+        layout.addWidget(self._sin, 0, 1)
+        layout.addWidget(self._bezier, 0, 2)
+        layout.addWidget(self._root, 0, 3)
+        layout.addWidget(self.apply_btn, 1, 0, 1, 4)
 
     @property
     def creep_mode(self) -> CreepModeType:

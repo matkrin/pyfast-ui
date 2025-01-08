@@ -18,12 +18,12 @@ class DriftGroup(QGroupBox):
         self._fft_drift.setChecked(fft_drift)
 
         ## Drift Type
-        self._drift_type_group = QGroupBox("Drift Type", self)
-        drift_type_layout = QVBoxLayout()
-        self._drift_type_group.setLayout(drift_type_layout)
-
+        drift_type_layout = QHBoxLayout()
         self._drift_type_common = QRadioButton("common", self)
         self._drift_type_full =  QRadioButton("full", self)
+        drift_type_layout.addWidget(self._drift_type_common)
+        drift_type_layout.addWidget(self._drift_type_full)
+
 
         self._button_group = QButtonGroup(self)
         self._button_group.addButton(self._drift_type_common)
@@ -58,7 +58,7 @@ class DriftGroup(QGroupBox):
 
         # Add Widgets and Layouts to main group box
         layout.addWidget(self._fft_drift)
-        layout.addWidget(self._drift_type_group)
+        layout.addLayout(drift_type_layout)
         layout.addLayout(stepsize_layout)
         layout.addWidget(self._known_drift)
         layout.addWidget(self.apply_btn)

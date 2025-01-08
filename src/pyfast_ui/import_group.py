@@ -1,14 +1,15 @@
+from typing import final
 from PySide6.QtWidgets import (
     QCheckBox,
     QGroupBox,
     QHBoxLayout,
-    QLabel,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
 )
 
 
+@final
 class ImportGroup(QGroupBox):
     def __init__(
         self, image_range: tuple[int, int] | None, apply_auto_xphase: bool
