@@ -21,11 +21,11 @@ class ImportGroup(QGroupBox):
         self._use_image_range.setChecked(False if image_range is None else True)
 
         self._image_range_start = QSpinBox(self)
-        self._image_range_start_lbl = QLabel("Start")
         self._image_range_end = QSpinBox(self)
-        self._image_range_end_lbl = QLabel("End")
-        start_layout = QHBoxLayout()
-        end_layout = QHBoxLayout()
+        image_range_layout = QHBoxLayout()
+        image_range_layout.addWidget(self._use_image_range)
+        image_range_layout.addWidget(self._image_range_start)
+        image_range_layout.addWidget(self._image_range_end)
 
         if image_range is None:
             self._image_range_start.setValue(0)
@@ -40,15 +40,9 @@ class ImportGroup(QGroupBox):
         self.apply_btn = QPushButton("Import")
 
         # Add widgets to the start_layout and end_layout
-        start_layout.addWidget(self._image_range_start_lbl)
-        start_layout.addWidget(self._image_range_start)
-        end_layout.addWidget(self._image_range_end_lbl)
-        end_layout.addWidget(self._image_range_end)
 
         # Add Widgets and Layouts to main Layout
-        layout.addWidget(self._use_image_range)
-        layout.addLayout(start_layout)
-        layout.addLayout(end_layout)
+        layout.addLayout(image_range_layout)
         layout.addWidget(self._apply_auto_xphase)
         layout.addWidget(self.apply_btn)
 
@@ -74,5 +68,3 @@ class ImportGroup(QGroupBox):
         """Enable or disable the image range spin boxes based on the checkbox state."""
         self._image_range_start.setEnabled(checked)
         self._image_range_end.setEnabled(checked)
-        self._image_range_start_lbl.setEnabled(checked)
-        self._image_range_end_lbl.setEnabled(checked)
