@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QGroupBox,
+    QHBoxLayout,
     QMainWindow,
     QPushButton,
     QVBoxLayout,
@@ -39,7 +40,7 @@ class MainGui(QMainWindow):
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
-        self.central_layout = QVBoxLayout()
+        self.central_layout = QHBoxLayout()
         self.central_widget.setLayout(self.central_layout)
 
         self.open_btn = QPushButton("Open test file")
@@ -65,6 +66,15 @@ class MainGui(QMainWindow):
             filter_pump=True,
             filter_noise=False,
             display_spectrum=True,
+            filter_broadness=None,
+            num_x_overtones=10,
+            high_pass_params=(1000.0, 600.0),
+            num_pump_overtones=3,
+            pump_freqs=(
+                1500.0,
+                1000.0,
+            ),
+            fft_display_range=(0, 40_000),
         )
         self.creep_group = CreepGroup("sin")
         streak_removal_group = QGroupBox("Streak Removal")
@@ -87,12 +97,18 @@ class MainGui(QMainWindow):
             auto_label=True,
         )
 
-        self.central_layout.addWidget(self.import_group)
-        self.central_layout.addWidget(self.phase_group)
-        self.central_layout.addWidget(self.fft_filters_group)
-        self.central_layout.addWidget(self.creep_group)
-        self.central_layout.addWidget(self.drift_group)
-        self.central_layout.addWidget(self.export_group)
+        horizontal_layout = QHBoxLayout()
+        vertical_layout_left = QVBoxLayout()
+        vertical_layout_right = QVBoxLayout()
+        vertical_layout_left.addWidget(self.import_group)
+        vertical_layout_left.addWidget(self.phase_group)
+        vertical_layout_left.addWidget(self.fft_filters_group)
+        vertical_layout_left.addWidget(self.creep_group)
+        vertical_layout_right.addWidget(self.drift_group)
+        vertical_layout_right.addWidget(self.export_group)
+        horizontal_layout.addLayout(vertical_layout_left)
+        horizontal_layout.addLayout(vertical_layout_right)
+        self.central_layout.addLayout(horizontal_layout)
 
         # Connect signals
         _ = self.import_group.apply_btn.clicked.connect(self.on_import_btn_click)
@@ -151,22 +167,24 @@ class MainGui(QMainWindow):
         ft.data = self.plot_windows[0].ft_raw_data
         ft.mode = "timeseries"
 
+        filter_broadness = self.fft_filters_group.filter_broadness
+        fft_display_range = self.fft_filters_group.fft_display_range
+        pump_freqs = self.fft_filters_group.pump_freqs
+        num_pump_overtones = self.fft_filters_group.num_pump_overtones
+        num_x_overtones = self.fft_filters_group.num_x_overtones
+        high_pass_params = self.fft_filters_group.high_pass_params
+
         filterparams = self.fft_filters_group.filterparams
         if any(self.fft_filters_group.filterparams):
             pf.filter_movie(
                 ft=ft,
                 filterparam=filterparams,
-                filter_broadness=None,
-                fft_display_range=(0, 40000),
-                pump_freqs=tuple(
-                    (
-                        1500.0,
-                        1000.0,
-                    )
-                ),
-                num_pump_overtones=3,
-                num_x_overtones=10,
-                high_pass_params=(1000.0, 600.0),
+                filter_broadness=filter_broadness,
+                fft_display_range=fft_display_range,
+                pump_freqs=pump_freqs,
+                num_pump_overtones=num_pump_overtones,
+                num_x_overtones=num_x_overtones,
+                high_pass_params=high_pass_params,
             )
 
         ft.reshape_to_movie()
