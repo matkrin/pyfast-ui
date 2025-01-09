@@ -76,7 +76,15 @@ class MainGui(QMainWindow):
             ),
             fft_display_range=(0, 40_000),
         )
-        self.creep_group = CreepGroup("sin")
+        self.creep_group = CreepGroup(
+            creep_mode="sin",
+            weight_boundry=0.0,
+            creep_num_cols=3,
+            known_input=None,
+            initial_guess=0.3,
+            guess_ind=0.2,
+            known_params=None,
+        )
         streak_removal_group = QGroupBox("Streak Removal")
         crop_group = QGroupBox("Crop")
         self.drift_group = DriftGroup(
@@ -206,11 +214,11 @@ class MainGui(QMainWindow):
         export_movie = True
         export_frames = False
         # Advanced settings
-        guess_ind = 0.2
-        weight_boundary = 0.0
-        creep_num_cols = 3
+        guess_ind = self.creep_group.guess_ind
+        weight_boundary = self.creep_group.weight_boundry
+        creep_num_cols = self.creep_group.creep_num_cols
+        initial_guess = self.creep_group.initial_guess
         known_input = None
-        initial_guess = (0.3,)
         known_params = None
 
         if creep_mode == "bezier":
