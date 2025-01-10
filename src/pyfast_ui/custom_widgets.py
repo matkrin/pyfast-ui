@@ -1,5 +1,5 @@
 from typing import final
-from PySide6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QSpinBox, QWidget
+from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QSpinBox, QWidget
 
 
 @final
@@ -105,3 +105,21 @@ class LabeledDoubleSpinBoxes(QWidget):
     def setValue(self, new_spinbox_value: tuple[float, float]) -> None:
         self.spinbox_left.setValue(new_spinbox_value[0])
         self.spinbox_right.setValue(new_spinbox_value[1])
+
+@final
+class LabeledCombobox(QWidget):
+    def __init__(self, label_text: str, combobox_values: list[str]) -> None:
+        super().__init__()
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
+        self.label = QLabel(label_text)
+
+        self.combobox = QComboBox()
+        self.combobox.addItems(combobox_values)
+
+        layout.addWidget(self.label)
+        layout.addWidget(self.combobox)
+
+    def value(self) -> str:
+        return self.combobox.currentText()

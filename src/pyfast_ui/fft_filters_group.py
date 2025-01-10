@@ -2,14 +2,12 @@ from typing import final
 
 from PySide6.QtWidgets import (
     QCheckBox,
-    QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
-    QSpinBox,
 )
 
 from pyfast_ui.custom_widgets import (
