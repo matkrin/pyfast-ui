@@ -1,5 +1,5 @@
 import sys
-from typing import override
+from typing import final, override
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
@@ -21,13 +21,16 @@ from pyfast_ui.creep_group import CreepGroup
 from pyfast_ui.drift_group import DriftGroup
 from pyfast_ui.export_group import ExportGroup
 from pyfast_ui.fft_filters_group import FFTFiltersGroup
+from pyfast_ui.image_correction import ImageCorrectionGroup
+from pyfast_ui.image_filters import ImageFilterGroup
 from pyfast_ui.import_group import ImportGroup
 from pyfast_ui.movie_window import MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 
-FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 
+@final
 class MainGui(QMainWindow):
     """Main GUI"""
 
@@ -90,8 +93,12 @@ class MainGui(QMainWindow):
         self.drift_group = DriftGroup(
             fft_drift=True, drifttype="common", stepsize=100, known_drift=False
         )
-        image_correction_group = QGroupBox("Image Correction")
-        image_filters_group = QGroupBox("2D Filters")
+        self.image_correction_group = ImageCorrectionGroup(
+            correction_type="align", align_type="median"
+        )
+        self.image_filter_group = ImageFilterGroup(
+            filter_type="gaussian2d", pixel_width=3
+        )
         self.export_group = ExportGroup(
             export_movie=True,
             export_frames=False,
@@ -113,6 +120,8 @@ class MainGui(QMainWindow):
         vertical_layout_left.addWidget(self.fft_filters_group)
         vertical_layout_left.addWidget(self.creep_group)
         vertical_layout_right.addWidget(self.drift_group)
+        vertical_layout_right.addWidget(self.image_correction_group)
+        vertical_layout_right.addWidget(self.image_filter_group)
         vertical_layout_right.addWidget(self.export_group)
         horizontal_layout.addLayout(vertical_layout_left)
         horizontal_layout.addLayout(vertical_layout_right)
@@ -123,6 +132,12 @@ class MainGui(QMainWindow):
         _ = self.phase_group.apply_btn.clicked.connect(self.on_phase_apply)
         _ = self.fft_filters_group.apply_btn.clicked.connect(self.on_fft_filter_apply)
         _ = self.creep_group.apply_btn.clicked.connect(self.on_creep_apply)
+        _ = self.image_correction_group.apply_btn.clicked.connect(
+            self.on_image_correction_apply
+        )
+        _ = self.image_filter_group.apply_btn.clicked.connect(
+            self.on_image_filter_apply
+        )
         _ = self.drift_group.apply_btn.clicked.connect(self.on_drift_apply)
         _ = self.export_group.apply_btn.clicked.connect(self.on_export_apply)
 
@@ -217,7 +232,7 @@ class MainGui(QMainWindow):
         guess_ind = self.creep_group.guess_ind
         weight_boundary = self.creep_group.weight_boundry
         creep_num_cols = self.creep_group.creep_num_cols
-        initial_guess = self.creep_group.initial_guess
+        initial_guess = (self.creep_group.initial_guess,)
         known_input = None
         known_params = None
 
@@ -335,6 +350,34 @@ class MainGui(QMainWindow):
                 contrast=contrast,
                 scaling=scaling,
             )
+
+    def on_image_correction_apply(self) -> None:
+        ft = self.plot_windows[0].ft
+        align_type = self.image_correction_group.align_type
+        correction_type = self.image_correction_group.correction_type
+
+        if correction_type == "align":
+            pf.align_rows(ft, align_type)
+        elif correction_type == "plane":
+            pf.level_plane(ft)
+        elif correction_type == "fixzero":
+            pf.fix_zero(ft)
+
+        self.plot_windows[0].recreate_plot()
+
+    def on_image_filter_apply(self) -> None:
+        ft = self.plot_windows[0].ft
+        filter_type = self.image_filter_group.filter_type
+        pixel_width = self.image_filter_group.pixel_width
+
+        if filter_type == "mean2d":
+            pf.mean_2d(ft, pixel_width)
+        elif filter_type == "median2d":
+            pf.median_2d(ft, pixel_width)
+        elif filter_type == "gaussian2d":
+            pf.gaussian_2d(ft, pixel_width)
+
+        self.plot_windows[0].recreate_plot()
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:

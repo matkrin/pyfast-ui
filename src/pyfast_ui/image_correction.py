@@ -22,6 +22,7 @@ class ImageCorrectionGroup(QGroupBox):
 
         layout.addWidget(self._correction_type)
         layout.addWidget(self._align_type)
+
         layout.addWidget(self.apply_btn)
 
     @property

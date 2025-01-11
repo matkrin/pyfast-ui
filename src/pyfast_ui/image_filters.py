@@ -7,7 +7,7 @@ from pyfast_ui.custom_widgets import LabeledCombobox, LabeledSpinBox
 @final
 class ImageFilterGroup(QGroupBox):
     def __init__(self, filter_type: str, pixel_width: int) -> None:
-        super().__init__("Image Correction")
+        super().__init__("Image Filter")
         layout = QGridLayout()
         self.setLayout(layout)
 
@@ -20,6 +20,7 @@ class ImageFilterGroup(QGroupBox):
 
         layout.addWidget(self._filter_type)
         layout.addWidget(self._pixel_width)
+
         layout.addWidget(self.apply_btn)
 
     @property
