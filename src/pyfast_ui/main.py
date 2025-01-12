@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QPushButton,
     QVBoxLayout,
@@ -52,6 +53,8 @@ class MainGui(QMainWindow):
         self.central_layout.addWidget(self.open_btn)
 
         self.plot_windows: list[MovieWindow] = []
+
+        self.operate_label = QLabel("Operate on: ")
 
         self.import_group = ImportGroup(image_range=None, apply_auto_xphase=True)
         self.phase_group = PhaseGroup(
@@ -115,6 +118,7 @@ class MainGui(QMainWindow):
         horizontal_layout = QHBoxLayout()
         vertical_layout_left = QVBoxLayout()
         vertical_layout_right = QVBoxLayout()
+        vertical_layout_left.addWidget(self.operate_label)
         vertical_layout_left.addWidget(self.import_group)
         vertical_layout_left.addWidget(self.phase_group)
         vertical_layout_left.addWidget(self.fft_filters_group)
@@ -141,9 +145,13 @@ class MainGui(QMainWindow):
         _ = self.drift_group.apply_btn.clicked.connect(self.on_drift_apply)
         _ = self.export_group.apply_btn.clicked.connect(self.on_export_apply)
 
+    def update_focused_window(self, focused_window: str) -> None:
+        self.operate_label.setText(f"Operate on: {focused_window}")
+
     def on_open_btn_click(self) -> None:
         ft = pf.FastMovie(FAST_FILE, y_phase=0)
         movie_window = MovieWindow(ft)
+        _ = movie_window.window_focused.connect(self.update_focused_window)
         self.plot_windows.append(movie_window)
         movie_window.show()
 
@@ -158,6 +166,7 @@ class MainGui(QMainWindow):
         if file_path:
             ft = pf.FastMovie(str(file_path), y_phase=0)
             movie_window = MovieWindow(ft)
+            _ = movie_window.window_focused.connect(self.update_focused_window)
             self.plot_windows.append(movie_window)
             movie_window.show()
         else:

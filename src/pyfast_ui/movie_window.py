@@ -1,18 +1,15 @@
-
 import copy
 import os
-from typing import final
+from typing import final, override
 
-from PySide6.QtCore import QSize, Slot
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.backends.backend_qtagg import FigureCanvas
 
 # from matplotlib.backends.qt_compat import QtWidgets
 from matplotlib.figure import Figure
-import pyfastspm as pf
 from pyfastspm import FastMovie
-
-from PySide6.QtGui import QKeySequence, QShortcut, Qt
+from PySide6.QtCore import QSize, Signal, Slot
+from PySide6.QtGui import QFocusEvent, QKeySequence, QShortcut, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -28,6 +25,8 @@ from PySide6.QtWidgets import (
 
 @final
 class MovieWindow(QWidget):
+    window_focused = Signal(str)
+
     def __init__(self, fast_movie: FastMovie) -> None:
         super().__init__()
         self.filename = os.path.basename(fast_movie.filename)
@@ -138,6 +137,8 @@ class MovieWindow(QWidget):
         shortcut_prev = QShortcut(QKeySequence(Qt.ALT | Qt.Key_Space), self)
         shortcut_prev.activated.connect(self.on_play_btn_clicked)
 
+        self.setFocusPolicy(Qt.StrongFocus)
+
     def create_plot(self) -> None:
         self.ax = self.canvas.figure.subplots()
         self.img_plot = self.ax.imshow(
@@ -209,3 +210,9 @@ class MovieWindow(QWidget):
     @Slot()
     def on_pause_btn_clicked(self) -> None:
         self.timer.stop()
+
+    @override
+    def focusInEvent(self, event: QFocusEvent) -> None:
+        print(f"Focused: {self.filename}")
+        self.window_focused.emit(self.filename)
+        super().focusInEvent(event)
