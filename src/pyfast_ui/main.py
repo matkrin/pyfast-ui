@@ -46,10 +46,10 @@ class MainGui(QMainWindow):
         self.central_layout = QHBoxLayout()
         self.central_widget.setLayout(self.central_layout)
 
-        self.open_btn = QPushButton("Open test file")
-        _ = self.open_btn.clicked.connect(self.on_open_btn_click)
-
-        self.central_layout.addWidget(self.open_btn)
+        # self.open_btn = QPushButton("Open test file")
+        # _ = self.open_btn.clicked.connect(self.on_open_btn_click)
+        #
+        # self.central_layout.addWidget(self.open_btn)
 
         self.plot_windows: dict[str, MovieWindow] = dict()
         self.operate_on: str | None = None
@@ -108,7 +108,7 @@ class MainGui(QMainWindow):
             export_movie=True,
             export_frames=False,
             frame_export_images=(0, 1),
-            frame_export_channel="ui",
+            frame_export_channel="udi",
             contrast=(0.1, 0.99),
             scaling=(2.0, 2.0),
             fps_factor=5,
@@ -201,7 +201,7 @@ class MainGui(QMainWindow):
             manual_y_phase=manual_y_phase,
         )
 
-        ft.reshape_to_movie()
+        ft.reshape_to_movie("uf")
         fast_movie_window.img_plot.set_clim(ft.data.min(), ft.data.max())
 
     def on_fft_filter_apply(self) -> None:
@@ -234,8 +234,7 @@ class MainGui(QMainWindow):
                 high_pass_params=high_pass_params,
             )
 
-        ft.reshape_to_movie()
-        fast_movie_window.img_plot.set_clim(ft.data.min(), ft.data.max())
+        ft.reshape_to_movie("uf")
 
     def on_creep_apply(self) -> None:
         if self.operate_on is None:

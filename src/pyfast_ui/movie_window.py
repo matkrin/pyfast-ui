@@ -38,7 +38,7 @@ class MovieWindow(QWidget):
 
         self.ft_raw_data = copy.deepcopy(fast_movie.data)
         self.ft = fast_movie
-        self.ft.reshape_to_movie()
+        self.ft.reshape_to_movie("uf")
         self.num_frames: int = self.ft.data.shape[0]
 
         self.current_frame_num = 0
