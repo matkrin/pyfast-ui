@@ -1,5 +1,8 @@
 import sys
 from typing import final, override
+
+import numpy as np
+import pyfastspm as pf
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
@@ -14,10 +17,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-import numpy as np
-
-import pyfastspm as pf
-
 from pyfast_ui.creep_group import CreepGroup
 from pyfast_ui.drift_group import DriftGroup
 from pyfast_ui.export_group import ExportGroup
@@ -28,7 +27,7 @@ from pyfast_ui.import_group import ImportGroup
 from pyfast_ui.movie_window import MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 
-FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 
 @final
@@ -52,7 +51,8 @@ class MainGui(QMainWindow):
 
         self.central_layout.addWidget(self.open_btn)
 
-        self.plot_windows: list[MovieWindow] = []
+        self.plot_windows: dict[str, MovieWindow] = dict()
+        self.operate_on: str | None = None
 
         self.operate_label = QLabel("Operate on: ")
 
@@ -91,7 +91,9 @@ class MainGui(QMainWindow):
             guess_ind=0.2,
             known_params=None,
         )
+        # TODO
         streak_removal_group = QGroupBox("Streak Removal")
+        # TODO
         crop_group = QGroupBox("Crop")
         self.drift_group = DriftGroup(
             fft_drift=True, drifttype="common", stepsize=100, known_drift=False
@@ -146,13 +148,15 @@ class MainGui(QMainWindow):
         _ = self.export_group.apply_btn.clicked.connect(self.on_export_apply)
 
     def update_focused_window(self, focused_window: str) -> None:
+        print("Focus on: ", focused_window)
+        self.operate_on = focused_window
         self.operate_label.setText(f"Operate on: {focused_window}")
 
     def on_open_btn_click(self) -> None:
         ft = pf.FastMovie(FAST_FILE, y_phase=0)
         movie_window = MovieWindow(ft)
         _ = movie_window.window_focused.connect(self.update_focused_window)
-        self.plot_windows.append(movie_window)
+        self.plot_windows.update({movie_window.filename: movie_window})
         movie_window.show()
 
     def on_import_btn_click(self) -> None:
@@ -167,14 +171,20 @@ class MainGui(QMainWindow):
             ft = pf.FastMovie(str(file_path), y_phase=0)
             movie_window = MovieWindow(ft)
             _ = movie_window.window_focused.connect(self.update_focused_window)
-            self.plot_windows.append(movie_window)
+            self.plot_windows.update({movie_window.filename: movie_window})
             movie_window.show()
         else:
             print("No file chosen.")
 
     def on_phase_apply(self) -> None:
-        ft = self.plot_windows[0].ft
-        ft.data = self.plot_windows[0].ft_raw_data
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        ft = fast_movie_window.ft
+        ft.data = fast_movie_window.ft_raw_data
         ft.mode = "timeseries"
 
         apply_auto_xphase = self.phase_group.apply_auto_xphase
@@ -192,11 +202,16 @@ class MainGui(QMainWindow):
         )
 
         ft.reshape_to_movie()
-        self.plot_windows[0].img_plot.set_clim(ft.data.min(), ft.data.max())
+        fast_movie_window.img_plot.set_clim(ft.data.min(), ft.data.max())
 
     def on_fft_filter_apply(self) -> None:
-        ft = self.plot_windows[0].ft
-        ft.data = self.plot_windows[0].ft_raw_data
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+        ft = fast_movie_window.ft
+        ft.data = fast_movie_window.ft_raw_data
         ft.mode = "timeseries"
 
         filter_broadness = self.fft_filters_group.filter_broadness
@@ -220,11 +235,16 @@ class MainGui(QMainWindow):
             )
 
         ft.reshape_to_movie()
-        self.plot_windows[0].img_plot.set_clim(ft.data.min(), ft.data.max())
+        fast_movie_window.img_plot.set_clim(ft.data.min(), ft.data.max())
 
     def on_creep_apply(self) -> None:
-        print("Creep correction applied")
-        ft = self.plot_windows[0].ft
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        ft = fast_movie_window.ft
         creep_mode = self.creep_group.creep_mode
         if self.import_group.is_image_range:
             image_range = self.import_group.image_range
@@ -286,10 +306,16 @@ class MainGui(QMainWindow):
             ]
             pf.conv_mat(ft, edge_removal, image_range=imrange)
 
-        self.plot_windows[0].img_plot.set_clim(ft.data.min(), ft.data.max())
+        fast_movie_window.img_plot.set_clim(ft.data.min(), ft.data.max())
 
     def on_drift_apply(self) -> None:
-        ft = self.plot_windows[0].ft
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        ft = fast_movie_window.ft
         print(f"{ft.data.shape=}")
         fft_drift = self.drift_group.fft_drift
         stepsize = self.drift_group.stepsize
@@ -308,7 +334,8 @@ class MainGui(QMainWindow):
         if fft_drift:
             driftrem = pf.Drift(ft, stepsize=stepsize, boxcar=True)
             ft.data, drift_path = driftrem.correct(drifttype, known_drift=known_drift)
-        self.plot_windows[0].recreate_plot()
+
+        fast_movie_window.recreate_plot()
 
         print(f"{ft.data.shape=}")
         # if image_range == None:
@@ -322,7 +349,13 @@ class MainGui(QMainWindow):
         #     last = image_range[1]
 
     def on_export_apply(self) -> None:
-        ft = self.plot_windows[0].ft
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        ft = fast_movie_window.ft
         export_movie = self.export_group.export_movie
         export_frames = self.export_group.export_frames
         color_map = self.export_group.color_map
@@ -361,7 +394,13 @@ class MainGui(QMainWindow):
             )
 
     def on_image_correction_apply(self) -> None:
-        ft = self.plot_windows[0].ft
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        ft = fast_movie_window.ft
         align_type = self.image_correction_group.align_type
         correction_type = self.image_correction_group.correction_type
 
@@ -372,10 +411,16 @@ class MainGui(QMainWindow):
         elif correction_type == "fixzero":
             pf.fix_zero(ft)
 
-        self.plot_windows[0].recreate_plot()
+        fast_movie_window.recreate_plot()
 
     def on_image_filter_apply(self) -> None:
-        ft = self.plot_windows[0].ft
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        ft = fast_movie_window.ft
         filter_type = self.image_filter_group.filter_type
         pixel_width = self.image_filter_group.pixel_width
 
@@ -386,11 +431,11 @@ class MainGui(QMainWindow):
         elif filter_type == "gaussian2d":
             pf.gaussian_2d(ft, pixel_width)
 
-        self.plot_windows[0].recreate_plot()
+        fast_movie_window.recreate_plot()
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
-        for plot_window in self.plot_windows:
+        for plot_window in self.plot_windows.values():
             _ = plot_window.close()
         QCoreApplication.quit()
 
