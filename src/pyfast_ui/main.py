@@ -46,10 +46,10 @@ class MainGui(QMainWindow):
         self.central_layout = QHBoxLayout()
         self.central_widget.setLayout(self.central_layout)
 
-        # self.open_btn = QPushButton("Open test file")
-        # _ = self.open_btn.clicked.connect(self.on_open_btn_click)
-        #
-        # self.central_layout.addWidget(self.open_btn)
+        self.open_btn = QPushButton("Open test file")
+        _ = self.open_btn.clicked.connect(self.on_open_btn_click)
+
+        self.central_layout.addWidget(self.open_btn)
 
         self.plot_windows: dict[str, MovieWindow] = dict()
         self.operate_on: str | None = None
@@ -157,12 +157,13 @@ class MainGui(QMainWindow):
         movie_window = MovieWindow(ft)
         _ = movie_window.window_focused.connect(self.update_focused_window)
         self.plot_windows.update({movie_window.filename: movie_window})
+        self.update_focused_window(movie_window.filename)
         movie_window.show()
 
     def on_import_btn_click(self) -> None:
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            caption="Save HTML report as...",
+            caption="Choose HDF5 file",
             # dir="",
             filter="HDF5 Files (*.h5)",
         )
@@ -172,6 +173,7 @@ class MainGui(QMainWindow):
             movie_window = MovieWindow(ft)
             _ = movie_window.window_focused.connect(self.update_focused_window)
             self.plot_windows.update({movie_window.filename: movie_window})
+            self.update_focused_window(movie_window.filename)
             movie_window.show()
         else:
             print("No file chosen.")
