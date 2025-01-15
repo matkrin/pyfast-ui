@@ -74,6 +74,7 @@ class CreepGroup(QGroupBox):
 
         # Apply button
         self.apply_btn = QPushButton("Apply")
+        self.new_btn = QPushButton("New")
 
         # Add radio buttons to the layout
         layout.addWidget(self._none, 0, 0)
@@ -83,7 +84,8 @@ class CreepGroup(QGroupBox):
         layout.addWidget(bezier_group, 1, 0, 1, 2)
         layout.addWidget(non_bezier_group, 1, 2, 1, 2)
 
-        layout.addWidget(self.apply_btn, 2, 0, 1, 4)
+        layout.addWidget(self.apply_btn, 2, 0, 1, 2)
+        layout.addWidget(self.new_btn, 2, 2, 1, 2)
 
     @property
     def creep_mode(self) -> CreepModeType:

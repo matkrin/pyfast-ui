@@ -47,6 +47,7 @@ class DriftGroup(QGroupBox):
         self._known_drift.setChecked(known_drift)
 
         self.apply_btn = QPushButton("Apply")
+        self.new_btn = QPushButton("New")
 
         # Add drift type widgets to the drift type group box
         drift_type_layout.addWidget(self._drift_type_common)
@@ -61,7 +62,11 @@ class DriftGroup(QGroupBox):
         layout.addLayout(drift_type_layout)
         layout.addLayout(stepsize_layout)
         layout.addWidget(self._known_drift)
-        layout.addWidget(self.apply_btn)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addWidget(self.apply_btn)
+        btn_layout.addWidget(self.new_btn)
+        layout.addLayout(btn_layout)
 
     @property
     def fft_drift(self) -> bool:

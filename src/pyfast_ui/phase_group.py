@@ -62,14 +62,19 @@ class PhaseGroup(QGroupBox):
         sigma_gause_layout.addWidget(sigma_gauss_lbl)
         sigma_gause_layout.addWidget(self._sigma_gauss)
 
-        self.apply_btn = QPushButton("Apply")
-
         layout.addWidget(self._apply_auto_xphase, 0, 0)
         layout.addLayout(additional_x_phase_layout, 1, 0)
         layout.addLayout(manual_y_phase_layout, 2, 0)
         layout.addLayout(index_frame_to_correlate_layout, 1, 1)
         layout.addLayout(sigma_gause_layout, 2, 1)
-        layout.addWidget(self.apply_btn, 3, 0, 1, 2)
+
+        btn_layout = QHBoxLayout()
+        self.apply_btn = QPushButton("Apply")
+        self.new_btn= QPushButton("New")
+
+        btn_layout.addWidget(self.apply_btn)
+        btn_layout.addWidget(self.new_btn)
+        layout.addLayout(btn_layout, 3, 0, 1, 2)
 
     @property
     def apply_auto_xphase(self) -> bool:

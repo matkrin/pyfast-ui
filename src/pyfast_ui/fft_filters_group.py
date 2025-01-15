@@ -82,6 +82,7 @@ class FFTFiltersGroup(QGroupBox):
         )
 
         self.apply_btn = QPushButton("Apply")
+        self.new_btn = QPushButton("New")
 
         # Add Widgets to Layout
         layout.addWidget(self._filter_x, 0, 0)
@@ -99,7 +100,8 @@ class FFTFiltersGroup(QGroupBox):
         layout.addWidget(self._fft_display_range, 6, 0, 1, 2)
         layout.addLayout(pump_freqs_layout, 7, 0, 1, 2)
 
-        layout.addWidget(self.apply_btn, 8, 0, 1, 2)
+        layout.addWidget(self.apply_btn, 8, 0)
+        layout.addWidget(self.new_btn, 8, 1)
 
     @property
     def filterparams(self) -> list[bool]:

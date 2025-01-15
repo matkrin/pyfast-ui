@@ -1,3 +1,4 @@
+from __future__ import annotations
 import copy
 import os
 from typing import final, override
@@ -9,7 +10,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvas
 from matplotlib.figure import Figure
 from pyfastspm import FastMovie
 from PySide6.QtCore import QSize, Signal, SignalInstance, Slot
-from PySide6.QtGui import QFocusEvent, QIcon, QKeySequence, QShortcut, Qt
+from PySide6.QtGui import QCloseEvent, QFocusEvent, QIcon, QKeySequence, QShortcut, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -26,10 +27,12 @@ from PySide6.QtWidgets import (
 @final
 class MovieWindow(QWidget):
     window_focused = Signal(str)
+    window_closed = Signal(str)
 
     def __init__(self, fast_movie: FastMovie) -> None:
         super().__init__()
         self.filename: str = os.path.basename(fast_movie.filename)
+        self.movie_id = self.filename
         self.setWindowTitle(self.filename)
         self.setFocusPolicy(Qt.StrongFocus)
 
@@ -38,7 +41,9 @@ class MovieWindow(QWidget):
 
         self.ft_raw_data = copy.deepcopy(fast_movie.data)
         self.ft = fast_movie
-        self.ft.reshape_to_movie("uf")
+
+        if self.ft.mode == "timeseries":
+            self.ft.reshape_to_movie("uf")
         self.num_frames: int = self.ft.data.shape[0]
 
         self.current_frame_num = 0
@@ -51,9 +56,9 @@ class MovieWindow(QWidget):
 
         self.movie_controls = MovieControls(
             num_frames=self.num_frames,
-            fps=24,
+            fps=12,
             focus_signal=self.window_focused,
-            window_id=self.filename,
+            window_id=self.movie_id,
         )
 
         # Layout
@@ -81,8 +86,15 @@ class MovieWindow(QWidget):
         shortcut_next.activated.connect(self.on_next_btn_clicked)
         shortcut_prev = QShortcut(QKeySequence(Qt.CTRL | Qt.Key_Comma), self)
         shortcut_prev.activated.connect(self.on_prev_btn_clicked)
-        shortcut_prev = QShortcut(QKeySequence(Qt.ALT | Qt.Key_Space), self)
+        shortcut_prev = QShortcut(QKeySequence(Qt.CTRL | Qt.Key_Space), self)
         shortcut_prev.activated.connect(self.on_play_btn_clicked)
+
+    def clone_fast_movie(self) -> FastMovie:
+        return self.ft.clone()
+
+    def set_movie_id(self, new_movie_id: str) -> None:
+        self.movie_id = new_movie_id
+        self.setWindowTitle(new_movie_id)
 
     def create_plot(self) -> None:
         self.ax = self.canvas.figure.subplots()
@@ -151,9 +163,15 @@ class MovieWindow(QWidget):
 
     @override
     def focusInEvent(self, event: QFocusEvent) -> None:
-        print(f"Focused: {self.filename}")
-        self.window_focused.emit(self.filename)
+        print(f"Focused: {self.movie_id}")
+        self.window_focused.emit(self.movie_id)
         super().focusInEvent(event)
+
+    @override
+    def closeEvent(self, event: QCloseEvent) -> None:
+        print(f"Closed {self.movie_id}")
+        self.window_closed.emit(self.movie_id)
+        super().closeEvent(event)
 
 
 @final

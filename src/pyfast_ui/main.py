@@ -96,7 +96,7 @@ class MainGui(QMainWindow):
         # TODO
         crop_group = QGroupBox("Crop")
         self.drift_group = DriftGroup(
-            fft_drift=True, drifttype="common", stepsize=100, known_drift=False
+            fft_drift=True, drifttype="common", stepsize=10, known_drift=False
         )
         self.image_correction_group = ImageCorrectionGroup(
             correction_type="align", align_type="median"
@@ -136,8 +136,11 @@ class MainGui(QMainWindow):
         # Connect signals
         _ = self.import_group.apply_btn.clicked.connect(self.on_import_btn_click)
         _ = self.phase_group.apply_btn.clicked.connect(self.on_phase_apply)
+        _ = self.phase_group.new_btn.clicked.connect(self.on_phase_new)
         _ = self.fft_filters_group.apply_btn.clicked.connect(self.on_fft_filter_apply)
+        _ = self.fft_filters_group.new_btn.clicked.connect(self.on_fft_filter_new)
         _ = self.creep_group.apply_btn.clicked.connect(self.on_creep_apply)
+        _ = self.creep_group.new_btn.clicked.connect(self.on_creep_new)
         _ = self.image_correction_group.apply_btn.clicked.connect(
             self.on_image_correction_apply
         )
@@ -145,6 +148,7 @@ class MainGui(QMainWindow):
             self.on_image_filter_apply
         )
         _ = self.drift_group.apply_btn.clicked.connect(self.on_drift_apply)
+        _ = self.drift_group.new_btn.clicked.connect(self.on_drift_new)
         _ = self.export_group.apply_btn.clicked.connect(self.on_export_apply)
 
     def update_focused_window(self, focused_window: str) -> None:
@@ -152,12 +156,16 @@ class MainGui(QMainWindow):
         self.operate_on = focused_window
         self.operate_label.setText(f"Operate on: {focused_window}")
 
+    def on_movie_window_closed(self, closed_window: str) -> None:
+        del self.plot_windows[closed_window]
+
     def on_open_btn_click(self) -> None:
         ft = pf.FastMovie(FAST_FILE, y_phase=0)
         movie_window = MovieWindow(ft)
         _ = movie_window.window_focused.connect(self.update_focused_window)
-        self.plot_windows.update({movie_window.filename: movie_window})
-        self.update_focused_window(movie_window.filename)
+        _ = movie_window.window_closed.connect(self.on_movie_window_closed)
+        self.plot_windows.update({movie_window.movie_id: movie_window})
+        self.update_focused_window(movie_window.movie_id)
         movie_window.show()
 
     def on_import_btn_click(self) -> None:
@@ -172,8 +180,8 @@ class MainGui(QMainWindow):
             ft = pf.FastMovie(str(file_path), y_phase=0)
             movie_window = MovieWindow(ft)
             _ = movie_window.window_focused.connect(self.update_focused_window)
-            self.plot_windows.update({movie_window.filename: movie_window})
-            self.update_focused_window(movie_window.filename)
+            self.plot_windows.update({movie_window.movie_id: movie_window})
+            self.update_focused_window(movie_window.movie_id)
             movie_window.show()
         else:
             print("No file chosen.")
@@ -206,6 +214,25 @@ class MainGui(QMainWindow):
         ft.reshape_to_movie("uf")
         fast_movie_window.img_plot.set_clim(ft.data.min(), ft.data.max())
 
+    def on_phase_new(self) -> None:
+        print("on_phase_new")
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        old_id = fast_movie_window.movie_id
+        new_ft = fast_movie_window.clone_fast_movie()
+        new_ft.reload_timeseries()
+        new_movie_window = MovieWindow(new_ft)
+        new_movie_window.show()
+        new_movie_window.set_movie_id(f"{old_id} - p")
+        _ = new_movie_window.window_focused.connect(self.update_focused_window)
+        self.plot_windows.update({new_movie_window.movie_id: new_movie_window})
+        self.update_focused_window(new_movie_window.movie_id)
+        self.on_phase_apply()
+
     def on_fft_filter_apply(self) -> None:
         if self.operate_on is None:
             return
@@ -237,6 +264,26 @@ class MainGui(QMainWindow):
             )
 
         ft.reshape_to_movie("uf")
+        fast_movie_window.recreate_plot()
+
+    def on_fft_filter_new(self) -> None:
+        print("on_fft_new")
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        old_id = fast_movie_window.movie_id
+        new_ft = fast_movie_window.clone_fast_movie()
+        new_ft.reload_timeseries()
+        new_movie_window = MovieWindow(new_ft)
+        new_movie_window.show()
+        new_movie_window.set_movie_id(f"{old_id} - f")
+        _ = new_movie_window.window_focused.connect(self.update_focused_window)
+        self.plot_windows.update({new_movie_window.movie_id: new_movie_window})
+        self.update_focused_window(new_movie_window.movie_id)
+        self.on_fft_filter_apply()
 
     def on_creep_apply(self) -> None:
         if self.operate_on is None:
@@ -309,6 +356,24 @@ class MainGui(QMainWindow):
 
         fast_movie_window.img_plot.set_clim(ft.data.min(), ft.data.max())
 
+    def on_creep_new(self) -> None:
+        print("on_fft_new")
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        old_id = fast_movie_window.movie_id
+        new_ft = fast_movie_window.clone_fast_movie()
+        new_movie_window = MovieWindow(new_ft)
+        new_movie_window.show()
+        new_movie_window.set_movie_id(f"{old_id} - c")
+        _ = new_movie_window.window_focused.connect(self.update_focused_window)
+        self.plot_windows.update({new_movie_window.movie_id: new_movie_window})
+        self.update_focused_window(new_movie_window.movie_id)
+        self.on_creep_apply()
+
     def on_drift_apply(self) -> None:
         if self.operate_on is None:
             return
@@ -348,6 +413,24 @@ class MainGui(QMainWindow):
         # else:
         #     first = image_range[0]
         #     last = image_range[1]
+
+    def on_drift_new(self) -> None:
+        print("on_drift_new")
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        old_id = fast_movie_window.movie_id
+        new_ft = fast_movie_window.clone_fast_movie()
+        new_movie_window = MovieWindow(new_ft)
+        new_movie_window.show()
+        new_movie_window.set_movie_id(f"{old_id} - d")
+        _ = new_movie_window.window_focused.connect(self.update_focused_window)
+        self.plot_windows.update({new_movie_window.movie_id: new_movie_window})
+        self.update_focused_window(new_movie_window.movie_id)
+        self.on_drift_apply()
 
     def on_export_apply(self) -> None:
         if self.operate_on is None:
