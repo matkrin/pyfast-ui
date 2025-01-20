@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 import copy
 import os
 from typing import final, override
 
+import numpy as np
+import skimage as ski
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.backends.backend_qtagg import FigureCanvas
 
@@ -29,26 +32,36 @@ class MovieWindow(QWidget):
     window_focused = Signal(str)
     window_closed = Signal(str)
 
-    def __init__(self, fast_movie: FastMovie) -> None:
+    def __init__(self, fast_movie: FastMovie, channel: str) -> None:
         super().__init__()
+        self.ft = fast_movie
+        print(f"New window with channel: {channel}")
+        self.channel = channel
         self.filename: str = os.path.basename(fast_movie.filename)
-        self.movie_id = self.filename
-        self.setWindowTitle(self.filename)
+        self.movie_id = f"{self.filename}-{self.channel}"
+
+        self.setWindowTitle(self.movie_id)
         self.setFocusPolicy(Qt.StrongFocus)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        self.ft_raw_data = copy.deepcopy(fast_movie.data)
-        self.ft = fast_movie
-
         if self.ft.mode == "timeseries":
-            self.ft.reshape_to_movie("uf")
+            self.ft.reshape_to_movie(channel)
+            if "i" in self.channel:
+                num_frames = self.ft.data.shape[0]
+                y_shape = self.ft.data.shape[1]
+                x_shape = self.ft.data.shape[2] * 2
+                data = np.zeros((num_frames, y_shape, x_shape))
+                for i in range(num_frames):
+                    data[i] = ski.transform.resize(self.ft.data[i], (y_shape, x_shape))
+                self.ft.data = data
+
         self.num_frames: int = self.ft.data.shape[0]
 
         self.current_frame_num = 0
 
-        self.canvas = FigureCanvas(Figure(figsize=(5, 5)))
+        self.canvas = FigureCanvas(Figure(figsize=(4, 4)))
 
         self.ax = None
         self.img_plot = None
@@ -99,7 +112,8 @@ class MovieWindow(QWidget):
     def create_plot(self) -> None:
         self.ax = self.canvas.figure.subplots()
         self.img_plot = self.ax.imshow(
-            self.ft.data[self.current_frame_num], interpolation="none"
+            self.ft.data[self.current_frame_num],
+            interpolation="none",
         )
         self.ax.get_xaxis().set_visible(False)
         self.ax.get_yaxis().set_visible(False)

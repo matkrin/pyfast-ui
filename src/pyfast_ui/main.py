@@ -2,6 +2,7 @@ import sys
 from typing import final, override
 
 import numpy as np
+from pyfast_ui.modify_group import ModifyGroup
 import pyfastspm as pf
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QCloseEvent
@@ -27,7 +28,7 @@ from pyfast_ui.import_group import ImportGroup
 from pyfast_ui.movie_window import MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 
-FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 
 @final
@@ -57,6 +58,7 @@ class MainGui(QMainWindow):
         self.operate_label = QLabel("Operate on: ")
 
         self.import_group = ImportGroup(image_range=None, apply_auto_xphase=True)
+        self.modify_group = ModifyGroup()
         self.phase_group = PhaseGroup(
             apply_auto_xphase=True,
             additional_x_phase=0,
@@ -122,6 +124,7 @@ class MainGui(QMainWindow):
         vertical_layout_right = QVBoxLayout()
         vertical_layout_left.addWidget(self.operate_label)
         vertical_layout_left.addWidget(self.import_group)
+        vertical_layout_left.addWidget(self.modify_group)
         vertical_layout_left.addWidget(self.phase_group)
         vertical_layout_left.addWidget(self.fft_filters_group)
         vertical_layout_left.addWidget(self.creep_group)
@@ -135,6 +138,7 @@ class MainGui(QMainWindow):
 
         # Connect signals
         _ = self.import_group.apply_btn.clicked.connect(self.on_import_btn_click)
+        _ = self.modify_group.new_btn.clicked.connect(self.on_modify_new_btn)
         _ = self.phase_group.apply_btn.clicked.connect(self.on_phase_apply)
         _ = self.phase_group.new_btn.clicked.connect(self.on_phase_new)
         _ = self.fft_filters_group.apply_btn.clicked.connect(self.on_fft_filter_apply)
@@ -161,7 +165,7 @@ class MainGui(QMainWindow):
 
     def on_open_btn_click(self) -> None:
         ft = pf.FastMovie(FAST_FILE, y_phase=0)
-        movie_window = MovieWindow(ft)
+        movie_window = MovieWindow(ft, "udi")
         _ = movie_window.window_focused.connect(self.update_focused_window)
         _ = movie_window.window_closed.connect(self.on_movie_window_closed)
         self.plot_windows.update({movie_window.movie_id: movie_window})
@@ -178,13 +182,32 @@ class MainGui(QMainWindow):
 
         if file_path:
             ft = pf.FastMovie(str(file_path), y_phase=0)
-            movie_window = MovieWindow(ft)
+            movie_window = MovieWindow(ft, "udi")
             _ = movie_window.window_focused.connect(self.update_focused_window)
             self.plot_windows.update({movie_window.movie_id: movie_window})
             self.update_focused_window(movie_window.movie_id)
             movie_window.show()
         else:
             print("No file chosen.")
+
+    def on_modify_new_btn(self) -> None:
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        channel = self.modify_group.channel
+
+        old_id = fast_movie_window.movie_id
+        new_ft = fast_movie_window.clone_fast_movie()
+        new_ft.reload_timeseries()
+        new_movie_window = MovieWindow(new_ft, channel)
+        new_movie_window.show()
+        new_movie_window.set_movie_id(f"{old_id} - {channel}")
+        _ = new_movie_window.window_focused.connect(self.update_focused_window)
+        self.plot_windows.update({new_movie_window.movie_id: new_movie_window})
+        self.update_focused_window(new_movie_window.movie_id)
 
     def on_phase_apply(self) -> None:
         if self.operate_on is None:
@@ -194,8 +217,7 @@ class MainGui(QMainWindow):
             return
 
         ft = fast_movie_window.ft
-        ft.data = fast_movie_window.ft_raw_data
-        ft.mode = "timeseries"
+        ft.reload_timeseries()
 
         apply_auto_xphase = self.phase_group.apply_auto_xphase
         index_frame_to_correlate = self.phase_group.index_frame_to_correlate
@@ -211,8 +233,11 @@ class MainGui(QMainWindow):
             manual_y_phase=manual_y_phase,
         )
 
-        ft.reshape_to_movie("uf")
-        fast_movie_window.img_plot.set_clim(ft.data.min(), ft.data.max())
+        channel = fast_movie_window.channel
+        min = ft.data.min()
+        max = ft.data.max()
+        ft.reshape_to_movie(channel)
+        fast_movie_window.img_plot.set_clim(min, max)
 
     def on_phase_new(self) -> None:
         print("on_phase_new")
@@ -223,9 +248,10 @@ class MainGui(QMainWindow):
             return
 
         old_id = fast_movie_window.movie_id
+        channel = fast_movie_window.channel
         new_ft = fast_movie_window.clone_fast_movie()
         new_ft.reload_timeseries()
-        new_movie_window = MovieWindow(new_ft)
+        new_movie_window = MovieWindow(new_ft, channel)
         new_movie_window.show()
         new_movie_window.set_movie_id(f"{old_id} - p")
         _ = new_movie_window.window_focused.connect(self.update_focused_window)
@@ -240,8 +266,7 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
         ft = fast_movie_window.ft
-        ft.data = fast_movie_window.ft_raw_data
-        ft.mode = "timeseries"
+        ft.reload_timeseries()
 
         filter_broadness = self.fft_filters_group.filter_broadness
         fft_display_range = self.fft_filters_group.fft_display_range
@@ -263,7 +288,7 @@ class MainGui(QMainWindow):
                 high_pass_params=high_pass_params,
             )
 
-        ft.reshape_to_movie("uf")
+        ft.reshape_to_movie(fast_movie_window.channel)
         fast_movie_window.recreate_plot()
 
     def on_fft_filter_new(self) -> None:
@@ -275,9 +300,10 @@ class MainGui(QMainWindow):
             return
 
         old_id = fast_movie_window.movie_id
+        channel = fast_movie_window.channel
         new_ft = fast_movie_window.clone_fast_movie()
         new_ft.reload_timeseries()
-        new_movie_window = MovieWindow(new_ft)
+        new_movie_window = MovieWindow(new_ft, channel)
         new_movie_window.show()
         new_movie_window.set_movie_id(f"{old_id} - f")
         _ = new_movie_window.window_focused.connect(self.update_focused_window)
@@ -366,7 +392,7 @@ class MainGui(QMainWindow):
 
         old_id = fast_movie_window.movie_id
         new_ft = fast_movie_window.clone_fast_movie()
-        new_movie_window = MovieWindow(new_ft)
+        new_movie_window = MovieWindow(new_ft, fast_movie_window.channel)
         new_movie_window.show()
         new_movie_window.set_movie_id(f"{old_id} - c")
         _ = new_movie_window.window_focused.connect(self.update_focused_window)
@@ -424,7 +450,7 @@ class MainGui(QMainWindow):
 
         old_id = fast_movie_window.movie_id
         new_ft = fast_movie_window.clone_fast_movie()
-        new_movie_window = MovieWindow(new_ft)
+        new_movie_window = MovieWindow(new_ft, fast_movie_window.channel)
         new_movie_window.show()
         new_movie_window.set_movie_id(f"{old_id} - d")
         _ = new_movie_window.window_focused.connect(self.update_focused_window)

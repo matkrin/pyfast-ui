@@ -7,12 +7,14 @@ authors = [
 ]
 dependencies = [
     "matplotlib>=3.9.2",
+    "numpy>=2.0.2",
     "pyfastspm",
     "pyside6>=6.8.1,!=6.8.1.1",
+    "scikit-image>=0.24.0",
     "setuptools>=75.5.0",
 ]
 readme = "README.md"
-requires-python = ">= 3.9"
+requires-python = ">= 3.12"
 
 [build-system]
 requires = ["hatchling"]
