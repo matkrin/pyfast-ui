@@ -1,5 +1,6 @@
 from __future__ import annotations
 from collections.abc import Hashable
+import copy
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Self, cast, final
@@ -10,18 +11,18 @@ import h5py as h5
 
 
 class Channels(Enum):
-    UDI = 0
-    UDF = auto()
-    UDB = auto()
-    UF = auto()
-    UB = auto()
-    DF = auto()
-    DB = auto()
-    UI = auto()
-    DI = auto()
+    UDI = "udi"
+    UDF = "udf"
+    UDB = "udb"
+    UF = "uf"
+    UB = "ub"
+    DF = "df"
+    DB = "db"
+    UI = "ui"
+    DI = "di"
 
 
-class Mode(Enum):
+class DataMode(Enum):
     TIMESERIES = 0
     MOVIE = auto()
 
@@ -47,12 +48,11 @@ class FastMovie:
     def correct_creep(self) -> None:
         pass
 
-    def correct_drift(self) -> None:
-        pass
-
     def interpolate(self) -> None:
         pass
 
+    def correct_drift(self) -> None:
+        pass
 
 
 @final
@@ -66,7 +66,7 @@ class Metadata:
         self.num_images = self._get_correct_num_images(num_pixels)
         self.num_frames = self.num_images * 4
         self.channels: Channels | None = None
-        self.mode: Mode = Mode.TIMESERIES
+        self.mode: DataMode = DataMode.TIMESERIES
 
     def _get_correct_num_images(self, num_pixels: int) -> int:
         num_x_points: int = int(self.meta_attrs["Scanner.X_Points"])  # pyright: ignore[reportArgumentType]
