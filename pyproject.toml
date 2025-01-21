@@ -6,6 +6,7 @@ authors = [
     { name = "matkrin", email = "matkrin@protonmail.com" }
 ]
 dependencies = [
+    "h5py>=3.12.1",
     "matplotlib>=3.9.2",
     "numpy>=2.0.2",
     "pyfastspm",
