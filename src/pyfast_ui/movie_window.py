@@ -37,6 +37,7 @@ class MovieWindow(QWidget):
         self.ft = fast_movie
         print(f"New window with channel: {channel}")
         self.channel = channel
+        self.ft.channel = channel
         self.filename: str = os.path.basename(fast_movie.filename)
         self.movie_id = f"{self.filename}-{self.channel}"
 
@@ -46,33 +47,32 @@ class MovieWindow(QWidget):
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        if self.ft.mode == "timeseries":
-            self.ft.reshape_to_movie(channel)
-            if "i" in self.channel:
-                num_frames = self.ft.data.shape[0]
-                y_shape = self.ft.data.shape[1]
-                x_shape = self.ft.data.shape[2] * 2
-                data = np.zeros((num_frames, y_shape, x_shape))
-                for i in range(num_frames):
-                    data[i] = ski.transform.resize(self.ft.data[i], (y_shape, x_shape))
-                self.ft.data = data
+        # if self.ft.mode == "timeseries":
+        #     self.ft.reshape_to_movie(channel)
+        #     if "i" in self.channel:
+        #         num_frames = self.ft.data.shape[0]
+        #         y_shape = self.ft.data.shape[1]
+        #         x_shape = self.ft.data.shape[2] * 2
+        #         data = np.zeros((num_frames, y_shape, x_shape))
+        #         for i in range(num_frames):
+        #             data[i] = ski.transform.resize(self.ft.data[i], (y_shape, x_shape))
+        #         self.ft.data = data
 
-        self.num_frames: int = self.ft.data.shape[0]
-
+        self.num_frames = self.ft.num_frames
         self.current_frame_num = 0
 
         self.canvas = FigureCanvas(Figure(figsize=(4, 4)))
-
-        self.ax = None
-        self.img_plot = None
-        self.create_plot()
-
         self.movie_controls = MovieControls(
             num_frames=self.num_frames,
             fps=12,
             focus_signal=self.window_focused,
             window_id=self.movie_id,
         )
+
+        self.ax = None
+        self.img_plot = None
+        self.create_plot()
+
 
         # Layout
         layout.addWidget(NavigationToolbar(self.canvas, self))
@@ -110,9 +110,32 @@ class MovieWindow(QWidget):
         self.setWindowTitle(new_movie_id)
 
     def create_plot(self) -> None:
+        if self.ft.mode == "timeseries":
+            data = self.ft.reshape_data(
+                copy.deepcopy(self.ft.data),
+                self.channel,
+                self.ft.metadata["Scanner.X_Points"],
+                self.ft.metadata["Scanner.Y_Points"],
+                self.ft.num_images,
+                self.ft.num_frames,
+            )
+            self.num_frames = data.shape[0]
+            self.movie_controls.set_num_frames(self.num_frames)
+        else:
+            data = self.ft.data
+
+        if "i" in self.channel:
+            num_frames = data.shape[0]
+            y_shape = data.shape[1]
+            x_shape = data.shape[2] * 2
+            data_scaled = np.zeros((num_frames, y_shape, x_shape))
+            for i in range(num_frames):
+                data_scaled[i] = ski.transform.resize(data[i], (y_shape, x_shape))
+            data = data_scaled
+
         self.ax = self.canvas.figure.subplots()
         self.img_plot = self.ax.imshow(
-            self.ft.data[self.current_frame_num],
+            data[self.current_frame_num],
             interpolation="none",
         )
         self.ax.get_xaxis().set_visible(False)
@@ -125,7 +148,39 @@ class MovieWindow(QWidget):
         self.create_plot()
 
     def update_frame(self) -> None:
-        self.img_plot.set_data(self.ft.data[self.current_frame_num])
+        print(self.ft.data.shape)
+        print(f"{self.channel=}")
+        print(f"{self.ft.channel=}")
+        print(f"{self.ft.data[0]}")
+        if self.ft.mode == "timeseries":
+            print("RESHAPE")
+            data = self.ft.reshape_data(
+                copy.deepcopy(self.ft.data),
+                self.channel,
+                self.ft.metadata["Scanner.X_Points"],
+                self.ft.metadata["Scanner.Y_Points"],
+                self.ft.num_images,
+                self.ft.num_frames,
+            )
+            self.num_frames = data.shape[0]
+            self.movie_controls.set_num_frames(self.num_frames)
+        else:
+            data = self.ft.data
+
+        print(data.shape)
+
+        # if "i" in self.channel:
+        #     num_frames = data.shape[0]
+        #     y_shape = data.shape[1]
+        #     x_shape = data.shape[2] * 2
+        #     data_scaled = np.zeros((num_frames, y_shape, x_shape))
+        #     for i in range(num_frames):
+        #         data_scaled[i] = ski.transform.resize(data[i], (y_shape, x_shape))
+        #     data = data_scaled
+
+        print(data.shape)
+
+        self.img_plot.set_data(data[self.current_frame_num])
         self.img_plot.figure.canvas.draw()
         self.movie_controls.curr_frame_input.setValue(self.current_frame_num)
         self.movie_controls.current_frame_lbl.setText(f"/{self.num_frames - 1}")
@@ -184,6 +239,7 @@ class MovieWindow(QWidget):
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
         print(f"Closed {self.movie_id}")
+        self.timer.stop()
         self.window_closed.emit(self.movie_id)
         super().closeEvent(event)
 
@@ -257,3 +313,6 @@ class MovieControls(QWidget):
         layout.addWidget(self.current_frame_lbl)
         # Strech the canvas when window resizes
         layout.setStretch(10, 2)
+
+    def set_num_frames(self, new_num_frames: int) -> None:
+        self.current_frame_lbl.setText(f"/{new_num_frames}")

@@ -28,7 +28,7 @@ from pyfast_ui.import_group import ImportGroup
 from pyfast_ui.movie_window import MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 
-FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 
 @final
@@ -217,7 +217,6 @@ class MainGui(QMainWindow):
             return
 
         ft = fast_movie_window.ft
-        ft.reload_timeseries()
 
         apply_auto_xphase = self.phase_group.apply_auto_xphase
         index_frame_to_correlate = self.phase_group.index_frame_to_correlate
@@ -233,10 +232,8 @@ class MainGui(QMainWindow):
             manual_y_phase=manual_y_phase,
         )
 
-        channel = fast_movie_window.channel
         min = ft.data.min()
         max = ft.data.max()
-        ft.reshape_to_movie(channel)
         fast_movie_window.img_plot.set_clim(min, max)
 
     def on_phase_new(self) -> None:
@@ -250,7 +247,6 @@ class MainGui(QMainWindow):
         old_id = fast_movie_window.movie_id
         channel = fast_movie_window.channel
         new_ft = fast_movie_window.clone_fast_movie()
-        new_ft.reload_timeseries()
         new_movie_window = MovieWindow(new_ft, channel)
         new_movie_window.show()
         new_movie_window.set_movie_id(f"{old_id} - p")
@@ -266,7 +262,6 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
         ft = fast_movie_window.ft
-        ft.reload_timeseries()
 
         filter_broadness = self.fft_filters_group.filter_broadness
         fft_display_range = self.fft_filters_group.fft_display_range
@@ -288,7 +283,6 @@ class MainGui(QMainWindow):
                 high_pass_params=high_pass_params,
             )
 
-        ft.reshape_to_movie(fast_movie_window.channel)
         fast_movie_window.recreate_plot()
 
     def on_fft_filter_new(self) -> None:
@@ -302,7 +296,6 @@ class MainGui(QMainWindow):
         old_id = fast_movie_window.movie_id
         channel = fast_movie_window.channel
         new_ft = fast_movie_window.clone_fast_movie()
-        new_ft.reload_timeseries()
         new_movie_window = MovieWindow(new_ft, channel)
         new_movie_window.show()
         new_movie_window.set_movie_id(f"{old_id} - f")
@@ -319,6 +312,7 @@ class MainGui(QMainWindow):
             return
 
         ft = fast_movie_window.ft
+        ft.reshape_to_movie(fast_movie_window.channel)
         creep_mode = self.creep_group.creep_mode
         if self.import_group.is_image_range:
             image_range = self.import_group.image_range

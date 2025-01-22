@@ -11,7 +11,18 @@ class ModifyGroup(QGroupBox):
         self.setLayout(layout)
 
         self._channel = LabeledCombobox(
-            "Channel", ["udi", "ui", "uf", "ub", "di", "df", "db"]
+            "Channel",
+            [
+                "udi",
+                "udf",
+                "udb",
+                "uf",
+                "ub",
+                "df",
+                "db",
+                "ui",
+                "di",
+            ],
         )
         self._slice = LabeledSpinBoxes("Slice frames", (0, 0))
         self.new_btn = QPushButton("New")
