@@ -2,8 +2,8 @@ import sys
 from typing import final, override
 
 import numpy as np
-from pyfast_ui.modify_group import ModifyGroup
 import pyfastspm as pf
+from pystackreg import StackReg
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
@@ -25,6 +25,7 @@ from pyfast_ui.fft_filters_group import FFTFiltersGroup
 from pyfast_ui.image_correction import ImageCorrectionGroup
 from pyfast_ui.image_filters import ImageFilterGroup
 from pyfast_ui.import_group import ImportGroup
+from pyfast_ui.modify_group import ModifyGroup
 from pyfast_ui.movie_window import MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 
@@ -37,7 +38,6 @@ class MainGui(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-
         self.setWindowTitle("PyfastSPM")
         # self.setGeometry(100, 100, 700, 400)
         self.move(50, 50)
@@ -98,7 +98,11 @@ class MainGui(QMainWindow):
         # TODO
         crop_group = QGroupBox("Crop")
         self.drift_group = DriftGroup(
-            fft_drift=True, drifttype="common", stepsize=10, known_drift=False
+            drift_algorithm="correlation",
+            fft_drift=True,
+            drifttype="common",
+            stepsize=10,
+            known_drift=False,
         )
         self.image_correction_group = ImageCorrectionGroup(
             correction_type="align", align_type="median"
@@ -232,9 +236,7 @@ class MainGui(QMainWindow):
             manual_y_phase=manual_y_phase,
         )
 
-        min = ft.data.min()
-        max = ft.data.max()
-        fast_movie_window.img_plot.set_clim(min, max)
+        fast_movie_window.recreate_plot()
 
     def on_phase_new(self) -> None:
         print("on_phase_new")
@@ -374,7 +376,7 @@ class MainGui(QMainWindow):
             ]
             pf.conv_mat(ft, edge_removal, image_range=imrange)
 
-        fast_movie_window.img_plot.set_clim(ft.data.min(), ft.data.max())
+        fast_movie_window.recreate_plot()
 
     def on_creep_new(self) -> None:
         print("on_fft_new")
@@ -402,14 +404,11 @@ class MainGui(QMainWindow):
             return
 
         ft = fast_movie_window.ft
-        print(f"{ft.data.shape=}")
+        drift_algorithm = self.drift_group.drift_algorithm
         fft_drift = self.drift_group.fft_drift
         stepsize = self.drift_group.stepsize
         drifttype = self.drift_group.drift_type
         known_drift = self.drift_group.known_drift
-
-        # Basic settings -> Channels to export
-        export_channels = "udi"
 
         if self.import_group.is_image_range:
             image_range = self.import_group.image_range
@@ -417,13 +416,19 @@ class MainGui(QMainWindow):
             image_range = None
         print(f"{image_range=}")
 
-        if fft_drift:
-            driftrem = pf.Drift(ft, stepsize=stepsize, boxcar=True)
-            ft.data, drift_path = driftrem.correct(drifttype, known_drift=known_drift)
+        if drift_algorithm == "correlation":
+            if fft_drift:
+                driftrem = pf.Drift(ft, stepsize=stepsize, boxcar=True)
+                ft.data, drift_path = driftrem.correct(
+                    drifttype, known_drift=known_drift
+                )
+
+        else:
+            stackreg = StackReg(StackReg.TRANSLATION)
+            out_tra = stackreg.register_transform_stack(ft.data)
 
         fast_movie_window.recreate_plot()
 
-        print(f"{ft.data.shape=}")
         # if image_range == None:
         #     first = 0
         #     last = -1

@@ -5,6 +5,7 @@ import os
 from typing import final, override
 
 import numpy as np
+from numpy.typing import NDArray
 import skimage as ski
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.backends.backend_qtagg import FigureCanvas
@@ -58,8 +59,8 @@ class MovieWindow(QWidget):
         #             data[i] = ski.transform.resize(self.ft.data[i], (y_shape, x_shape))
         #         self.ft.data = data
 
-        self.num_frames = self.ft.num_frames
-        self.current_frame_num = 0
+        self.num_frames: int = self.ft.num_frames
+        self.current_frame_num: int = 0
 
         self.canvas = FigureCanvas(Figure(figsize=(4, 4)))
         self.movie_controls = MovieControls(
@@ -69,10 +70,10 @@ class MovieWindow(QWidget):
             window_id=self.movie_id,
         )
 
+        self.plot_data = self.ft.data
         self.ax = None
         self.img_plot = None
         self.create_plot()
-
 
         # Layout
         layout.addWidget(NavigationToolbar(self.canvas, self))
@@ -87,7 +88,6 @@ class MovieWindow(QWidget):
         _ = self.movie_controls.first_btn.clicked.connect(self.on_first_btn_clicked)
         _ = self.movie_controls.last_btn.clicked.connect(self.on_last_btn_clicked)
         _ = self.movie_controls.play_btn.clicked.connect(self.on_play_btn_clicked)
-        _ = self.movie_controls.pause_btn.clicked.connect(self.on_pause_btn_clicked)
 
         _ = self.movie_controls.curr_frame_input.valueChanged.connect(
             self.on_current_frame_changed
@@ -102,6 +102,9 @@ class MovieWindow(QWidget):
         shortcut_prev = QShortcut(QKeySequence(Qt.CTRL | Qt.Key_Space), self)
         shortcut_prev.activated.connect(self.on_play_btn_clicked)
 
+        self.start_playing()
+        self.movie_controls.play_btn.setChecked(True)
+
     def clone_fast_movie(self) -> FastMovie:
         return self.ft.clone()
 
@@ -109,9 +112,9 @@ class MovieWindow(QWidget):
         self.movie_id = new_movie_id
         self.setWindowTitle(new_movie_id)
 
-    def create_plot(self) -> None:
+    def update_plot_data(self) -> None:
         if self.ft.mode == "timeseries":
-            data = self.ft.reshape_data(
+            data: NDArray[np.float32] = self.ft.reshape_data(
                 copy.deepcopy(self.ft.data),
                 self.channel,
                 self.ft.metadata["Scanner.X_Points"],
@@ -124,20 +127,29 @@ class MovieWindow(QWidget):
         else:
             data = self.ft.data
 
+        self.plot_data = data
+
+    def create_plot(self) -> None:
+        self.update_plot_data()
+
         if "i" in self.channel:
-            num_frames = data.shape[0]
-            y_shape = data.shape[1]
-            x_shape = data.shape[2] * 2
+            num_frames = self.plot_data.shape[0]
+            y_shape = self.plot_data.shape[1]
+            x_shape = self.plot_data.shape[2] * 2
             data_scaled = np.zeros((num_frames, y_shape, x_shape))
             for i in range(num_frames):
-                data_scaled[i] = ski.transform.resize(data[i], (y_shape, x_shape))
-            data = data_scaled
+                data_scaled[i] = ski.transform.resize(
+                    self.plot_data[i], (y_shape, x_shape)
+                )
+            self.plot_data = data_scaled
 
         self.ax = self.canvas.figure.subplots()
         self.img_plot = self.ax.imshow(
-            data[self.current_frame_num],
+            self.plot_data[self.current_frame_num],
             interpolation="none",
         )
+
+        self.img_plot.set_clim(self.ft.data.min(), self.ft.data.max())
         self.ax.get_xaxis().set_visible(False)
         self.ax.get_yaxis().set_visible(False)
         self.img_plot.figure.tight_layout(pad=0)
@@ -148,42 +160,21 @@ class MovieWindow(QWidget):
         self.create_plot()
 
     def update_frame(self) -> None:
-        print(self.ft.data.shape)
-        print(f"{self.channel=}")
-        print(f"{self.ft.channel=}")
-        print(f"{self.ft.data[0]}")
-        if self.ft.mode == "timeseries":
-            print("RESHAPE")
-            data = self.ft.reshape_data(
-                copy.deepcopy(self.ft.data),
-                self.channel,
-                self.ft.metadata["Scanner.X_Points"],
-                self.ft.metadata["Scanner.Y_Points"],
-                self.ft.num_images,
-                self.ft.num_frames,
-            )
-            self.num_frames = data.shape[0]
-            self.movie_controls.set_num_frames(self.num_frames)
-        else:
-            data = self.ft.data
-
-        print(data.shape)
-
-        # if "i" in self.channel:
-        #     num_frames = data.shape[0]
-        #     y_shape = data.shape[1]
-        #     x_shape = data.shape[2] * 2
-        #     data_scaled = np.zeros((num_frames, y_shape, x_shape))
-        #     for i in range(num_frames):
-        #         data_scaled[i] = ski.transform.resize(data[i], (y_shape, x_shape))
-        #     data = data_scaled
-
-        print(data.shape)
-
-        self.img_plot.set_data(data[self.current_frame_num])
+        self.img_plot.set_data(self.plot_data[self.current_frame_num])
         self.img_plot.figure.canvas.draw()
         self.movie_controls.curr_frame_input.setValue(self.current_frame_num)
         self.movie_controls.current_frame_lbl.setText(f"/{self.num_frames - 1}")
+
+    def start_playing(self) -> None:
+        fps = self.movie_controls.fps_input.value()
+        update_time = 1 / fps * 1000
+
+        self.timer = self.canvas.new_timer(update_time)
+        self.timer.add_callback(self.on_next_btn_clicked)
+        self.timer.start()
+
+    def stop_playing(self) -> None:
+        self.timer.stop()
 
     def on_prev_btn_clicked(self) -> None:
         if self.current_frame_num > 0:
@@ -220,15 +211,10 @@ class MovieWindow(QWidget):
         self.update_frame()
 
     def on_play_btn_clicked(self) -> None:
-        fps = self.movie_controls.fps_input.value()
-        update_time = 1 / fps * 1000
-
-        self.timer = self.canvas.new_timer(update_time)
-        self.timer.add_callback(self.on_next_btn_clicked)
-        self.timer.start()
-
-    def on_pause_btn_clicked(self) -> None:
-        self.timer.stop()
+        if self.movie_controls.play_btn.isChecked():
+            self.start_playing()
+        else:
+            self.stop_playing()
 
     @override
     def focusInEvent(self, event: QFocusEvent) -> None:
@@ -246,12 +232,13 @@ class MovieWindow(QWidget):
 
 @final
 class MovieControlButton(QPushButton):
-    def __init__(self, icon: QStyle.StandardPixmap) -> None:
+    def __init__(self, icon: QStyle.StandardPixmap, checkable: bool = False) -> None:
         super().__init__()
         self.setIcon(self.style().standardIcon(icon))
         self.setIconSize(QSize(30, 30))
         self.setFixedSize(35, 35)
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.setCheckable(checkable)
 
 
 @final
@@ -288,8 +275,7 @@ class MovieControls(QWidget):
         separator.setFrameShape(QFrame.VLine)  # Vertical line
         separator.setFixedWidth(2)
 
-        self.play_btn = MovieControlButton(QStyle.SP_MediaPlay)
-        self.pause_btn = MovieControlButton(QStyle.SP_MediaPause)
+        self.play_btn = MovieControlButton(QStyle.SP_MediaPlay, checkable=True)
 
         self.fps_input = MovieControlSpinBox(focus_signal, window_id)
         self.fps_input.setRange(1, 50)
@@ -299,7 +285,6 @@ class MovieControls(QWidget):
         layout = QHBoxLayout()
         self.setLayout(layout)
         layout.addWidget(self.play_btn)
-        layout.addWidget(self.pause_btn)
 
         layout.addWidget(self.fps_input)
         layout.addWidget(fps_lbl)

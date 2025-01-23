@@ -1235,6 +1235,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pyfastspm" },
     { name = "pyside6" },
+    { name = "pystackreg" },
     { name = "scikit-image" },
     { name = "setuptools" },
 ]
@@ -1246,6 +1247,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0.2" },
     { name = "pyfastspm", directory = "../pyfastspm" },
     { name = "pyside6", specifier = ">=6.8.1,!=6.8.1.1" },
+    { name = "pystackreg", specifier = ">=0.2.8" },
     { name = "scikit-image", specifier = ">=0.24.0" },
     { name = "setuptools", specifier = ">=75.5.0" },
 ]

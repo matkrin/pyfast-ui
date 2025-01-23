@@ -1,33 +1,42 @@
-from typing import Literal, TypeAlias
-from PySide6.QtWidgets import QButtonGroup, QCheckBox, QGroupBox, QHBoxLayout, QLabel, QPushButton, QRadioButton, QSpinBox, QVBoxLayout
+from typing import Literal, TypeAlias, final
+from PySide6.QtWidgets import (
+    QButtonGroup,
+    QCheckBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QRadioButton,
+    QSpinBox,
+    QVBoxLayout,
+)
 
 
-DriftType: TypeAlias = Literal["common", "full"]
-
-
+@final
 class DriftGroup(QGroupBox):
     def __init__(
-        self, fft_drift: bool, drifttype: DriftType, stepsize: int, known_drift: bool
+        self,
+        drift_algorithm: str,
+        fft_drift: bool,
+        drifttype: str,
+        stepsize: int,
+        known_drift: bool,
     ) -> None:
         super().__init__("Drift")
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        ## FFT Drift
-        self._fft_drift = QCheckBox("FFT Drift", self)
-        self._fft_drift.setChecked(fft_drift)
-
         ## Drift Type
-        drift_type_layout = QHBoxLayout()
         self._drift_type_common = QRadioButton("common", self)
-        self._drift_type_full =  QRadioButton("full", self)
+        self._drift_type_full = QRadioButton("full", self)
+
+        self._drift_type_button_group = QButtonGroup(self)
+        self._drift_type_button_group.addButton(self._drift_type_common)
+        self._drift_type_button_group.addButton(self._drift_type_full)
+
+        drift_type_layout = QHBoxLayout()
         drift_type_layout.addWidget(self._drift_type_common)
         drift_type_layout.addWidget(self._drift_type_full)
-
-
-        self._button_group = QButtonGroup(self)
-        self._button_group.addButton(self._drift_type_common)
-        self._button_group.addButton(self._drift_type_full)
 
         match drifttype:
             case "common":
@@ -35,33 +44,41 @@ class DriftGroup(QGroupBox):
             case "full":
                 self._drift_type_full.setChecked(True)
 
-        # Stepsize
-        self._stepsize = QSpinBox(self)
-        self._stepsize.setRange(0, 5000)
-        self._stepsize.setValue(stepsize)
-        self._stepsize_lbl = QLabel("Stepsize")
-        stepsize_layout = QHBoxLayout()
+        self.correlation_group = CorreclationGroup(
+            fft_drift, drifttype, stepsize, known_drift
+        )
 
-        # Known Drift
-        self._known_drift = QCheckBox("Known Drift", self)
-        self._known_drift.setChecked(known_drift)
+        # Algorithm type
+        # self.stackreg_group = StackRegistrationGroup()
+
+        self._drift_algo_correlation = QRadioButton("correlation", self)
+        self._drift_algo_stackreg = QRadioButton("stack reg", self)
+
+        self._drift_algo_button_group = QButtonGroup(self)
+        self._drift_algo_button_group.addButton(self._drift_algo_correlation)
+        self._drift_algo_button_group.addButton(self._drift_algo_stackreg)
+
+        drift_algo_layout = QHBoxLayout()
+        drift_algo_layout.addWidget(self._drift_algo_correlation)
+        drift_algo_layout.addWidget(self._drift_algo_stackreg)
+
+        match drift_algorithm:
+            case "correlation":
+                self._drift_algo_correlation.setChecked(True)
+            case "stackreg":
+                self._drift_algo_stackreg.setChecked(True)
+
+        self.correlation_group = CorreclationGroup(
+            fft_drift, drifttype, stepsize, known_drift
+        )
 
         self.apply_btn = QPushButton("Apply")
         self.new_btn = QPushButton("New")
 
-        # Add drift type widgets to the drift type group box
-        drift_type_layout.addWidget(self._drift_type_common)
-        drift_type_layout.addWidget(self._drift_type_full)
-
-        # Add stepsize widgets to stepsize Layout
-        stepsize_layout.addWidget(self._stepsize_lbl)
-        stepsize_layout.addWidget(self._stepsize)
-
-        # Add Widgets and Layouts to main group box
-        layout.addWidget(self._fft_drift)
         layout.addLayout(drift_type_layout)
-        layout.addLayout(stepsize_layout)
-        layout.addWidget(self._known_drift)
+        layout.addLayout(drift_algo_layout)
+        layout.addWidget(self.correlation_group)
+        # layout.addWidget(self.stackreg_group)
 
         btn_layout = QHBoxLayout()
         btn_layout.addWidget(self.apply_btn)
@@ -69,18 +86,57 @@ class DriftGroup(QGroupBox):
         layout.addLayout(btn_layout)
 
     @property
-    def fft_drift(self) -> bool:
-        return self._fft_drift.isChecked()
+    def drift_algorithm(self) -> str:
+        selected_button = self._drift_algo_button_group.checkedButton()
+        return selected_button.text()
 
     @property
-    def drift_type(self) -> DriftType:
-        selected_button = self._button_group.checkedButton()
+    def fft_drift(self) -> bool:
+        return self.correlation_group.fft_drift.isChecked()
+
+    @property
+    def drift_type(self) -> str:
+        selected_button = self._drift_type_button_group.checkedButton()
         return selected_button.text()
 
     @property
     def stepsize(self) -> int:
-        return self._stepsize.value()
+        return self.correlation_group.stepsize.value()
 
     @property
     def known_drift(self) -> bool:
-        return self._known_drift.isChecked()
+        return self.correlation_group.known_drift.isChecked()
+
+
+@final
+class CorreclationGroup(QGroupBox):
+    def __init__(
+        self, fft_drift: bool, drifttype: str, stepsize: int, known_drift: bool
+    ) -> None:
+        super().__init__("Correlation")
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        ## FFT Drift
+        self.fft_drift = QCheckBox("FFT Drift", self)
+        self.fft_drift.setChecked(fft_drift)
+
+        # Stepsize
+        self.stepsize = QSpinBox(self)
+        self.stepsize.setRange(0, 5000)
+        self.stepsize.setValue(stepsize)
+        self._stepsize_lbl = QLabel("Stepsize")
+        stepsize_layout = QHBoxLayout()
+
+        # Known Drift
+        self.known_drift = QCheckBox("Known Drift", self)
+        self.known_drift.setChecked(known_drift)
+
+        # Add stepsize widgets to stepsize Layout
+        stepsize_layout.addWidget(self._stepsize_lbl)
+        stepsize_layout.addWidget(self.stepsize)
+
+        # Add Widgets and Layouts to main group box
+        layout.addWidget(self.fft_drift)
+        layout.addLayout(stepsize_layout)
+        layout.addWidget(self.known_drift)
