@@ -106,6 +106,7 @@ class MainGui(QMainWindow):
             drifttype="common",
             stepsize=10,
             known_drift=False,
+            stackreg_reference="previous"
         )
         self.image_correction_group = ImageCorrectionGroup(
             correction_type="align", align_type="median"
@@ -388,6 +389,7 @@ class MainGui(QMainWindow):
         stepsize = self.drift_group.stepsize
         drifttype = self.drift_group.drift_type
         known_drift = self.drift_group.known_drift
+        stackreg_reference = self.drift_group.stackreg_reference
 
         if self.import_group.is_image_range:
             image_range = self.import_group.image_range
@@ -403,8 +405,10 @@ class MainGui(QMainWindow):
                 )
 
         else:
+            print(f"stackreg with {stackreg_reference=}")
             stackreg = StackReg(StackReg.TRANSLATION)
-            out_tra = stackreg.register_transform_stack(ft.data)
+            out_tra = stackreg.register_transform_stack(ft.data, reference=stackreg_reference)
+            ft.data = out_tra
 
         fast_movie_window.recreate_plot()
 

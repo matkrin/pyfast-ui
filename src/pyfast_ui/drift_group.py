@@ -21,6 +21,7 @@ class DriftGroup(QGroupBox):
         drifttype: str,
         stepsize: int,
         known_drift: bool,
+        stackreg_reference: str,
     ) -> None:
         super().__init__("Drift")
         layout = QVBoxLayout()
@@ -48,9 +49,6 @@ class DriftGroup(QGroupBox):
             fft_drift, drifttype, stepsize, known_drift
         )
 
-        # Algorithm type
-        # self.stackreg_group = StackRegistrationGroup()
-
         self._drift_algo_correlation = QRadioButton("correlation", self)
         self._drift_algo_stackreg = QRadioButton("stack reg", self)
 
@@ -72,13 +70,15 @@ class DriftGroup(QGroupBox):
             fft_drift, drifttype, stepsize, known_drift
         )
 
+        self.stackreg_group = StackregGroup(stackreg_reference)
+
         self.apply_btn = QPushButton("Apply")
         self.new_btn = QPushButton("New")
 
         layout.addLayout(drift_type_layout)
         layout.addLayout(drift_algo_layout)
         layout.addWidget(self.correlation_group)
-        # layout.addWidget(self.stackreg_group)
+        layout.addWidget(self.stackreg_group)
 
         btn_layout = QHBoxLayout()
         btn_layout.addWidget(self.apply_btn)
@@ -89,6 +89,10 @@ class DriftGroup(QGroupBox):
     def drift_algorithm(self) -> str:
         selected_button = self._drift_algo_button_group.checkedButton()
         return selected_button.text()
+
+    @property
+    def stackreg_reference(self) -> str:
+        return self.stackreg_group.reference
 
     @property
     def fft_drift(self) -> bool:
@@ -140,3 +144,40 @@ class CorreclationGroup(QGroupBox):
         layout.addWidget(self.fft_drift)
         layout.addLayout(stepsize_layout)
         layout.addWidget(self.known_drift)
+
+
+@final
+class StackregGroup(QGroupBox):
+    def __init__(self, reference: str) -> None:
+        super().__init__("StackReg")
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        self._reference_previous = QRadioButton("previous", self)
+        self._reference_first = QRadioButton("first", self)
+        self._reference_mean = QRadioButton("mean", self)
+
+        self._reference_btn_group = QButtonGroup(self)
+        self._reference_btn_group.addButton(self._reference_previous)
+        self._reference_btn_group.addButton(self._reference_first)
+        self._reference_btn_group.addButton(self._reference_mean)
+
+        match reference:
+            case "previous":
+                self._reference_previous.setChecked(True)
+            case "first":
+                self._reference_first.setChecked(True)
+            case "mean":
+                self._reference_mean.setChecked(True)
+
+        reference_layout = QHBoxLayout()
+        reference_layout.addWidget(self._reference_previous)
+        reference_layout.addWidget(self._reference_first)
+        reference_layout.addWidget(self._reference_mean)
+
+        layout.addLayout(reference_layout)
+
+    @property
+    def reference(self) -> str:
+        selected_button = self._reference_btn_group.checkedButton()
+        return selected_button.text()

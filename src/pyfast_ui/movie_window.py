@@ -113,6 +113,8 @@ class MovieWindow(QWidget):
         self.setWindowTitle(new_movie_id)
 
     def update_plot_data(self) -> None:
+        print(f"{self.channel=}")
+        print(f"{self.ft.channels=}")
         if self.ft.mode == "timeseries":
             data: NDArray[np.float32] = self.ft.reshape_data(
                 copy.deepcopy(self.ft.data),
@@ -123,11 +125,14 @@ class MovieWindow(QWidget):
                 self.ft.num_frames,
             )
             self.num_frames = data.shape[0]
+            self.ft.num_frames = self.num_frames
             self.movie_controls.set_num_frames(self.num_frames)
         else:
             data = self.ft.data
 
         self.plot_data = data
+        print(f"{self.channel=}")
+        print(f"{self.ft.channels=}")
 
     def create_plot(self) -> None:
         self.update_plot_data()
