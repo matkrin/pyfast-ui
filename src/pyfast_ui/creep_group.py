@@ -1,4 +1,4 @@
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, final
 from PySide6.QtWidgets import (
     QButtonGroup,
     QGridLayout,
@@ -11,13 +11,13 @@ from PySide6.QtWidgets import (
 from pyfast_ui.custom_widgets import LabeledDoubleSpinBox, LabeledSpinBox
 
 
-CreepModeType: TypeAlias = None | Literal["sin", "bezier", "root"]
 
 
+@final
 class CreepGroup(QGroupBox):
     def __init__(
         self,
-        creep_mode: CreepModeType,
+        creep_mode: str,
         weight_boundry: float,
         creep_num_cols: int,
         known_input: tuple[float, float, float] | None,
@@ -88,12 +88,12 @@ class CreepGroup(QGroupBox):
         layout.addWidget(self.new_btn, 2, 2, 1, 2)
 
     @property
-    def creep_mode(self) -> CreepModeType:
+    def creep_mode(self) -> str:
         selected_button = self.button_group.checkedButton()
         if selected_button:
             button_text = selected_button.text()
             if button_text == "None":
-                return None
+                return "None"
 
             return button_text
 

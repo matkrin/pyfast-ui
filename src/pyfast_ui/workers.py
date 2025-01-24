@@ -1,8 +1,12 @@
-from typing import final, override
-from PySide6.QtCore import QRunnable
+from typing import Callable, final, override
+from PySide6.QtCore import QObject, QRunnable, Signal
 import pyfastspm as pf
 import numpy as np
 from numpy.typing import NDArray
+
+
+class WorkerSignals(QObject):
+    finished = Signal()
 
 
 @final
@@ -17,6 +21,7 @@ class CreepWorker(QRunnable):
         initial_guess: float,
         guess_ind: float,
         known_params: float | None,
+        set_movie: Callable[[pf.FastMovie], None],
     ) -> None:
         super().__init__()
 
@@ -28,6 +33,8 @@ class CreepWorker(QRunnable):
         self.initial_guess = initial_guess
         self.guess_ind = guess_ind
         self.known_params = known_params
+        self.set_movie = set_movie
+        self.signals = WorkerSignals()
 
     @override
     def run(self) -> None:
@@ -64,6 +71,9 @@ class CreepWorker(QRunnable):
             interpolation_matrix_up=interpolation_matrix_up,
             interpolation_matrix_down=interpolation_matrix_down,
         )
+
+        self.set_movie(self.ft)
+        self.signals.finished.emit()
 
 
 @final

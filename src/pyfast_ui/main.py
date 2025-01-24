@@ -3,8 +3,7 @@ from typing import final, override
 
 import numpy as np
 import pyfastspm as pf
-from pystackreg import StackReg
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, QThreadPool
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -17,6 +16,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from pystackreg import StackReg
 
 from pyfast_ui.creep_group import CreepGroup
 from pyfast_ui.drift_group import DriftGroup
@@ -28,6 +28,7 @@ from pyfast_ui.import_group import ImportGroup
 from pyfast_ui.modify_group import ModifyGroup
 from pyfast_ui.movie_window import MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
+from pyfast_ui.workers import CreepWorker
 
 FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
@@ -46,6 +47,8 @@ class MainGui(QMainWindow):
         self.setCentralWidget(self.central_widget)
         self.central_layout = QHBoxLayout()
         self.central_widget.setLayout(self.central_layout)
+
+        self.thread_pool = QThreadPool()
 
         self.open_btn = QPushButton("Open test file")
         _ = self.open_btn.clicked.connect(self.on_open_btn_click)
@@ -335,48 +338,24 @@ class MainGui(QMainWindow):
         known_input = None
         known_params = None
 
-        if creep_mode == "bezier":
-            creep = pf.Creep(ft, index_to_linear=guess_ind)
-            opt, grid = creep.fit_creep_bez(
-                col_inds=np.linspace(
-                    ft.data.shape[2] * 0.25, ft.data.shape[2] * 0.75, creep_num_cols
-                ).astype(int),
-                w=weight_boundary,
-                known_input=known_input,
-            )
+        def set_movie(original_movie: pf.FastMovie, corrected_movie: pf.FastMovie):
+            original_movie.data = corrected_movie.data
+            # np.copyto(original_movie.data, corrected_movie.data)
 
-        elif creep_mode != "bezier" and creep_mode != "None":
-            creep = pf.Creep(ft, index_to_linear=guess_ind, creep_mode=creep_mode)
-            grid = creep.fit_creep(initial_guess, known_params=known_params)
-        else:
-            grid = None
-
-        interpolation_matrix_up, interpolation_matrix_down = pf.interpolate(
-            ft, grid=grid, give_grid=True
+        creep_worker = CreepWorker(
+            fast_movie=ft.clone(),
+            creep_mode=creep_mode,
+            weight_boundary=weight_boundary,
+            creep_num_cols=creep_num_cols,
+            known_input=known_input,
+            initial_guess=initial_guess,
+            guess_ind=guess_ind,
+            known_params=known_params,
+            # set_movie=lambda corrected_movie: np.copyto(ft.data, corrected_movie.data),
+            set_movie=lambda corrected_movie: set_movie(ft, corrected_movie),
         )
-
-        if export_movie or export_frames:
-            imrange = image_range
-
-        pf.interpolate(
-            ft,
-            grid=grid,
-            image_range=imrange,
-            interpolation_matrix_up=interpolation_matrix_up,
-            interpolation_matrix_down=interpolation_matrix_down,
-        )
-
-        if remove_streaks:
-            edge_removal = [
-                [-1.0 / 12.0],
-                [3.0 / 12.0],
-                [8.0 / 12.0],
-                [3.0 / 12.0],
-                [-1.0 / 12.0],
-            ]
-            pf.conv_mat(ft, edge_removal, image_range=imrange)
-
-        fast_movie_window.recreate_plot()
+        _ = creep_worker.signals.finished.connect(fast_movie_window.recreate_plot)
+        self.thread_pool.start(creep_worker)
 
     def on_creep_new(self) -> None:
         print("on_fft_new")
