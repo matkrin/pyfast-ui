@@ -30,7 +30,7 @@ from pyfast_ui.movie_window import MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 from pyfast_ui.workers import CreepWorker
 
-FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 
 @final
@@ -527,7 +527,7 @@ class MainGui(QMainWindow):
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
-        for plot_window in self.plot_windows.values():
+        for plot_window in list(self.plot_windows.values()):
             _ = plot_window.close()
         QCoreApplication.quit()
 

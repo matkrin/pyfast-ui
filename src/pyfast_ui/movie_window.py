@@ -155,8 +155,8 @@ class MovieWindow(QWidget):
         )
 
         self.img_plot.set_clim(self.ft.data.min(), self.ft.data.max())
-        self.ax.get_xaxis().set_visible(False)
-        self.ax.get_yaxis().set_visible(False)
+        # self.ax.get_xaxis().set_visible(False)
+        # self.ax.get_yaxis().set_visible(False)
         self.img_plot.figure.tight_layout(pad=0)
 
     def recreate_plot(self) -> None:
