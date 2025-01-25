@@ -5,6 +5,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 
+@final
 class WorkerSignals(QObject):
     finished = Signal()
 
@@ -73,6 +74,7 @@ class CreepWorker(QRunnable):
         )
 
         self.set_movie(self.ft)
+
         self.signals.finished.emit()
 
 

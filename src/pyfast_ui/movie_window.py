@@ -40,9 +40,9 @@ class MovieWindow(QWidget):
         self.channel = channel
         self.ft.channel = channel
         self.filename: str = os.path.basename(fast_movie.filename)
-        self.movie_id = f"{self.filename}-{self.channel}"
+        self.movie_id = id(self)
 
-        self.setWindowTitle(self.movie_id)
+        self.setWindowTitle(f"{self.filename}({self.movie_id})")
         self.setFocusPolicy(Qt.StrongFocus)
 
         layout = QVBoxLayout()
@@ -108,9 +108,9 @@ class MovieWindow(QWidget):
     def clone_fast_movie(self) -> FastMovie:
         return self.ft.clone()
 
-    def set_movie_id(self, new_movie_id: str) -> None:
+    def set_movie_id(self, new_movie_id: int) -> None:
         self.movie_id = new_movie_id
-        self.setWindowTitle(new_movie_id)
+        self.setWindowTitle(f"{self.filename}({self.movie_id})")
 
     def update_plot_data(self) -> None:
         print(f"{self.channel=}")
@@ -224,14 +224,14 @@ class MovieWindow(QWidget):
     @override
     def focusInEvent(self, event: QFocusEvent) -> None:
         print(f"Focused: {self.movie_id}")
-        self.window_focused.emit(self.movie_id)
+        self.window_focused.emit(str(self.movie_id))
         super().focusInEvent(event)
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
         print(f"Closed {self.movie_id}")
         self.timer.stop()
-        self.window_closed.emit(self.movie_id)
+        self.window_closed.emit(str(self.movie_id))
         super().closeEvent(event)
 
 
@@ -248,7 +248,7 @@ class MovieControlButton(QPushButton):
 
 @final
 class MovieControlSpinBox(QSpinBox):
-    def __init__(self, focus_signal: SignalInstance, window_id: str) -> None:
+    def __init__(self, focus_signal: SignalInstance, window_id: int) -> None:
         super().__init__()
         self.focus_signal = focus_signal
         self.window_id = window_id
@@ -256,14 +256,14 @@ class MovieControlSpinBox(QSpinBox):
 
     @override
     def focusInEvent(self, event: QFocusEvent) -> None:
-        self.focus_signal.emit(self.window_id)
+        self.focus_signal.emit(str(self.window_id))
         super().focusInEvent(event)
 
 
 @final
 class MovieControls(QWidget):
     def __init__(
-        self, num_frames: int, fps: int, focus_signal: SignalInstance, window_id: str
+        self, num_frames: int, fps: int, focus_signal: SignalInstance, window_id: int
     ) -> None:
         super().__init__()
         self.prev_btn = MovieControlButton(QStyle.SP_MediaSeekBackward)
