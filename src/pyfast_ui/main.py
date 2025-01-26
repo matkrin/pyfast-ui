@@ -314,6 +314,8 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
+        fast_movie_window.start_processing("Correcting creep...")
+
         ft = fast_movie_window.ft
         ft.reshape_to_movie(fast_movie_window.channel)
         creep_mode = self.creep_group.creep_mode
@@ -353,7 +355,7 @@ class MainGui(QMainWindow):
             # set_movie=lambda corrected_movie: np.copyto(ft.data, corrected_movie.data),
             set_movie=lambda corrected_movie: set_movie(ft, corrected_movie),
         )
-        _ = creep_worker.signals.finished.connect(fast_movie_window.recreate_plot)
+        _ = creep_worker.signals.finished.connect(fast_movie_window.end_processing)
         self.thread_pool.start(creep_worker)
 
     def on_creep_new(self) -> None:

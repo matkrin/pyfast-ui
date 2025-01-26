@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pyfast_ui.custom_widgets import ProcessIndicator
+
 
 @final
 class MovieWindow(QWidget):
@@ -47,17 +49,6 @@ class MovieWindow(QWidget):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-
-        # if self.ft.mode == "timeseries":
-        #     self.ft.reshape_to_movie(channel)
-        #     if "i" in self.channel:
-        #         num_frames = self.ft.data.shape[0]
-        #         y_shape = self.ft.data.shape[1]
-        #         x_shape = self.ft.data.shape[2] * 2
-        #         data = np.zeros((num_frames, y_shape, x_shape))
-        #         for i in range(num_frames):
-        #             data[i] = ski.transform.resize(self.ft.data[i], (y_shape, x_shape))
-        #         self.ft.data = data
 
         self.num_frames: int = self.ft.num_frames
         self.current_frame_num: int = 0
@@ -81,6 +72,10 @@ class MovieWindow(QWidget):
         layout.addWidget(self.movie_controls)
         # Strech the canvas when window resizes
         layout.setStretch(1, 2)
+
+        self.process_indicator = ProcessIndicator("...Processing...")
+        self.process_indicator.hide()
+        layout.addWidget(self.process_indicator)
 
         # Connect signals
         _ = self.movie_controls.prev_btn.clicked.connect(self.on_prev_btn_clicked)
@@ -163,6 +158,14 @@ class MovieWindow(QWidget):
         self.ax.cla()
         self.canvas.figure.clf()
         self.create_plot()
+
+    def start_processing(self, message: str) -> None:
+        self.process_indicator.status_label.setText(message)
+        self.process_indicator.show()
+
+    def end_processing(self) -> None:
+        self.process_indicator.hide()
+        self.recreate_plot()
 
     def update_frame(self) -> None:
         self.img_plot.set_data(self.plot_data[self.current_frame_num])
