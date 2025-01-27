@@ -1,7 +1,6 @@
 import sys
 from typing import final, override
 
-import numpy as np
 import pyfastspm as pf
 from PySide6.QtCore import QCoreApplication, QThreadPool
 from PySide6.QtGui import QCloseEvent
@@ -16,7 +15,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from pystackreg import StackReg
 
 from pyfast_ui.creep_group import CreepGroup
 from pyfast_ui.drift_group import DriftGroup
@@ -62,6 +60,7 @@ class MainGui(QMainWindow):
 
         self.import_group = ImportGroup(image_range=None, apply_auto_xphase=True)
         self.modify_group = ModifyGroup()
+
         self.phase_group = PhaseGroup(
             apply_auto_xphase=True,
             additional_x_phase=0,
