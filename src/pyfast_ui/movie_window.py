@@ -5,13 +5,13 @@ import os
 from typing import final, override
 
 import numpy as np
-from numpy.typing import NDArray
 import skimage as ski
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.backends.backend_qtagg import FigureCanvas
 
 # from matplotlib.backends.qt_compat import QtWidgets
 from matplotlib.figure import Figure
+from numpy.typing import NDArray
 from pyfastspm import FastMovie
 from PySide6.QtCore import QSize, Signal, SignalInstance, Slot
 from PySide6.QtGui import QCloseEvent, QFocusEvent, QIcon, QKeySequence, QShortcut, Qt
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -26,8 +27,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-from pyfast_ui.custom_widgets import ProcessIndicator
 
 
 @final
@@ -108,8 +107,6 @@ class MovieWindow(QWidget):
         self.setWindowTitle(f"{self.filename}({self.movie_id})")
 
     def update_plot_data(self) -> None:
-        print(f"{self.channel=}")
-        print(f"{self.ft.channels=}")
         if self.ft.mode == "timeseries":
             data: NDArray[np.float32] = self.ft.reshape_data(
                 copy.deepcopy(self.ft.data),
@@ -126,8 +123,6 @@ class MovieWindow(QWidget):
             data = self.ft.data
 
         self.plot_data = data
-        print(f"{self.channel=}")
-        print(f"{self.ft.channels=}")
 
     def create_plot(self) -> None:
         self.update_plot_data()
@@ -150,8 +145,8 @@ class MovieWindow(QWidget):
         )
 
         self.img_plot.set_clim(self.ft.data.min(), self.ft.data.max())
-        # self.ax.get_xaxis().set_visible(False)
-        # self.ax.get_yaxis().set_visible(False)
+        self.ax.get_xaxis().set_visible(False)
+        self.ax.get_yaxis().set_visible(False)
         self.img_plot.figure.tight_layout(pad=0)
 
     def recreate_plot(self) -> None:
@@ -309,3 +304,19 @@ class MovieControls(QWidget):
 
     def set_num_frames(self, new_num_frames: int) -> None:
         self.current_frame_lbl.setText(f"/{new_num_frames}")
+
+
+@final
+class ProcessIndicator(QWidget):
+    def __init__(self, label: str):
+        super().__init__()
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setValue(0)
+
+        self.status_label = QLabel(label)
+
+        layout = QHBoxLayout(self)
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.progress_bar)
+        self.setLayout(layout)

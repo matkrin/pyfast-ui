@@ -123,18 +123,3 @@ class LabeledCombobox(QWidget):
 
     def value(self) -> str:
         return self.combobox.currentText()
-
-@final
-class ProcessIndicator(QWidget):
-    def __init__(self, label: str):
-        super().__init__()
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 0)  # Indeterminate mode (no range)
-        self.progress_bar.setValue(0)
-
-        self.status_label = QLabel(label)
-
-        layout = QHBoxLayout(self)
-        layout.addWidget(self.status_label)
-        layout.addWidget(self.progress_bar)
-        self.setLayout(layout)
