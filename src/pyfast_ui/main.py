@@ -28,7 +28,7 @@ from pyfast_ui.movie_window import MovieInfo, MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 from pyfast_ui.workers import CreepWorker, DriftWorker
 
-FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 
 @final
@@ -115,6 +115,7 @@ class MainGui(QMainWindow):
         )
         self.export_group = ExportGroup(
             export_movie=True,
+            export_tiff=True,
             export_frames=False,
             frame_export_images=(0, 1),
             frame_export_channel="udi",
@@ -165,7 +166,9 @@ class MainGui(QMainWindow):
     def update_focused_window(self, movie_info: MovieInfo) -> None:
         print(f"Focus on: {movie_info}")
         self.operate_on = movie_info.id_
-        self.operate_label.setText(f"Operate on: {movie_info.filename}({movie_info.id_})")
+        self.operate_label.setText(
+            f"Operate on: {movie_info.filename}({movie_info.id_})"
+        )
 
     def on_movie_window_closed(self, movie_info: MovieInfo) -> None:
         del self.plot_windows[movie_info.id_]
@@ -434,6 +437,7 @@ class MainGui(QMainWindow):
 
         ft = fast_movie_window.ft
         export_movie = self.export_group.export_movie
+        export_tiff = self.export_group.export_tiff
         export_frames = self.export_group.export_frames
         color_map = self.export_group.color_map
         contrast = self.export_group.contrast
@@ -469,6 +473,9 @@ class MainGui(QMainWindow):
                 contrast=contrast,
                 scaling=scaling,
             )
+
+        if export_tiff:
+            ft.export_tiff(image_range)
 
     def on_image_correction_apply(self) -> None:
         if self.operate_on is None:

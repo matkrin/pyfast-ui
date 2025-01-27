@@ -7,10 +7,8 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QSpinBox,
-    QVBoxLayout,
 )
 
 
@@ -18,6 +16,7 @@ class ExportGroup(QGroupBox):
     def __init__(
         self,
         export_movie: bool,
+        export_tiff: bool,
         export_frames: bool,
         frame_export_images: tuple[int, int],
         frame_export_channel: str,
@@ -32,10 +31,13 @@ class ExportGroup(QGroupBox):
         layout = QGridLayout()
         self.setLayout(layout)
 
-        self._export_movie = QCheckBox("Export movie", self)
+        self._export_movie = QCheckBox("MP4", self)
         self._export_movie.setChecked(export_movie)
 
-        self._export_frames = QCheckBox("Export frames", self)
+        self._export_tiff = QCheckBox("TIFF", self)
+        self._export_tiff.setChecked(export_tiff)
+
+        self._export_frames = QCheckBox("Frames", self)
         self._export_frames.setChecked(export_frames)
 
         frame_export_images_lbl = QLabel("Frame export images")
@@ -50,9 +52,7 @@ class ExportGroup(QGroupBox):
 
         frame_export_channel_lbl = QLabel("Frame export channel")
         self._frame_export_channel = QComboBox()
-        self._frame_export_channel.addItems(
-            ["u", "d", "ui", "di", "uf", "df", "ub", "db"]
-        )
+        self._frame_export_channel.addItems(["ui", "di", "uf", "df", "ub", "db"])
         self._frame_export_channel.setCurrentText(frame_export_channel)
         frame_export_channel_layout = QHBoxLayout()
         frame_export_channel_layout.addWidget(frame_export_channel_lbl)
@@ -95,7 +95,7 @@ class ExportGroup(QGroupBox):
 
         frame_export_format_lbl = QLabel("Frame export format")
         self._frame_export_format = QComboBox()
-        self._frame_export_format.addItems(["tiff", "png", "jpg", "bmp", "gwy"])
+        self._frame_export_format.addItems(["png", "jpg", "bmp", "gwy"])
         self._frame_export_format.setCurrentText(frame_export_format)
         frame_export_format_layout = QHBoxLayout()
         frame_export_format_layout.addWidget(frame_export_format_lbl)
@@ -109,20 +109,25 @@ class ExportGroup(QGroupBox):
         # Add Widgets to Layout
         # Column 0
         layout.addWidget(self._export_movie, 0, 0)
-        layout.addWidget(self._export_frames, 0, 1)
-        layout.addLayout(frame_export_images_layout, 2, 0, 1, 2)
-        layout.addLayout(frame_export_channel_layout, 3, 0, 1, 2)
-        layout.addLayout(contrast_layout, 4, 0, 1, 2)
-        layout.addLayout(scaling_layout, 5, 0, 1, 2)
-        layout.addLayout(fps_factor_layout, 6, 0, 1, 2)
-        layout.addLayout(color_map_layout, 7, 0, 1, 2)
-        layout.addLayout(frame_export_format_layout, 8, 0, 1, 2)
+        layout.addWidget(self._export_tiff, 0, 1)
+        layout.addWidget(self._export_frames, 0, 2)
+        layout.addLayout(contrast_layout, 2, 0, 1, 3)
+        layout.addLayout(scaling_layout, 3, 0, 1, 3)
+        layout.addLayout(fps_factor_layout, 4, 0, 1, 3)
+        layout.addLayout(color_map_layout, 5, 0, 1, 3)
+        layout.addLayout(frame_export_images_layout, 6, 0, 1, 3)
+        layout.addLayout(frame_export_channel_layout, 7, 0, 1, 3)
+        layout.addLayout(frame_export_format_layout, 8, 0, 1, 3)
         layout.addWidget(self._auto_label, 9, 0)
-        layout.addWidget(self.apply_btn, 10, 0, 1, 2)
+        layout.addWidget(self.apply_btn, 10, 0, 1, 3)
 
     @property
     def export_movie(self) -> bool:
         return self._export_movie.isChecked()
+
+    @property
+    def export_tiff(self) -> bool:
+        return self._export_tiff.isChecked()
 
     @property
     def export_frames(self) -> bool:
