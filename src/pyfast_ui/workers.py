@@ -23,7 +23,6 @@ class CreepWorker(QRunnable):
         initial_guess: float,
         guess_ind: float,
         known_params: float | None,
-        set_movie: Callable[[pf.FastMovie], None],
     ) -> None:
         super().__init__()
 
@@ -35,7 +34,6 @@ class CreepWorker(QRunnable):
         self.initial_guess = initial_guess
         self.guess_ind = guess_ind
         self.known_params = known_params
-        self.set_movie = set_movie
         self.signals = WorkerSignals()
 
     @override
@@ -74,7 +72,6 @@ class CreepWorker(QRunnable):
             interpolation_matrix_down=interpolation_matrix_down,
         )
 
-        # self.set_movie(self.ft)
 
         self.signals.finished.emit()
 
@@ -90,7 +87,6 @@ class DriftWorker(QRunnable):
         known_drift: bool,
         drift_algorithm: str,
         stackreg_reference: str,
-        set_movie: Callable[[pf.FastMovie], None],
     ) -> None:
         super().__init__()
 
@@ -101,7 +97,6 @@ class DriftWorker(QRunnable):
         self.known_drift = known_drift
         self.drift_algorithm = drift_algorithm
         self.stackreg_reference=stackreg_reference
-        self.set_movie = set_movie
         self.signals = WorkerSignals()
 
     @override
@@ -122,5 +117,4 @@ class DriftWorker(QRunnable):
 
         self.ft.data = corrected_data
 
-        # self.set_movie(corrected_data)
         self.signals.finished.emit()
