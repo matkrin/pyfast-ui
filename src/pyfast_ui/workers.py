@@ -3,6 +3,7 @@ from PySide6.QtCore import QObject, QRunnable, Signal
 import pyfastspm as pf
 import numpy as np
 from numpy.typing import NDArray
+from pystackreg import StackReg
 
 
 @final
@@ -73,7 +74,7 @@ class CreepWorker(QRunnable):
             interpolation_matrix_down=interpolation_matrix_down,
         )
 
-        self.set_movie(self.ft)
+        # self.set_movie(self.ft)
 
         self.signals.finished.emit()
 
@@ -87,6 +88,9 @@ class DriftWorker(QRunnable):
         drifttype: str,
         stepsize: int,
         known_drift: bool,
+        drift_algorithm: str,
+        stackreg_reference: str,
+        set_movie: Callable[[pf.FastMovie], None],
     ) -> None:
         super().__init__()
 
@@ -95,11 +99,28 @@ class DriftWorker(QRunnable):
         self.drifttype = drifttype
         self.stepsize = stepsize
         self.known_drift = known_drift
+        self.drift_algorithm = drift_algorithm
+        self.stackreg_reference=stackreg_reference
+        self.set_movie = set_movie
+        self.signals = WorkerSignals()
 
     @override
     def run(self) -> None:
-        if self.fft_drift:
-            driftrem = pf.Drift(self.ft, stepsize=self.stepsize, boxcar=True)
-            self.ft.data, _drift_path = driftrem.correct(
-                self.drifttype, known_drift=self.known_drift
+        if self.drift_algorithm == "correlation":
+            if self.fft_drift:
+                driftrem = pf.Drift(self.ft, stepsize=self.stepsize, boxcar=True)
+                corrected_data, drift_path = driftrem.correct(
+                    self.drifttype, known_drift=self.known_drift
+                )
+
+        else:
+            print(f"stackreg with {self.stackreg_reference=}")
+            stackreg = StackReg(StackReg.TRANSLATION)
+            corrected_data = stackreg.register_transform_stack(
+                self.ft.data, reference=self.stackreg_reference
             )
+
+        self.ft.data = corrected_data
+
+        # self.set_movie(corrected_data)
+        self.signals.finished.emit()

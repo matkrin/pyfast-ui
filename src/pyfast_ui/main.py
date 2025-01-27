@@ -28,9 +28,9 @@ from pyfast_ui.import_group import ImportGroup
 from pyfast_ui.modify_group import ModifyGroup
 from pyfast_ui.movie_window import MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
-from pyfast_ui.workers import CreepWorker
+from pyfast_ui.workers import CreepWorker, DriftWorker
 
-FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 
 @final
@@ -106,7 +106,7 @@ class MainGui(QMainWindow):
             drifttype="common",
             stepsize=10,
             known_drift=False,
-            stackreg_reference="previous"
+            stackreg_reference="previous",
         )
         self.image_correction_group = ImageCorrectionGroup(
             correction_type="align", align_type="median"
@@ -339,7 +339,6 @@ class MainGui(QMainWindow):
         known_params = None
 
         def set_movie(old_movie: pf.FastMovie, corrected_movie: pf.FastMovie):
-            print("set movie")
             old_movie = corrected_movie
             # np.copyto(original_movie.data, corrected_movie.data)
 
@@ -366,7 +365,6 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
-        print("=========================" + fast_movie_window.ft.mode + "===================================")
         old_id = fast_movie_window.movie_id
         new_ft = fast_movie_window.clone_fast_movie()
         new_movie_window = MovieWindow(new_ft, fast_movie_window.channel)
@@ -383,6 +381,8 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
+        fast_movie_window.start_processing("Correcting drfit...")
+
         ft = fast_movie_window.ft
         drift_algorithm = self.drift_group.drift_algorithm
         fft_drift = self.drift_group.fft_drift
@@ -397,20 +397,24 @@ class MainGui(QMainWindow):
             image_range = None
         print(f"{image_range=}")
 
-        if drift_algorithm == "correlation":
-            if fft_drift:
-                driftrem = pf.Drift(ft, stepsize=stepsize, boxcar=True)
-                ft.data, drift_path = driftrem.correct(
-                    drifttype, known_drift=known_drift
-                )
+        def set_movie(old_movie: pf.FastMovie, corrected_movie: pf.FastMovie):
+            old_movie = corrected_movie
+            # np.copyto(original_movie.data, corrected_movie.data)
 
-        else:
-            print(f"stackreg with {stackreg_reference=}")
-            stackreg = StackReg(StackReg.TRANSLATION)
-            out_tra = stackreg.register_transform_stack(ft.data, reference=stackreg_reference)
-            ft.data = out_tra
+        drift_worker = DriftWorker(
+            fast_movie=ft,
+            fft_drift=fft_drift,
+            drifttype=drifttype,
+            stepsize=stepsize,
+            known_drift=known_drift,
+            drift_algorithm=drift_algorithm,
+            stackreg_reference=stackreg_reference,
+            set_movie=set_movie,
+        )
 
-        fast_movie_window.recreate_plot()
+
+        _ = drift_worker.signals.finished.connect(fast_movie_window.end_processing)
+        self.thread_pool.start(drift_worker)
 
         # if image_range == None:
         #     first = 0

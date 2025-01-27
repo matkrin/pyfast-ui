@@ -13,8 +13,8 @@ from matplotlib.backends.backend_qtagg import FigureCanvas
 from matplotlib.figure import Figure
 from numpy.typing import NDArray
 from pyfastspm import FastMovie
-from PySide6.QtCore import QSize, Signal, SignalInstance, Slot
-from PySide6.QtGui import QCloseEvent, QFocusEvent, QIcon, QKeySequence, QShortcut, Qt
+from PySide6.QtCore import QSize, Signal, SignalInstance
+from PySide6.QtGui import QCloseEvent, QFocusEvent, QKeySequence, QShortcut, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
