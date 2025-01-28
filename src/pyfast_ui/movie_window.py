@@ -127,7 +127,7 @@ class MovieWindow(QWidget):
             self.ft.num_frames = self.num_frames
             self.movie_controls.set_num_frames(self.num_frames)
         else:
-            data = self.ft.data
+            data = copy.deepcopy(self.ft.data)
 
         self.plot_data = data
 
@@ -135,6 +135,7 @@ class MovieWindow(QWidget):
         self.update_plot_data()
 
         if "i" in self.channel:
+            print("=" * 80, "RESIZE")
             num_frames = self.plot_data.shape[0]
             y_shape = self.plot_data.shape[1]
             x_shape = self.plot_data.shape[2] * 2
@@ -157,6 +158,8 @@ class MovieWindow(QWidget):
         self.img_plot.figure.tight_layout(pad=0)
 
     def recreate_plot(self) -> None:
+        if self.img_plot:
+            self.img_plot.remove()
         self.ax.cla()
         self.canvas.figure.clf()
         self.create_plot()

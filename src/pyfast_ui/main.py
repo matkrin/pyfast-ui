@@ -28,7 +28,7 @@ from pyfast_ui.movie_window import MovieInfo, MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 from pyfast_ui.workers import CreepWorker, DriftWorker
 
-FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 
 @final
@@ -325,10 +325,10 @@ class MainGui(QMainWindow):
         print(f"{image_range=}")
 
         # Basic settings -> Streak removal for interlacing
-        remove_streaks = False
+        # remove_streaks = False
         # Basic setting -> Export
-        export_movie = True
-        export_frames = False
+        # export_movie = True
+        # export_frames = False
         # Advanced settings
         guess_ind = self.creep_group.guess_ind
         weight_boundary = self.creep_group.weight_boundry
@@ -349,6 +349,7 @@ class MainGui(QMainWindow):
         )
         _ = creep_worker.signals.finished.connect(fast_movie_window.end_processing)
         self.thread_pool.start(creep_worker)
+
 
     def on_creep_new(self) -> None:
         print("on_fft_new")
@@ -387,7 +388,7 @@ class MainGui(QMainWindow):
             image_range = self.import_group.image_range
         else:
             image_range = None
-        print(f"{image_range=}")
+        print(f"Drift correction with {drift_algorithm=}")
 
         drift_worker = DriftWorker(
             fast_movie=ft,

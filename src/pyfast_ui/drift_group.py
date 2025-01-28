@@ -50,7 +50,7 @@ class DriftGroup(QGroupBox):
         )
 
         self._drift_algo_correlation = QRadioButton("correlation", self)
-        self._drift_algo_stackreg = QRadioButton("stack reg", self)
+        self._drift_algo_stackreg = QRadioButton("stackreg", self)
 
         self._drift_algo_button_group = QButtonGroup(self)
         self._drift_algo_button_group.addButton(self._drift_algo_correlation)

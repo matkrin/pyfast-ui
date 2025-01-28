@@ -72,7 +72,6 @@ class CreepWorker(QRunnable):
             interpolation_matrix_down=interpolation_matrix_down,
         )
 
-
         self.signals.finished.emit()
 
 
@@ -96,24 +95,20 @@ class DriftWorker(QRunnable):
         self.stepsize = stepsize
         self.known_drift = known_drift
         self.drift_algorithm = drift_algorithm
-        self.stackreg_reference=stackreg_reference
+        self.stackreg_reference = stackreg_reference
         self.signals = WorkerSignals()
 
     @override
     def run(self) -> None:
-        if self.drift_algorithm == "correlation":
-            if self.fft_drift:
-                driftrem = pf.Drift(self.ft, stepsize=self.stepsize, boxcar=True)
-                corrected_data, drift_path = driftrem.correct(
-                    self.drifttype, known_drift=self.known_drift
-                )
-
-        else:
-            print(f"stackreg with {self.stackreg_reference=}")
-            stackreg = StackReg(StackReg.TRANSLATION)
-            corrected_data = stackreg.register_transform_stack(
-                self.ft.data, reference=self.stackreg_reference
+        if self.fft_drift:
+            driftrem = pf.Drift(self.ft, stepsize=self.stepsize, boxcar=True)
+            corrected_data, drift_path = driftrem.correct(
+                self.drifttype,
+                algorithm=self.drift_algorithm,
+                stackreg_reference=self.stackreg_reference,
+                known_drift=self.known_drift,
             )
+
 
         self.ft.data = corrected_data
 
