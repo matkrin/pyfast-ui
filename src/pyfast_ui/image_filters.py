@@ -17,11 +17,13 @@ class ImageFilterGroup(QGroupBox):
         self._pixel_width = LabeledSpinBox("Pixel width", pixel_width)
 
         self.apply_btn = QPushButton("Apply")
+        self.new_btn = QPushButton("New")
 
-        layout.addWidget(self._filter_type)
-        layout.addWidget(self._pixel_width)
+        layout.addWidget(self._filter_type, 0, 0, 1, 2)
+        layout.addWidget(self._pixel_width, 1, 0, 1, 2)
 
-        layout.addWidget(self.apply_btn)
+        layout.addWidget(self.apply_btn, 2, 0)
+        layout.addWidget(self.new_btn, 2, 1)
 
     @property
     def filter_type(self) -> str:

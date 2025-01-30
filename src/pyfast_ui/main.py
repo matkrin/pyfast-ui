@@ -162,6 +162,9 @@ class MainGui(QMainWindow):
         _ = self.image_filter_group.apply_btn.clicked.connect(
             self.on_image_filter_apply
         )
+        _ = self.image_filter_group.new_btn.clicked.connect(
+            self.on_image_filter_new
+        )
         _ = self.drift_group.apply_btn.clicked.connect(self.on_drift_apply)
         _ = self.drift_group.new_btn.clicked.connect(self.on_drift_new)
         _ = self.export_group.apply_btn.clicked.connect(self.on_export_apply)
@@ -497,6 +500,10 @@ class MainGui(QMainWindow):
             pf.gaussian_2d(ft, pixel_width)
 
         fast_movie_window.recreate_plot()
+
+    def on_image_filter_new(self) -> None:
+        self.create_new_movie_window()
+        self.on_image_filter_apply()
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
