@@ -156,6 +156,9 @@ class MainGui(QMainWindow):
         _ = self.image_correction_group.apply_btn.clicked.connect(
             self.on_image_correction_apply
         )
+        _ = self.image_correction_group.new_btn.clicked.connect(
+            self.on_image_correction_new
+        )
         _ = self.image_filter_group.apply_btn.clicked.connect(
             self.on_image_filter_apply
         )
@@ -355,7 +358,7 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
-        fast_movie_window.start_processing("Correcting drfit...")
+        fast_movie_window.start_processing("Correcting drift...")
 
         ft = fast_movie_window.ft
         if ft.mode == "timeseries":
@@ -469,6 +472,11 @@ class MainGui(QMainWindow):
             pf.fix_zero(ft)
 
         fast_movie_window.recreate_plot()
+
+    def on_image_correction_new(self) -> None:
+        self.create_new_movie_window()
+        self.on_image_correction_apply()
+
 
     def on_image_filter_apply(self) -> None:
         if self.operate_on is None:

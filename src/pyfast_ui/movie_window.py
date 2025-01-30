@@ -29,6 +29,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+COLORMAP = "gnuplot2"
+
 @dataclass
 class MovieInfo:
     id_: int
@@ -150,6 +152,7 @@ class MovieWindow(QWidget):
         self.img_plot = self.ax.imshow(
             self.plot_data[self.current_frame_num],
             interpolation="none",
+            cmap=COLORMAP,
         )
 
         self.img_plot.set_clim(self.ft.data.min(), self.ft.data.max())

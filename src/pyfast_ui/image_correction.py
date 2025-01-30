@@ -19,11 +19,13 @@ class ImageCorrectionGroup(QGroupBox):
         )
 
         self.apply_btn = QPushButton("Apply")
+        self.new_btn = QPushButton("New")
 
-        layout.addWidget(self._correction_type)
-        layout.addWidget(self._align_type)
+        layout.addWidget(self._correction_type, 0, 0, 1, 2)
+        layout.addWidget(self._align_type, 1, 0, 1, 2)
 
-        layout.addWidget(self.apply_btn)
+        layout.addWidget(self.apply_btn, 2, 0)
+        layout.addWidget(self.new_btn, 2, 1)
 
     @property
     def correction_type(self) -> str:

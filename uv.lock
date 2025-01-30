@@ -333,7 +333,7 @@ requires-dist = [
     { name = "h5py", specifier = ">=3.12.1" },
     { name = "matplotlib", specifier = ">=3.9.2" },
     { name = "numpy", specifier = ">=2.0.2" },
-    { name = "pyfastspm", git = "https://gitlab.com/fastspm/pyfastspm?branch=tum-latest" },
+    { name = "pyfastspm", editable = "../pyfastspm" },
     { name = "pyside6", specifier = ">=6.8.1,!=6.8.1.1" },
     { name = "pystackreg", specifier = ">=0.2.8" },
     { name = "scikit-image", specifier = ">=0.24.0" },
@@ -342,11 +342,26 @@ requires-dist = [
 
 [[package]]
 name = "pyfastspm"
-version = "1.0.6.dev37"
-source = { git = "https://gitlab.com/fastspm/pyfastspm?branch=tum-latest#c63275304c0543e699fb3b56df51cd8cc9b315ec" }
+version = "1.0.6.dev39"
+source = { editable = "../pyfastspm" }
 dependencies = [
     { name = "h5py" },
     { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "pillow" },
+    { name = "pystackreg" },
+    { name = "scikit-image" },
+    { name = "scipy" },
+    { name = "setuptools-scm" },
+    { name = "tqdm" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "h5py" },
+    { name = "matplotlib" },
+    { name = "mkl-fft", marker = "extra == 'mkl-fft'" },
     { name = "numpy" },
     { name = "packaging" },
     { name = "pillow" },
