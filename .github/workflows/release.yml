@@ -23,29 +23,30 @@ jobs:
     strategy:
       matrix:
         include:
-          # - os: ubuntu-latest
-          #   target: x86_64-unknown-linux-gnu
-          #
-          # - os: ubuntu-latest
-          #   target: x86_64-unknown-linux-musl
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
 
-          # - os: windows-latest
-          #   target: i686-pc-windows-msvc
-          #
-          # - os: windows-latest
-          #   target: aarch64-pc-windows-msvc
-          #
-          # - os: macos-latest
-          #   target: x86_64-apple-darwin
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+
+          - os: macos-latest
+            target: x86_64-apple-darwin
 
           - os: macos-latest
             target: aarch64-apple-darwin
 
     env:
       RELEASE_FOLDER: "pyfast-ui-${{ github.ref_name }}-${{ matrix.target }}"
+      OUTPUT_FOLDER: "PyFastSPM"
       BINARY_NAME: "PyFastSPM${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
 
 
@@ -59,37 +60,18 @@ jobs:
       - name: Install Dependencies
         run: |
           uv sync
-          npm install -g msibuilder
 
       - name: Build with pyinstaller
         shell: bash
         run: |
-          pyinstaller --onefile --windowed --name "PyFastSPM" src/pyfast-ui/main.py
-
-      - name: Create Installer
-        shell: bash
-        run: |
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            msibuilder --name "PyFastSPM" \
-              --version "${{ github.ref_name }}" \
-              --exe "dist/PyFastSPM.exe" \
-              --out "dist/PyFastSPM.msi" \
-              --upgrade-guid "9bde10c8-10fc-492b-86b1-4966d544f083" \
-              --reinstallmode "vomus"
-          else
-            pkgbuild --root dist/PyFastSPM.app \
-              --identifier com.matkrin.pyfast \
-              --version "${{ github.ref_name }}" \
-              --install-location /Applications/PyFastSPM.app \
-              dist/PyFastSPM.pkg
-          fi
+          pyinstaller --onedir --name "PyFastSPM" src/pyfast_ui/main.py
 
       - name: Prepare release folder
         shell: bash
         run: |
           mkdir -p "${{ env.RELEASE_FOLDER }}"
-          cp dist/${{ env.BINARY_NAME }} "${{ env.RELEASE_FOLDER }}/"
-          cp LICENSE "${{ env.RELEASE_FOLDER }}/"
+          cp -r dist/${{ env.OUTPUT_FOLDER }} "${{ env.RELEASE_FOLDER }}/"
+          # cp LICENSE "${{ env.RELEASE_FOLDER }}/"
           cp README.md "${{ env.RELEASE_FOLDER }}/"
 
       - name: Compress release folder
