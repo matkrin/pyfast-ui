@@ -26,7 +26,7 @@ from pyfast_ui.import_group import ImportGroup
 from pyfast_ui.modify_group import ModifyGroup
 from pyfast_ui.movie_window import MovieInfo, MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
-from pyfast_ui.workers import CreepWorker, DriftWorker
+from pyfast_ui.workers import CreepWorker, DriftWorker, FftFilterWorker
 
 FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
@@ -75,7 +75,7 @@ class MainGui(QMainWindow):
             filter_high_pass=True,
             filter_pump=True,
             filter_noise=False,
-            display_spectrum=True,
+            display_spectrum=False,
             filter_broadness=None,
             num_x_overtones=10,
             high_pass_params=(1000.0, 600.0),
@@ -170,6 +170,21 @@ class MainGui(QMainWindow):
             f"Operate on: {movie_info.filename}({movie_info.id_})"
         )
 
+    def create_new_movie_window(self) -> None:
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        channel = fast_movie_window.channel
+        new_ft = fast_movie_window.clone_fast_movie()
+        new_movie_window = MovieWindow(new_ft, channel)
+        new_movie_window.show()
+        _ = new_movie_window.window_focused.connect(self.update_focused_window)
+        self.plot_windows.update({new_movie_window.info.id_: new_movie_window})
+        self.update_focused_window(new_movie_window.info)
+
     def on_movie_window_closed(self, movie_info: MovieInfo) -> None:
         del self.plot_windows[movie_info.id_]
 
@@ -243,20 +258,7 @@ class MainGui(QMainWindow):
         fast_movie_window.recreate_plot()
 
     def on_phase_new(self) -> None:
-        print("on_phase_new")
-        if self.operate_on is None:
-            return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
-        if fast_movie_window is None:
-            return
-
-        channel = fast_movie_window.channel
-        new_ft = fast_movie_window.clone_fast_movie()
-        new_movie_window = MovieWindow(new_ft, channel)
-        new_movie_window.show()
-        _ = new_movie_window.window_focused.connect(self.update_focused_window)
-        self.plot_windows.update({new_movie_window.info.id_: new_movie_window})
-        self.update_focused_window(new_movie_window.info)
+        self.create_new_movie_window()
         self.on_phase_apply()
 
     def on_fft_filter_apply(self) -> None:
@@ -267,6 +269,8 @@ class MainGui(QMainWindow):
             return
         ft = fast_movie_window.ft
 
+        fast_movie_window.start_processing("FFT-filtering...")
+
         filter_broadness = self.fft_filters_group.filter_broadness
         fft_display_range = self.fft_filters_group.fft_display_range
         pump_freqs = self.fft_filters_group.pump_freqs
@@ -275,35 +279,23 @@ class MainGui(QMainWindow):
         high_pass_params = self.fft_filters_group.high_pass_params
 
         filterparams = self.fft_filters_group.filterparams
-        if any(self.fft_filters_group.filterparams):
-            pf.filter_movie(
-                ft=ft,
-                filterparam=filterparams,
-                filter_broadness=filter_broadness,
-                fft_display_range=fft_display_range,
-                pump_freqs=pump_freqs,
-                num_pump_overtones=num_pump_overtones,
-                num_x_overtones=num_x_overtones,
-                high_pass_params=high_pass_params,
-            )
 
-        fast_movie_window.recreate_plot()
+        fft_filter_worker = FftFilterWorker(
+            fast_movie=ft,
+            filterparams=filterparams,
+            filter_broadness=filter_broadness,
+            fft_display_range=fft_display_range,
+            pump_freqs=pump_freqs,
+            num_pump_overtones=num_pump_overtones,
+            num_x_overtones=num_x_overtones,
+            high_pass_params=high_pass_params,
+        )
+
+        _ = fft_filter_worker.signals.finished.connect(fast_movie_window.end_processing)
+        self.thread_pool.start(fft_filter_worker)
 
     def on_fft_filter_new(self) -> None:
-        print("on_fft_new")
-        if self.operate_on is None:
-            return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
-        if fast_movie_window is None:
-            return
-
-        channel = fast_movie_window.channel
-        new_ft = fast_movie_window.clone_fast_movie()
-        new_movie_window = MovieWindow(new_ft, channel)
-        new_movie_window.show()
-        _ = new_movie_window.window_focused.connect(self.update_focused_window)
-        self.plot_windows.update({new_movie_window.info.id_: new_movie_window})
-        self.update_focused_window(new_movie_window.info)
+        self.create_new_movie_window()
         self.on_fft_filter_apply()
 
     def on_creep_apply(self) -> None:
@@ -316,7 +308,9 @@ class MainGui(QMainWindow):
         fast_movie_window.start_processing("Correcting creep...")
 
         ft = fast_movie_window.ft
-        ft.reshape_to_movie(fast_movie_window.channel)
+        if ft.mode == "timeseries":
+            ft.reshape_to_movie(fast_movie_window.channel)
+
         creep_mode = self.creep_group.creep_mode
         if self.import_group.is_image_range:
             image_range = self.import_group.image_range
@@ -350,21 +344,8 @@ class MainGui(QMainWindow):
         _ = creep_worker.signals.finished.connect(fast_movie_window.end_processing)
         self.thread_pool.start(creep_worker)
 
-
     def on_creep_new(self) -> None:
-        print("on_fft_new")
-        if self.operate_on is None:
-            return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
-        if fast_movie_window is None:
-            return
-
-        new_ft = fast_movie_window.clone_fast_movie()
-        new_movie_window = MovieWindow(new_ft, fast_movie_window.channel)
-        new_movie_window.show()
-        _ = new_movie_window.window_focused.connect(self.update_focused_window)
-        self.plot_windows.update({new_movie_window.info.id_: new_movie_window})
-        self.update_focused_window(new_movie_window.info)
+        self.create_new_movie_window()
         self.on_creep_apply()
 
     def on_drift_apply(self) -> None:
@@ -377,6 +358,9 @@ class MainGui(QMainWindow):
         fast_movie_window.start_processing("Correcting drfit...")
 
         ft = fast_movie_window.ft
+        if ft.mode == "timeseries":
+            ft.reshape_to_movie(fast_movie_window.channel)
+
         drift_algorithm = self.drift_group.drift_algorithm
         fft_drift = self.drift_group.fft_drift
         stepsize = self.drift_group.stepsize
@@ -414,19 +398,7 @@ class MainGui(QMainWindow):
         #     last = image_range[1]
 
     def on_drift_new(self) -> None:
-        print("on_drift_new")
-        if self.operate_on is None:
-            return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
-        if fast_movie_window is None:
-            return
-
-        new_ft = fast_movie_window.clone_fast_movie()
-        new_movie_window = MovieWindow(new_ft, fast_movie_window.channel)
-        new_movie_window.show()
-        _ = new_movie_window.window_focused.connect(self.update_focused_window)
-        self.plot_windows.update({new_movie_window.info.id_: new_movie_window})
-        self.update_focused_window(new_movie_window.info)
+        self.create_new_movie_window()
         self.on_drift_apply()
 
     def on_export_apply(self) -> None:

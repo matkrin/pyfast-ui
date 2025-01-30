@@ -12,6 +12,48 @@ class WorkerSignals(QObject):
 
 
 @final
+class FftFilterWorker(QRunnable):
+    def __init__(
+        self,
+        fast_movie: pf.FastMovie,
+        filterparams: list[bool],
+        filter_broadness: int,
+        fft_display_range: tuple[int, int],
+        pump_freqs: list[float],
+        num_pump_overtones: int,
+        num_x_overtones: int,
+        high_pass_params: tuple[float, float],
+    ) -> None:
+        super().__init__()
+
+        self.fast_movie = fast_movie
+        self.filterparams = filterparams
+        self.filter_broadness = filter_broadness
+        self.fft_display_range = fft_display_range
+        self.pump_freqs = pump_freqs
+        self.num_pump_overtones = num_pump_overtones
+        self.num_x_overtones = num_x_overtones
+        self.high_pass_params = high_pass_params
+        self.signals = WorkerSignals()
+
+    @override
+    def run(self) -> None:
+        if any(self.filterparams):
+            pf.filter_movie(
+                ft=self.fast_movie,
+                filterparam=self.filterparams,
+                filter_broadness=self.filter_broadness,
+                fft_display_range=self.fft_display_range,
+                pump_freqs=self.pump_freqs,
+                num_pump_overtones=self.num_pump_overtones,
+                num_x_overtones=self.num_x_overtones,
+                high_pass_params=self.high_pass_params,
+            )
+
+        self.signals.finished.emit()
+
+
+@final
 class CreepWorker(QRunnable):
     def __init__(
         self,
@@ -108,7 +150,6 @@ class DriftWorker(QRunnable):
                 stackreg_reference=self.stackreg_reference,
                 known_drift=self.known_drift,
             )
-
 
         self.ft.data = corrected_data
 
