@@ -34,3 +34,8 @@ packages = ["src/pyfast_ui"]
 
 [tool.uv.sources]
 pyfastspm = { path = "../pyfastspm", editable = true }
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.11.1",
+]
