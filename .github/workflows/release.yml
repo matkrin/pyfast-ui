@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v1.0.0
+      - 'v*.*.*a*'  # Triggers on tags like v0.0.1a1
+
+jobs:
+  create-release:
+    name: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Create github release"
+        run: |
+          gh release create ${{ github.ref_name }} --draft --verify-tag --title "${{ github.ref_name }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-gnu
+          #
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-musl
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+          # - os: windows-latest
+          #   target: i686-pc-windows-msvc
+          #
+          # - os: windows-latest
+          #   target: aarch64-pc-windows-msvc
+          #
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+
+    env:
+      RELEASE_FOLDER: "pyfast-ui-${{ github.ref_name }}-${{ matrix.target }}"
+      BINARY_NAME: "PyFastSPM${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python with uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Dependencies
+        run: |
+          uv sync
+          npm install -g msibuilder
+
+      - name: Build with pyinstaller
+        shell: bash
+        run: |
+          pyinstaller --onefile --windowed --name "PyFastSPM" src/pyfast-ui/main.py
+
+      - name: Create Installer
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            msibuilder --name "PyFastSPM" \
+              --version "${{ github.ref_name }}" \
+              --exe "dist/PyFastSPM.exe" \
+              --out "dist/PyFastSPM.msi" \
+              --upgrade-guid "9bde10c8-10fc-492b-86b1-4966d544f083" \
+              --reinstallmode "vomus"
+          else
+            pkgbuild --root dist/PyFastSPM.app \
+              --identifier com.matkrin.pyfast \
+              --version "${{ github.ref_name }}" \
+              --install-location /Applications/PyFastSPM.app \
+              dist/PyFastSPM.pkg
+          fi
+
+      - name: Prepare release folder
+        shell: bash
+        run: |
+          mkdir -p "${{ env.RELEASE_FOLDER }}"
+          cp dist/${{ env.BINARY_NAME }} "${{ env.RELEASE_FOLDER }}/"
+          cp LICENSE "${{ env.RELEASE_FOLDER }}/"
+          cp README.md "${{ env.RELEASE_FOLDER }}/"
+
+      - name: Compress release folder
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            7z a "${{ env.RELEASE_FOLDER }}.zip" "${{ env.RELEASE_FOLDER }}"
+          else
+            tar -czvf "${{ env.RELEASE_FOLDER }}.tar.gz" "${{ env.RELEASE_FOLDER }}"
+          fi
+
+      - name: Upload release assets
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            gh release upload ${{ github.ref_name }} ${{ env.RELEASE_FOLDER }}.zip
+          else
+            gh release upload ${{ github.ref_name }} ${{ env.RELEASE_FOLDER }}.tar.gz
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
