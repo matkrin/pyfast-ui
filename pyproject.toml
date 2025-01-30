@@ -33,7 +33,7 @@ allow-direct-references = true
 packages = ["src/pyfast_ui"]
 
 [tool.uv.sources]
-pyfastspm = { path = "../pyfastspm", editable = true }
+pyfastspm = { git = "https://gitlab.com/fastspm/pyfastspm", branch = "tum-latest" }
 
 [dependency-groups]
 dev = [
