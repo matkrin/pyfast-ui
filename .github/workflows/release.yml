@@ -64,7 +64,7 @@ jobs:
       - name: Build with pyinstaller
         shell: bash
         run: |
-          pyinstaller --onedir --name "PyFastSPM" src/pyfast_ui/main.py
+          uv run pyinstaller --onedir --name "PyFastSPM" src/pyfast_ui/main.py
 
       - name: Prepare release folder
         shell: bash
