@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -45,6 +46,8 @@ class MainGui(QMainWindow):
         self.setCentralWidget(self.central_widget)
         self.central_layout = QHBoxLayout()
         self.central_widget.setLayout(self.central_layout)
+        scroll_area = QScrollArea()
+        scroll_area.setWidget(self.central_widget)
 
         self.thread_pool = QThreadPool()
 

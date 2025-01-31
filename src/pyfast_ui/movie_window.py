@@ -29,7 +29,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-COLORMAP = "gnuplot2"
+COLORMAP = "bone"
+
 
 @dataclass
 class MovieInfo:
@@ -50,9 +51,11 @@ class MovieWindow(QWidget):
         self.ft.channel = channel
         # self.filename: str = os.path.basename(fast_movie.filename)
         # self.movie_id = id(self)
-        self.info = MovieInfo(id_=id(self), filename=os.path.basename(fast_movie.filename))
+        self.info = MovieInfo(
+            id_=id(self), filename=os.path.basename(fast_movie.filename)
+        )
 
-        self.setWindowTitle(f"{self.info.filename}({self.info.id_})")
+        self.setWindowTitle(f"{self.info.filename}({self.info.id_})-{self.channel}")
         self.setFocusPolicy(Qt.StrongFocus)
 
         layout = QVBoxLayout()
@@ -81,7 +84,7 @@ class MovieWindow(QWidget):
         # Strech the canvas when window resizes
         layout.setStretch(1, 2)
 
-        self.process_indicator = ProcessIndicator("...Processing...")
+        self.process_indicator = ProcessIndicator("")
         self.process_indicator.hide()
         layout.addWidget(self.process_indicator)
 
@@ -113,7 +116,7 @@ class MovieWindow(QWidget):
 
     def set_movie_id(self, new_movie_id: int) -> None:
         self.info.id_ = new_movie_id
-        self.setWindowTitle(f"{self.info.filename}({self.info.id_})")
+        self.setWindowTitle(f"{self.info.filename}({self.info.id_})-{self.channel}")
 
     def update_plot_data(self) -> None:
         if self.ft.mode == "timeseries":
@@ -274,7 +277,11 @@ class MovieControlSpinBox(QSpinBox):
 @final
 class MovieControls(QWidget):
     def __init__(
-        self, num_frames: int, fps: int, focus_signal: SignalInstance, movie_info: MovieInfo
+        self,
+        num_frames: int,
+        fps: int,
+        focus_signal: SignalInstance,
+        movie_info: MovieInfo,
     ) -> None:
         super().__init__()
         self.prev_btn = MovieControlButton(QStyle.SP_MediaSeekBackward)
