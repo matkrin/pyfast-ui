@@ -21,6 +21,7 @@ from pyfast_ui.creep_group import CreepGroup
 from pyfast_ui.drift_group import DriftGroup
 from pyfast_ui.export_group import ExportGroup
 from pyfast_ui.fft_filters_group import FFTFiltersGroup
+from pyfast_ui.histogram_window import HistogramWindow
 from pyfast_ui.image_correction import ImageCorrectionGroup
 from pyfast_ui.image_filters import ImageFilterGroup
 from pyfast_ui.import_group import ImportGroup
@@ -54,10 +55,17 @@ class MainGui(QMainWindow):
 
         self.thread_pool = QThreadPool()
 
+        # TEST BUTTON
         self.open_btn = QPushButton("Open test file")
         _ = self.open_btn.clicked.connect(self.on_open_btn_click)
 
         self.central_layout.addWidget(self.open_btn)
+
+        # Histogram
+        self.histogram_btn = QPushButton("Histogram")
+        _ = self.histogram_btn.clicked.connect(self.on_histogram_btn)
+
+        self.central_layout.addWidget(self.histogram_btn)
 
         self.plot_windows: dict[int, MovieWindow] = dict()
         self.operate_on: int | None = None
@@ -150,7 +158,7 @@ class MainGui(QMainWindow):
         horizontal_layout.addLayout(vertical_layout_right)
         self.central_layout.addLayout(horizontal_layout)
 
-        # Connect signals
+        # Connect signalsin
         _ = self.import_group.apply_btn.clicked.connect(self.on_import_btn_click)
         _ = self.modify_group.new_btn.clicked.connect(self.on_modify_new_btn)
         _ = self.phase_group.apply_btn.clicked.connect(self.on_phase_apply)
@@ -510,6 +518,18 @@ class MainGui(QMainWindow):
     def on_image_filter_new(self) -> None:
         self.create_new_movie_window()
         self.on_image_filter_apply()
+
+    def on_histogram_btn(self) -> None:
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        print("New Histogram")
+        self.hist = HistogramWindow(fast_movie_window.ft, fast_movie_window.info)
+        self.hist.show()
+
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
