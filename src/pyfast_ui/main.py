@@ -30,7 +30,7 @@ from pyfast_ui.movie_window import MovieInfo, MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 from pyfast_ui.workers import CreepWorker, DriftWorker, FftFilterWorker
 
-FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 
 @final
@@ -527,7 +527,7 @@ class MainGui(QMainWindow):
             return
 
         print("New Histogram")
-        self.hist = HistogramWindow(fast_movie_window.ft, fast_movie_window.info)
+        self.hist = HistogramWindow(fast_movie_window.ft, fast_movie_window.info, fast_movie_window.set_clim)
         self.hist.show()
 
 

@@ -170,6 +170,10 @@ class MovieWindow(QWidget):
         self.canvas.figure.clf()
         self.create_plot()
 
+    def set_clim(self, lower_limit: float, upper_limit: float) -> None:
+        if self.img_plot is not None:
+            self.img_plot.set_clim(lower_limit, upper_limit)
+
     def start_processing(self, message: str) -> None:
         self.process_indicator.status_label.setText(message)
         self.process_indicator.show()

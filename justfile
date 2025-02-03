@@ -2,7 +2,7 @@ default:
     just --list
 
 run:
-    uv run src/pyfast-ui/main.py
+    uv run python src/pyfast_ui/main.py
 
 test:
     uv run pytest
