@@ -45,26 +45,29 @@ class DriftGroup(QGroupBox):
             case "full":
                 self._drift_type_full.setChecked(True)
 
-        self.correlation_group = CorreclationGroup(
-            fft_drift, drifttype, stepsize, known_drift
-        )
 
         self._drift_algo_correlation = QRadioButton("correlation", self)
         self._drift_algo_stackreg = QRadioButton("stackreg", self)
+        self._known_drift = QRadioButton("known", self)
 
         self._drift_algo_button_group = QButtonGroup(self)
         self._drift_algo_button_group.addButton(self._drift_algo_correlation)
         self._drift_algo_button_group.addButton(self._drift_algo_stackreg)
+        self._drift_algo_button_group.addButton(self._known_drift)
 
-        drift_algo_layout = QHBoxLayout()
+        drift_algo_layout = QVBoxLayout()
+        drift_algo_layout.addWidget(QLabel("Mode"))
         drift_algo_layout.addWidget(self._drift_algo_correlation)
         drift_algo_layout.addWidget(self._drift_algo_stackreg)
+        drift_algo_layout.addWidget(self._known_drift)
 
         match drift_algorithm:
-            case "correlation":
+            case "correlation" if not known_drift:
                 self._drift_algo_correlation.setChecked(True)
-            case "stackreg":
+            case "stackreg" if not known_drift:
                 self._drift_algo_stackreg.setChecked(True)
+            case _ if known_drift:
+                self._known_drift.setChecked(True)
 
         self.correlation_group = CorreclationGroup(
             fft_drift, drifttype, stepsize, known_drift
@@ -96,7 +99,8 @@ class DriftGroup(QGroupBox):
 
     @property
     def fft_drift(self) -> bool:
-        return self.correlation_group.fft_drift.isChecked()
+        # return self.correlation_group.fft_drift.isChecked()
+        return True
 
     @property
     def drift_type(self) -> str:
@@ -109,7 +113,8 @@ class DriftGroup(QGroupBox):
 
     @property
     def known_drift(self) -> bool:
-        return self.correlation_group.known_drift.isChecked()
+        # return self.correlation_group.known_drift.isChecked()
+        return self._known_drift.isChecked()
 
 
 @final
@@ -122,8 +127,8 @@ class CorreclationGroup(QGroupBox):
         self.setLayout(layout)
 
         ## FFT Drift
-        self.fft_drift = QCheckBox("FFT Drift", self)
-        self.fft_drift.setChecked(fft_drift)
+        # self.fft_drift = QCheckBox("FFT Drift", self)
+        # self.fft_drift.setChecked(fft_drift)
 
         # Stepsize
         self.stepsize = QSpinBox(self)
@@ -133,17 +138,17 @@ class CorreclationGroup(QGroupBox):
         stepsize_layout = QHBoxLayout()
 
         # Known Drift
-        self.known_drift = QCheckBox("Known Drift", self)
-        self.known_drift.setChecked(known_drift)
+        # self.known_drift = QCheckBox("Known Drift", self)
+        # self.known_drift.setChecked(known_drift)
 
         # Add stepsize widgets to stepsize Layout
         stepsize_layout.addWidget(self._stepsize_lbl)
         stepsize_layout.addWidget(self.stepsize)
 
         # Add Widgets and Layouts to main group box
-        layout.addWidget(self.fft_drift)
+        # layout.addWidget(self.fft_drift)
         layout.addLayout(stepsize_layout)
-        layout.addWidget(self.known_drift)
+        # layout.addWidget(self.known_drift)
 
 
 @final
