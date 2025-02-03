@@ -3,7 +3,7 @@ from typing import final, override
 
 import pyfastspm as pf
 from PySide6.QtCore import QCoreApplication, QThreadPool
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -29,7 +29,7 @@ from pyfast_ui.movie_window import MovieInfo, MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 from pyfast_ui.workers import CreepWorker, DriftWorker, FftFilterWorker
 
-FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 
 @final
@@ -39,15 +39,18 @@ class MainGui(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("PyfastSPM")
-        # self.setGeometry(100, 100, 700, 400)
+        self.setGeometry(100, 100, 850, 1000)
         self.move(50, 50)
 
         self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
+        scroll_area = QScrollArea()
         self.central_layout = QHBoxLayout()
         self.central_widget.setLayout(self.central_layout)
-        scroll_area = QScrollArea()
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(self.central_widget)
+        self.setCentralWidget(scroll_area)
 
         self.thread_pool = QThreadPool()
 
