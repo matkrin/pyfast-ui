@@ -21,7 +21,7 @@ class HistogramWindow(QWidget):
         update_callback: Callable[[float, float], None],
     ) -> None:
         super().__init__()
-        self.data = fast_movie.data
+        self.data = fast_movie.data.flatten()
         self.info = movie_info
         self.update_callback = update_callback
         self.setWindowTitle(f"{self.info.filename}({self.info.id_})")
