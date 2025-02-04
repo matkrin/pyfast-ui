@@ -135,6 +135,8 @@ class LabeledDoubleSpinBoxes(QWidget):
 
 @final
 class LabeledCombobox(QWidget):
+    value_changed = Signal(str)
+
     def __init__(self, label_text: str, combobox_values: list[str]) -> None:
         super().__init__()
         layout = QHBoxLayout()
@@ -144,9 +146,13 @@ class LabeledCombobox(QWidget):
 
         self.combobox = QComboBox()
         self.combobox.addItems(combobox_values)
+        _ = self.combobox.currentTextChanged.connect(self._emit_value_changed)
 
         layout.addWidget(self.label)
         layout.addWidget(self.combobox)
+
+    def _emit_value_changed(self) -> None:
+        self.value_changed.emit(self.combobox.currentText())
 
     def value(self) -> str:
         return self.combobox.currentText()

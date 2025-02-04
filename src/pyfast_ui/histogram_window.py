@@ -67,6 +67,10 @@ class HistogramWindow(QWidget):
 
         self.create_plot()
 
+    def contrast_percent(self) -> tuple[float, float]:
+        min, max = self.limit_percent.value()
+        return (float(min / 100), float(max / 100))
+
     def create_plot(self) -> None:
         self.ax = self.canvas.figure.subplots()
         self.canvas.figure.subplots_adjust(bottom=0.3)
@@ -105,8 +109,12 @@ class HistogramWindow(QWidget):
             try:
                 self.limit_absolute.setValue((min_val, max_val))
                 # Convert to percentage based on data range.
-                min_percent = ((min_val - self.data_min) / (self.data_max - self.data_min)) * 100
-                max_percent = ((max_val - self.data_min) / (self.data_max - self.data_min)) * 100
+                min_percent = (
+                    (min_val - self.data_min) / (self.data_max - self.data_min)
+                ) * 100
+                max_percent = (
+                    (max_val - self.data_min) / (self.data_max - self.data_min)
+                ) * 100
                 self.limit_percent.setValue((int(min_percent), int(max_percent)))
 
             finally:
@@ -127,8 +135,12 @@ class HistogramWindow(QWidget):
             self.upper_limit_line.set_xdata([max_absolute, max_absolute])
             self.canvas.draw_idle()
 
-            min_percent = ((min_absolute - self.data_min) / (self.data_max - self.data_min)) * 100
-            max_percent = ((max_absolute - self.data_min) / (self.data_max - self.data_min)) * 100
+            min_percent = (
+                (min_absolute - self.data_min) / (self.data_max - self.data_min)
+            ) * 100
+            max_percent = (
+                (max_absolute - self.data_min) / (self.data_max - self.data_min)
+            ) * 100
 
             # Block the percent spin box signals before updating.
             self.limit_percent.blockSignals(True)
@@ -149,8 +161,12 @@ class HistogramWindow(QWidget):
         self._updating = True
         try:
             min_percent, max_percent = new_value
-            min_absolute = self.data_min + (min_percent / 100) * (self.data_max - self.data_min)
-            max_absolute = self.data_min + (max_percent / 100) * (self.data_max - self.data_min)
+            min_absolute = self.data_min + (min_percent / 100) * (
+                self.data_max - self.data_min
+            )
+            max_absolute = self.data_min + (max_percent / 100) * (
+                self.data_max - self.data_min
+            )
             self.update_callback(min_absolute, max_absolute)
             self.lower_limit_line.set_xdata([min_absolute, min_absolute])
             self.upper_limit_line.set_xdata([max_absolute, max_absolute])

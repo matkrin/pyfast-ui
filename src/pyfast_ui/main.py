@@ -1,6 +1,7 @@
 import sys
 from typing import final, override
 
+import matplotlib.pyplot as plt
 import pyfastspm as pf
 from PySide6.QtCore import QCoreApplication, QThreadPool
 from PySide6.QtGui import QCloseEvent, Qt
@@ -17,20 +18,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pyfast_ui.channel_select_group import ChannelSelectGroup
 from pyfast_ui.creep_group import CreepGroup
+from pyfast_ui.custom_widgets import LabeledCombobox
 from pyfast_ui.drift_group import DriftGroup
 from pyfast_ui.export_group import ExportGroup
 from pyfast_ui.fft_filters_group import FFTFiltersGroup
 from pyfast_ui.histogram_window import HistogramWindow
 from pyfast_ui.image_correction import ImageCorrectionGroup
 from pyfast_ui.image_filters import ImageFilterGroup
-from pyfast_ui.import_group import ImportGroup
-from pyfast_ui.modify_group import ModifyGroup
 from pyfast_ui.movie_window import MovieInfo, MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 from pyfast_ui.workers import CreepWorker, DriftWorker, FftFilterWorker
 
 FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
+DEFAULT_COLORMAP = "bone"
 
 
 @final
@@ -60,20 +62,22 @@ class MainGui(QMainWindow):
         _ = self.open_btn.clicked.connect(self.on_open_btn_click)
 
         self.central_layout.addWidget(self.open_btn)
-
-        # Histogram
-        self.histogram_btn = QPushButton("Histogram")
-        _ = self.histogram_btn.clicked.connect(self.on_histogram_btn)
-
-        self.central_layout.addWidget(self.histogram_btn)
+        ###
 
         self.plot_windows: dict[int, MovieWindow] = dict()
+        self.histogram_windows: dict[int, HistogramWindow] = dict()
         self.operate_on: int | None = None
 
         self.operate_label = QLabel("Operate on: ")
 
-        self.import_group = ImportGroup(image_range=None, apply_auto_xphase=True)
-        self.modify_group = ModifyGroup()
+        self.import_btn = QPushButton("Import")
+        self.channel_select_group = ChannelSelectGroup()
+        # Colormap
+        self._colormap = LabeledCombobox("Colormap", plt.colormaps())
+        self._colormap.combobox.setCurrentText(DEFAULT_COLORMAP)
+        # Histogram
+        self.histogram_btn = QPushButton("Histogram")
+        _ = self.histogram_btn.clicked.connect(self.on_histogram_btn)
 
         self.phase_group = PhaseGroup(
             apply_auto_xphase=True,
@@ -133,10 +137,8 @@ class MainGui(QMainWindow):
             export_frames=False,
             frame_export_images=(0, 1),
             frame_export_channel="udi",
-            contrast=(0.1, 0.99),
             scaling=(2.0, 2.0),
             fps_factor=5,
-            color_map="inferno",
             frame_export_format="tiff",
             auto_label=True,
         )
@@ -145,8 +147,10 @@ class MainGui(QMainWindow):
         vertical_layout_left = QVBoxLayout()
         vertical_layout_right = QVBoxLayout()
         vertical_layout_left.addWidget(self.operate_label)
-        vertical_layout_left.addWidget(self.import_group)
-        vertical_layout_left.addWidget(self.modify_group)
+        vertical_layout_left.addWidget(self.import_btn)
+        vertical_layout_left.addWidget(self.channel_select_group)
+        vertical_layout_left.addWidget(self._colormap)
+        vertical_layout_left.addWidget(self.histogram_btn)
         vertical_layout_left.addWidget(self.phase_group)
         vertical_layout_left.addWidget(self.fft_filters_group)
         vertical_layout_left.addWidget(self.creep_group)
@@ -159,8 +163,9 @@ class MainGui(QMainWindow):
         self.central_layout.addLayout(horizontal_layout)
 
         # Connect signalsin
-        _ = self.import_group.apply_btn.clicked.connect(self.on_import_btn_click)
-        _ = self.modify_group.new_btn.clicked.connect(self.on_modify_new_btn)
+        _ = self.import_btn.clicked.connect(self.on_import_btn_click)
+        _ = self.channel_select_group.new_btn.clicked.connect(self.on_modify_new_btn)
+        _ = self._colormap.value_changed.connect(self.update_colormap)
         _ = self.phase_group.apply_btn.clicked.connect(self.on_phase_apply)
         _ = self.phase_group.new_btn.clicked.connect(self.on_phase_new)
         _ = self.fft_filters_group.apply_btn.clicked.connect(self.on_fft_filter_apply)
@@ -176,9 +181,7 @@ class MainGui(QMainWindow):
         _ = self.image_filter_group.apply_btn.clicked.connect(
             self.on_image_filter_apply
         )
-        _ = self.image_filter_group.new_btn.clicked.connect(
-            self.on_image_filter_new
-        )
+        _ = self.image_filter_group.new_btn.clicked.connect(self.on_image_filter_new)
         _ = self.drift_group.apply_btn.clicked.connect(self.on_drift_apply)
         _ = self.drift_group.new_btn.clicked.connect(self.on_drift_new)
         _ = self.export_group.apply_btn.clicked.connect(self.on_export_apply)
@@ -199,7 +202,7 @@ class MainGui(QMainWindow):
 
         channel = fast_movie_window.channel
         new_ft = fast_movie_window.clone_fast_movie()
-        new_movie_window = MovieWindow(new_ft, channel)
+        new_movie_window = MovieWindow(new_ft, channel, self._colormap.value())
         new_movie_window.show()
         _ = new_movie_window.window_focused.connect(self.update_focused_window)
         self.plot_windows.update({new_movie_window.info.id_: new_movie_window})
@@ -210,7 +213,7 @@ class MainGui(QMainWindow):
 
     def on_open_btn_click(self) -> None:
         ft = pf.FastMovie(FAST_FILE, y_phase=0)
-        movie_window = MovieWindow(ft, "udi")
+        movie_window = MovieWindow(ft, "udi", self._colormap.value())
         _ = movie_window.window_focused.connect(self.update_focused_window)
         _ = movie_window.window_closed.connect(self.on_movie_window_closed)
         self.plot_windows.update({movie_window.info.id_: movie_window})
@@ -227,13 +230,18 @@ class MainGui(QMainWindow):
 
         if file_path:
             ft = pf.FastMovie(str(file_path), y_phase=0)
-            movie_window = MovieWindow(ft, "udi")
+            colormap = self._colormap.value()
+            movie_window = MovieWindow(ft, "udi", colormap)
             _ = movie_window.window_focused.connect(self.update_focused_window)
             self.plot_windows.update({movie_window.info.id_: movie_window})
             self.update_focused_window(movie_window.info)
             movie_window.show()
         else:
             print("No file chosen.")
+
+    def update_colormap(self, value: str) -> None:
+        for movie_window in self.plot_windows.values():
+            movie_window.set_colormap(value)
 
     def on_modify_new_btn(self) -> None:
         if self.operate_on is None:
@@ -242,11 +250,11 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
-        channel = self.modify_group.channel
+        channel = self.channel_select_group.channel
 
         new_ft = fast_movie_window.clone_fast_movie()
         new_ft.reload_timeseries()
-        new_movie_window = MovieWindow(new_ft, channel)
+        new_movie_window = MovieWindow(new_ft, channel, self._colormap.value())
         new_movie_window.show()
         _ = new_movie_window.window_focused.connect(self.update_focused_window)
         self.plot_windows.update({new_movie_window.info.id_: new_movie_window})
@@ -332,10 +340,11 @@ class MainGui(QMainWindow):
             ft.reshape_to_movie(fast_movie_window.channel)
 
         creep_mode = self.creep_group.creep_mode
-        if self.import_group.is_image_range:
-            image_range = self.import_group.image_range
-        else:
-            image_range = None
+        # if self.import_group.is_image_range:
+        #     image_range = self.import_group.image_range
+        # else:
+        #     image_range = None
+        image_range = None
         print(f"{image_range=}")
 
         # Basic settings -> Streak removal for interlacing
@@ -388,10 +397,11 @@ class MainGui(QMainWindow):
         known_drift = self.drift_group.known_drift
         stackreg_reference = self.drift_group.stackreg_reference
 
-        if self.import_group.is_image_range:
-            image_range = self.import_group.image_range
-        else:
-            image_range = None
+        # if self.import_group.is_image_range:
+        #     image_range = self.import_group.image_range
+        # else:
+        #     image_range = None
+        image_range = None
         print(f"Drift correction with {drift_algorithm=}")
 
         drift_worker = DriftWorker(
@@ -428,12 +438,19 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
+        histogram_window = self.histogram_windows.get(self.operate_on)
+        if histogram_window is None:
+            contrast = (0.0, 1.0)
+        else:
+            contrast = histogram_window.contrast_percent()
+
+        print(contrast)
         ft = fast_movie_window.ft
+        color_map = self._colormap.value()
+
         export_movie = self.export_group.export_movie
         export_tiff = self.export_group.export_tiff
         export_frames = self.export_group.export_frames
-        color_map = self.export_group.color_map
-        contrast = self.export_group.contrast
         fps_factor = self.export_group.fps_factor
         scaling = self.export_group.scaling
         auto_label = self.export_group.auto_label
@@ -442,10 +459,11 @@ class MainGui(QMainWindow):
         frame_export_channel = self.export_group.frame_export_channel
         frame_export_format = self.export_group.frame_export_format
 
-        if self.import_group.is_image_range:
-            image_range = self.import_group.image_range
-        else:
-            image_range = None
+        # if self.import_group.is_image_range:
+        #     image_range = self.import_group.image_range
+        # else:
+        #     image_range = None
+        image_range = None
 
         if export_movie:
             ft.export_movie(
@@ -494,7 +512,6 @@ class MainGui(QMainWindow):
         self.create_new_movie_window()
         self.on_image_correction_apply()
 
-
     def on_image_filter_apply(self) -> None:
         if self.operate_on is None:
             return
@@ -527,9 +544,11 @@ class MainGui(QMainWindow):
             return
 
         print("New Histogram")
-        self.hist = HistogramWindow(fast_movie_window.ft, fast_movie_window.info, fast_movie_window.set_clim)
-        self.hist.show()
-
+        histogram_window = HistogramWindow(
+            fast_movie_window.ft, fast_movie_window.info, fast_movie_window.set_clim
+        )
+        self.histogram_windows.update({fast_movie_window.info.id_: histogram_window})
+        histogram_window.show()
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:

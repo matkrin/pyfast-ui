@@ -20,10 +20,8 @@ class ExportGroup(QGroupBox):
         export_frames: bool,
         frame_export_images: tuple[int, int],
         frame_export_channel: str,
-        contrast: tuple[float, float],
         scaling: tuple[float, float],
         fps_factor: int,
-        color_map: str,
         frame_export_format: str,
         auto_label: bool,
     ) -> None:
@@ -58,16 +56,6 @@ class ExportGroup(QGroupBox):
         frame_export_channel_layout.addWidget(frame_export_channel_lbl)
         frame_export_channel_layout.addWidget(self._frame_export_channel)
 
-        contrast_lbl = QLabel("Contrast")
-        self._contrast_start = QDoubleSpinBox(self)
-        self._contrast_start.setValue(contrast[0])
-        self._contrast_end = QDoubleSpinBox(self)
-        self._contrast_end.setValue(contrast[1])
-        contrast_layout = QHBoxLayout()
-        contrast_layout.addWidget(contrast_lbl)
-        contrast_layout.addWidget(self._contrast_start)
-        contrast_layout.addWidget(self._contrast_end)
-
         scaling_lbl = QLabel("Scaling")
         self._scaling_start = QDoubleSpinBox(self)
         self._scaling_start.setValue(scaling[0])
@@ -84,14 +72,6 @@ class ExportGroup(QGroupBox):
         fps_factor_layout = QHBoxLayout()
         fps_factor_layout.addWidget(fps_factor_lbl)
         fps_factor_layout.addWidget(self._fps_factor)
-
-        color_map_lbl = QLabel("Color map")
-        self._color_map = QComboBox()
-        self._color_map.addItems(plt.colormaps())
-        self._color_map.setCurrentText(color_map)
-        color_map_layout = QHBoxLayout()
-        color_map_layout.addWidget(color_map_lbl)
-        color_map_layout.addWidget(self._color_map)
 
         frame_export_format_lbl = QLabel("Frame export format")
         self._frame_export_format = QComboBox()
@@ -111,15 +91,13 @@ class ExportGroup(QGroupBox):
         layout.addWidget(self._export_movie, 0, 0)
         layout.addWidget(self._export_tiff, 0, 1)
         layout.addWidget(self._export_frames, 0, 2)
-        layout.addLayout(contrast_layout, 2, 0, 1, 3)
-        layout.addLayout(scaling_layout, 3, 0, 1, 3)
-        layout.addLayout(fps_factor_layout, 4, 0, 1, 3)
-        layout.addLayout(color_map_layout, 5, 0, 1, 3)
-        layout.addLayout(frame_export_images_layout, 6, 0, 1, 3)
-        layout.addLayout(frame_export_channel_layout, 7, 0, 1, 3)
-        layout.addLayout(frame_export_format_layout, 8, 0, 1, 3)
-        layout.addWidget(self._auto_label, 9, 0)
-        layout.addWidget(self.apply_btn, 10, 0, 1, 3)
+        layout.addLayout(scaling_layout, 2, 0, 1, 3)
+        layout.addLayout(fps_factor_layout, 3, 0, 1, 3)
+        layout.addLayout(frame_export_images_layout, 4, 0, 1, 3)
+        layout.addLayout(frame_export_channel_layout, 5, 0, 1, 3)
+        layout.addLayout(frame_export_format_layout, 6, 0, 1, 3)
+        layout.addWidget(self._auto_label, 7, 0)
+        layout.addWidget(self.apply_btn, 8, 0, 1, 3)
 
     @property
     def export_movie(self) -> bool:
@@ -143,10 +121,6 @@ class ExportGroup(QGroupBox):
     @property
     def frame_export_channel(self) -> str:
         return self._frame_export_channel.currentText()
-
-    @property
-    def contrast(self) -> tuple[float, float]:
-        return (self._contrast_start.value(), self._contrast_end.value())
 
     @property
     def scaling(self) -> tuple[float, float]:

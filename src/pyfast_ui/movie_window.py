@@ -29,8 +29,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-COLORMAP = "bone"
-
 
 @dataclass
 class MovieInfo:
@@ -43,14 +41,15 @@ class MovieWindow(QWidget):
     window_focused = Signal(MovieInfo)
     window_closed = Signal(MovieInfo)
 
-    def __init__(self, fast_movie: FastMovie, channel: str) -> None:
+    def __init__(
+        self, fast_movie: FastMovie, channel: str, colormap: str = "bone"
+    ) -> None:
         super().__init__()
         self.ft = fast_movie
         print(f"New window with channel: {channel}")
         self.channel = channel
         self.ft.channel = channel
-        # self.filename: str = os.path.basename(fast_movie.filename)
-        # self.movie_id = id(self)
+        self.colormap = colormap
         self.info = MovieInfo(
             id_=id(self), filename=os.path.basename(fast_movie.filename)
         )
@@ -155,7 +154,7 @@ class MovieWindow(QWidget):
         self.img_plot = self.ax.imshow(
             self.plot_data[self.current_frame_num],
             interpolation="none",
-            cmap=COLORMAP,
+            cmap=self.colormap,
         )
 
         self.img_plot.set_clim(self.ft.data.min(), self.ft.data.max())
@@ -173,6 +172,11 @@ class MovieWindow(QWidget):
     def set_clim(self, lower_limit: float, upper_limit: float) -> None:
         if self.img_plot is not None:
             self.img_plot.set_clim(lower_limit, upper_limit)
+
+    def set_colormap(self, new_colormap: str) -> None:
+        if self.img_plot is not None:
+            self.img_plot.set_cmap(new_colormap)
+        self.colormap = new_colormap
 
     def start_processing(self, message: str) -> None:
         self.process_indicator.status_label.setText(message)
