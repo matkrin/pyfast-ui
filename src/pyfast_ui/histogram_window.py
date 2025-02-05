@@ -1,4 +1,6 @@
 from typing import Callable, final
+from scipy.stats import percentileofscore
+import numpy as np
 
 from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
@@ -47,7 +49,7 @@ class HistogramWindow(QWidget):
         self.limit_absolute.setValue((self.data_min, self.data_max))
         self.limit_absolute.setFixedWidth(300)
 
-        self.limit_percent = LabeledSpinBoxes("Limit percent", (0, 100))
+        self.limit_percent = LabeledDoubleSpinBoxes("Limit percentile", (0, 100))
         self.limit_percent.spinbox_left.setMinimum(0)
         self.limit_percent.spinbox_right.setMaximum(100)
         self.limit_percent.setFixedWidth(300)
@@ -69,7 +71,7 @@ class HistogramWindow(QWidget):
 
     def contrast_percent(self) -> tuple[float, float]:
         min, max = self.limit_percent.value()
-        return (float(min / 100), float(max / 100))
+        return (min / 100, max / 100)
 
     def create_plot(self) -> None:
         self.ax = self.canvas.figure.subplots()
@@ -94,28 +96,27 @@ class HistogramWindow(QWidget):
         if self._updating:
             return
 
-        min_val, max_val = value
+        min_absolute, max_absolute = value
 
-        self.lower_limit_line.set_xdata([min_val, min_val])
-        self.upper_limit_line.set_xdata([max_val, max_val])
+        self.lower_limit_line.set_xdata([min_absolute, min_absolute])
+        self.upper_limit_line.set_xdata([max_absolute, max_absolute])
         self.canvas.draw_idle()
 
         # Block spin box signals while updating them.
         self._updating = True
         try:
-            self.update_callback(min_val, max_val)
+            self.update_callback(min_absolute, max_absolute)
             self.limit_absolute.blockSignals(True)
             self.limit_percent.blockSignals(True)
             try:
-                self.limit_absolute.setValue((min_val, max_val))
-                # Convert to percentage based on data range.
-                min_percent = (
-                    (min_val - self.data_min) / (self.data_max - self.data_min)
-                ) * 100
-                max_percent = (
-                    (max_val - self.data_min) / (self.data_max - self.data_min)
-                ) * 100
-                self.limit_percent.setValue((int(min_percent), int(max_percent)))
+                self.limit_absolute.setValue((min_absolute, max_absolute))
+                # Convert to percentile based on data range.
+                # min_percent = ( (min_val - self.data_min) / (self.data_max - self.data_min)) * 100
+                # max_percent = ( (max_val - self.data_min) / (self.data_max - self.data_min)) * 100
+
+                min_percentile = percentileofscore(self.data, min_absolute, kind="rank")
+                max_percentile = percentileofscore(self.data, max_absolute, kind="rank")
+                self.limit_percent.setValue((min_percentile, max_percentile))
 
             finally:
                 self.limit_absolute.blockSignals(False)
@@ -135,17 +136,16 @@ class HistogramWindow(QWidget):
             self.upper_limit_line.set_xdata([max_absolute, max_absolute])
             self.canvas.draw_idle()
 
-            min_percent = (
-                (min_absolute - self.data_min) / (self.data_max - self.data_min)
-            ) * 100
-            max_percent = (
-                (max_absolute - self.data_min) / (self.data_max - self.data_min)
-            ) * 100
+            # min_percent = ( (min_absolute - self.data_min) / (self.data_max - self.data_min)) * 100
+            # max_percent = ( (max_absolute - self.data_min) / (self.data_max - self.data_min)) * 100
+
+            min_percentile = percentileofscore(self.data, min_absolute, kind="rank")
+            max_percentile = percentileofscore(self.data, max_absolute, kind="rank")
 
             # Block the percent spin box signals before updating.
             self.limit_percent.blockSignals(True)
             try:
-                self.limit_percent.setValue((int(min_percent), int(max_percent)))
+                self.limit_percent.setValue((min_percentile, max_percentile))
             finally:
                 self.limit_percent.blockSignals(False)
 
@@ -161,12 +161,10 @@ class HistogramWindow(QWidget):
         self._updating = True
         try:
             min_percent, max_percent = new_value
-            min_absolute = self.data_min + (min_percent / 100) * (
-                self.data_max - self.data_min
-            )
-            max_absolute = self.data_min + (max_percent / 100) * (
-                self.data_max - self.data_min
-            )
+            # min_absolute = self.data_min + (min_percent / 100) * ( self.data_max - self.data_min)
+            # max_absolute = self.data_min + (max_percent / 100) * ( self.data_max - self.data_min)
+            min_absolute = np.percentile(self.data, min_percent)
+            max_absolute = np.percentile(self.data, max_percent)
             self.update_callback(min_absolute, max_absolute)
             self.lower_limit_line.set_xdata([min_absolute, min_absolute])
             self.upper_limit_line.set_xdata([max_absolute, max_absolute])
