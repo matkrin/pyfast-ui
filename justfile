@@ -9,7 +9,7 @@ test:
 
 build:
     uv run pyinstaller \
-        --onedir \
+        --onefile \
         --name PyFastSPM \
         src/pyfast_ui/main.py
 
