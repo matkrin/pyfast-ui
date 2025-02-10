@@ -1,4 +1,5 @@
-from typing import Literal, TypeAlias, final
+import dataclasses
+from typing import Literal, Self, TypeAlias, final
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pyfast_ui.config import DriftConfig
 from pyfast_ui.custom_widgets import LabeledSpinBox
 
 
@@ -93,6 +95,10 @@ class DriftGroup(QGroupBox):
         btn_layout.addWidget(self.apply_btn)
         btn_layout.addWidget(self.new_btn)
         layout.addLayout(btn_layout)
+
+    @classmethod
+    def from_config(cls, drift_config: DriftConfig) -> Self:
+        return cls(**dataclasses.asdict(drift_config))
 
     @property
     def drift_algorithm(self) -> str:

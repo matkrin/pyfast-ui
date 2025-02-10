@@ -1,4 +1,5 @@
-from typing import final
+import dataclasses
+from typing import Self, final
 
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -9,6 +10,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
 )
+
+from pyfast_ui.config import PhaseConfig
 
 
 @final
@@ -70,11 +73,15 @@ class PhaseGroup(QGroupBox):
 
         btn_layout = QHBoxLayout()
         self.apply_btn = QPushButton("Apply")
-        self.new_btn= QPushButton("New")
+        self.new_btn = QPushButton("New")
 
         btn_layout.addWidget(self.apply_btn)
         btn_layout.addWidget(self.new_btn)
         layout.addLayout(btn_layout, 3, 0, 1, 2)
+
+    @classmethod
+    def from_config(cls, phase_config: PhaseConfig) -> Self:
+        return cls(**dataclasses.asdict(phase_config))
 
     @property
     def apply_auto_xphase(self) -> bool:

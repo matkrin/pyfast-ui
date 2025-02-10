@@ -1,6 +1,8 @@
-from typing import final
+import dataclasses
+from typing import Self, final
 from PySide6.QtWidgets import QGridLayout, QGroupBox, QPushButton
 
+from pyfast_ui.config import ImageCorrectionConfig
 from pyfast_ui.custom_widgets import LabeledCombobox
 
 
@@ -26,6 +28,10 @@ class ImageCorrectionGroup(QGroupBox):
 
         layout.addWidget(self.apply_btn, 2, 0)
         layout.addWidget(self.new_btn, 2, 1)
+
+    @classmethod
+    def from_config(cls, image_correction_config: ImageCorrectionConfig) -> Self:
+        return cls(**dataclasses.asdict(image_correction_config))
 
     @property
     def correction_type(self) -> str:

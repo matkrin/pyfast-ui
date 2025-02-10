@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from pyfast_ui.channel_select_group import ChannelSelectGroup
-from pyfast_ui.config import Config
+from pyfast_ui.config import Config, init_config
 from pyfast_ui.creep_group import CreepGroup
 from pyfast_ui.custom_widgets import LabeledCombobox
 from pyfast_ui.drift_group import DriftGroup
@@ -33,7 +33,6 @@ from pyfast_ui.phase_group import PhaseGroup
 from pyfast_ui.workers import CreepWorker, DriftWorker, FftFilterWorker
 
 FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
-DEFAULT_COLORMAP = "bone"
 
 
 @final
@@ -68,7 +67,7 @@ class MainGui(QMainWindow):
         self.plot_windows: dict[int, MovieWindow] = dict()
         self.histogram_windows: dict[int, HistogramWindow] = dict()
         self.operate_on: int | None = None
-        config = Config()
+        config = init_config()
 
         self.operate_label = QLabel("Operate on: ")
 
@@ -76,75 +75,24 @@ class MainGui(QMainWindow):
         self.channel_select_group = ChannelSelectGroup()
         # Colormap
         self._colormap = LabeledCombobox("Colormap", plt.colormaps())
-        self._colormap.combobox.setCurrentText(config.colormap)
+        self._colormap.combobox.setCurrentText(config.general.colormap)
         # Histogram
         self.histogram_btn = QPushButton("Histogram")
         _ = self.histogram_btn.clicked.connect(self.on_histogram_btn)
 
-        self.phase_group = PhaseGroup(
-            apply_auto_xphase=config.apply_auto_xphase,
-            additional_x_phase=config.additional_x_phase,
-            manual_y_phase=config.manual_y_phase,
-            index_frame_to_correlate=config.index_frame_to_correlate,
-            sigma_gauss=config.sigma_gauss,
-        )
-        self.fft_filters_group = FFTFiltersGroup(
-            filter_x=config.filter_x,
-            filter_y=config.filter_y,
-            filter_x_overtones=config.filter_x_overtones,
-            filter_high_pass=config.filter_high_pass,
-            filter_pump=config.filter_pump,
-            filter_noise=config.filter_noise,
-            display_spectrum=config.display_spectrum,
-            filter_broadness=config.filter_broadness,
-            num_x_overtones=config.num_x_overtones,
-            high_pass_params=config.high_pass_params,
-            num_pump_overtones=config.num_pump_overtones,
-            pump_freqs=config.pump_freqs,
-            fft_display_range=config.fft_display_range
-        )
-        self.creep_group = CreepGroup(
-            creep_mode=config.creep_mode,
-            weight_boundry=config.weight_boundry,
-            creep_num_cols=config.creep_num_cols,
-            known_input=config.known_input,
-            initial_guess=config.initial_guess,
-            guess_ind=config.guess_ind,
-            known_params=config.known_params,
-        )
+        self.phase_group = PhaseGroup.from_config(config.phase)
+        self.fft_filters_group = FFTFiltersGroup.from_config(config.fft_filter)        # Creep
+        self.creep_group = CreepGroup.from_config(config.creep)        # TODO
+
         # TODO
-        streak_removal_group = QGroupBox("Streak Removal")
+        # streak_removal_group = QGroupBox("Streak Removal")
         # TODO
-        crop_group = QGroupBox("Crop")
-        self.drift_group = DriftGroup(
-            drift_algorithm=config.drift_algorithm,
-            fft_drift=config.fft_drift,
-            drifttype=config.drifttype,
-            stepsize=config.stepsize,
-            known_drift=config.known_drift,
-            stackreg_reference=config.stackreg_reference,
-            boxcar=config.boxcar,
-            median_filter=config.median_filter,
-        )
-        self.image_correction_group = ImageCorrectionGroup(
-            correction_type=config.correction_type,
-            align_type=config.align_type,
-        )
-        self.image_filter_group = ImageFilterGroup(
-            filter_type=config.filter_type,
-            pixel_width=config.pixel_width,
-        )
-        self.export_group = ExportGroup(
-            export_movie=config.export_movie,
-            export_tiff=config.export_tiff,
-            export_frames=config.export_frames,
-            frame_export_images=config.frame_export_images,
-            frame_export_channel=config.frame_export_channel,
-            scaling=config.scaling,
-            fps_factor=config.fps_factor,
-            frame_export_format=config.frame_export_format,
-            auto_label=config.auto_label,
-        )
+        # crop_group = QGroupBox("Crop")
+
+        self.drift_group = DriftGroup.from_config(config.drift)
+        self.image_correction_group = ImageCorrectionGroup.from_config(config.image_correction)
+        self.image_filter_group = ImageFilterGroup.from_config(config.image_filter)
+        self.export_group = ExportGroup.from_config(config.export)
 
         horizontal_layout = QHBoxLayout()
         vertical_layout_left = QVBoxLayout()

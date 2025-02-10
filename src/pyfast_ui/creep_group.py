@@ -1,4 +1,5 @@
-from typing import Literal, TypeAlias, final
+import dataclasses
+from typing import Literal, Self, TypeAlias, final
 from PySide6.QtWidgets import (
     QButtonGroup,
     QGridLayout,
@@ -8,9 +9,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pyfast_ui.config import CreepConfig
 from pyfast_ui.custom_widgets import LabeledDoubleSpinBox, LabeledSpinBox
-
-
 
 
 @final
@@ -87,6 +87,10 @@ class CreepGroup(QGroupBox):
         layout.addWidget(self.apply_btn, 2, 0, 1, 2)
         layout.addWidget(self.new_btn, 2, 2, 1, 2)
 
+    @classmethod
+    def from_config(cls, creep_config: CreepConfig) -> Self:
+        return cls(**dataclasses.asdict(creep_config))
+
     @property
     def creep_mode(self) -> str:
         selected_button = self.button_group.checkedButton()
@@ -104,6 +108,7 @@ class CreepGroup(QGroupBox):
         # initial_guess: float,
         # guess_ind: float,
         # known_params: float | None,
+
     @property
     def weight_boundry(self) -> float:
         return self._weight_boundry.value()
@@ -119,5 +124,3 @@ class CreepGroup(QGroupBox):
     @property
     def guess_ind(self) -> float:
         return self._guess_ind.value()
-
-

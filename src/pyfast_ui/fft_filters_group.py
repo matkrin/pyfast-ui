@@ -1,4 +1,5 @@
-from typing import final
+import dataclasses
+from typing import Self, final
 
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -10,6 +11,7 @@ from PySide6.QtWidgets import (
     QPushButton,
 )
 
+from pyfast_ui.config import FftFilterConfig
 from pyfast_ui.custom_widgets import (
     LabeledDoubleSpinBoxes,
     LabeledSpinBox,
@@ -102,6 +104,10 @@ class FFTFiltersGroup(QGroupBox):
 
         layout.addWidget(self.apply_btn, 8, 0)
         layout.addWidget(self.new_btn, 8, 1)
+
+    @classmethod
+    def from_config(cls, fft_filter_config: FftFilterConfig) -> Self:
+        return cls(**dataclasses.asdict(fft_filter_config))
 
     @property
     def filterparams(self) -> list[bool]:

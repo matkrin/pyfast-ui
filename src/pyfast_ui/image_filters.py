@@ -1,6 +1,8 @@
-from typing import final
+import dataclasses
+from typing import Self, final
 from PySide6.QtWidgets import QGridLayout, QGroupBox, QPushButton
 
+from pyfast_ui.config import ImageFilterConfig
 from pyfast_ui.custom_widgets import LabeledCombobox, LabeledSpinBox
 
 
@@ -24,6 +26,10 @@ class ImageFilterGroup(QGroupBox):
 
         layout.addWidget(self.apply_btn, 2, 0)
         layout.addWidget(self.new_btn, 2, 1)
+
+    @classmethod
+    def from_config(cls, image_filer_config: ImageFilterConfig) -> Self:
+        return cls(**dataclasses.asdict(image_filer_config))
 
     @property
     def filter_type(self) -> str:

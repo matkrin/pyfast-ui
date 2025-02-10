@@ -1,3 +1,5 @@
+import dataclasses
+from typing import Self
 import matplotlib.pyplot as plt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -10,6 +12,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
 )
+
+from pyfast_ui.config import ExportConfig
 
 
 class ExportGroup(QGroupBox):
@@ -98,6 +102,10 @@ class ExportGroup(QGroupBox):
         layout.addLayout(frame_export_format_layout, 6, 0, 1, 3)
         layout.addWidget(self._auto_label, 7, 0)
         layout.addWidget(self.apply_btn, 8, 0, 1, 3)
+
+    @classmethod
+    def from_config(cls, export_config: ExportConfig) -> Self:
+        return cls(**dataclasses.asdict(export_config))
 
     @property
     def export_movie(self) -> bool:
