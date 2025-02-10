@@ -380,8 +380,8 @@ dev = [{ name = "pyinstaller", specifier = ">=6.11.1" }]
 
 [[package]]
 name = "pyfastspm"
-version = "1.0.6.dev39"
-source = { git = "https://gitlab.com/fastspm/pyfastspm?branch=tum-latest#47bc4b64ca1d173e02f4ebafe8240e24363686ad" }
+version = "1.0.6.dev44"
+source = { git = "https://gitlab.com/fastspm/pyfastspm?branch=tum-latest#f7b4f716fa1ca8ad364ed2692e8e7868328a6b40" }
 dependencies = [
     { name = "h5py" },
     { name = "matplotlib" },

@@ -57,11 +57,11 @@ class MainGui(QMainWindow):
 
         self.thread_pool = QThreadPool()
 
-        # TEST BUTTON
-        # self.open_btn = QPushButton("Open test file")
-        # _ = self.open_btn.clicked.connect(self.on_open_btn_click)
-        #
-        # self.central_layout.addWidget(self.open_btn)
+        ### TEST BUTTON
+        self.open_btn = QPushButton("Open test file")
+        _ = self.open_btn.clicked.connect(self.on_open_btn_click)
+
+        self.central_layout.addWidget(self.open_btn)
         ###
 
         self.plot_windows: dict[int, MovieWindow] = dict()
@@ -124,6 +124,8 @@ class MainGui(QMainWindow):
             stepsize=10,
             known_drift=False,
             stackreg_reference="previous",
+            boxcar=50,
+            median_filter=True,
         )
         self.image_correction_group = ImageCorrectionGroup(
             correction_type="align", align_type="median"
@@ -396,6 +398,8 @@ class MainGui(QMainWindow):
         drifttype = self.drift_group.drift_type
         known_drift = self.drift_group.known_drift
         stackreg_reference = self.drift_group.stackreg_reference
+        boxcar = self.drift_group.boxcar
+        median_filter = self.drift_group.median_filter
 
         # if self.import_group.is_image_range:
         #     image_range = self.import_group.image_range
@@ -412,6 +416,8 @@ class MainGui(QMainWindow):
             known_drift=known_drift,
             drift_algorithm=drift_algorithm,
             stackreg_reference=stackreg_reference,
+            boxcar=boxcar,
+            median_filter=median_filter,
         )
 
         _ = drift_worker.signals.finished.connect(fast_movie_window.end_processing)

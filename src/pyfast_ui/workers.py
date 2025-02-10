@@ -128,6 +128,8 @@ class DriftWorker(QRunnable):
         known_drift: bool,
         drift_algorithm: str,
         stackreg_reference: str,
+        boxcar: int,
+        median_filter: bool,
     ) -> None:
         super().__init__()
 
@@ -138,12 +140,19 @@ class DriftWorker(QRunnable):
         self.known_drift = known_drift
         self.drift_algorithm = drift_algorithm
         self.stackreg_reference = stackreg_reference
+        self.boxcar = boxcar
+        self.median_filter = median_filter
         self.signals = WorkerSignals()
 
     @override
     def run(self) -> None:
         if self.fft_drift:
-            driftrem = pf.Drift(self.ft, stepsize=self.stepsize, boxcar=True)
+            driftrem = pf.Drift(
+                self.ft,
+                stepsize=self.stepsize,
+                boxcar=self.boxcar,
+                median_filter=self.median_filter,
+            )
             corrected_data, drift_path = driftrem.correct(
                 self.drifttype,
                 algorithm=self.drift_algorithm,

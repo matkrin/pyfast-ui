@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pyfast_ui.custom_widgets import LabeledSpinBox
+
 
 @final
 class DriftGroup(QGroupBox):
@@ -22,6 +24,8 @@ class DriftGroup(QGroupBox):
         stepsize: int,
         known_drift: bool,
         stackreg_reference: str,
+        boxcar: int,
+        median_filter: bool,
     ) -> None:
         super().__init__("Drift")
         layout = QVBoxLayout()
@@ -44,7 +48,6 @@ class DriftGroup(QGroupBox):
                 self._drift_type_common.setChecked(True)
             case "full":
                 self._drift_type_full.setChecked(True)
-
 
         self._drift_algo_correlation = QRadioButton("correlation", self)
         self._drift_algo_stackreg = QRadioButton("stackreg", self)
@@ -69,6 +72,8 @@ class DriftGroup(QGroupBox):
             case _ if known_drift:
                 self._known_drift.setChecked(True)
 
+        self._drift_filter_group = DriftFilterGroup(boxcar, median_filter)
+
         self.correlation_group = CorreclationGroup(
             fft_drift, drifttype, stepsize, known_drift
         )
@@ -82,6 +87,7 @@ class DriftGroup(QGroupBox):
         layout.addLayout(drift_algo_layout)
         layout.addWidget(self.correlation_group)
         layout.addWidget(self.stackreg_group)
+        layout.addWidget(self._drift_filter_group)
 
         btn_layout = QHBoxLayout()
         btn_layout.addWidget(self.apply_btn)
@@ -115,6 +121,14 @@ class DriftGroup(QGroupBox):
     def known_drift(self) -> bool:
         # return self.correlation_group.known_drift.isChecked()
         return self._known_drift.isChecked()
+
+    @property
+    def boxcar(self) -> int:
+        return self._drift_filter_group.boxcar.value()
+
+    @property
+    def median_filter(self) -> bool:
+        return self._drift_filter_group.median_filter.isChecked()
 
 
 @final
@@ -186,3 +200,23 @@ class StackregGroup(QGroupBox):
     def reference(self) -> str:
         selected_button = self._reference_btn_group.checkedButton()
         return selected_button.text()
+
+
+@final
+class DriftFilterGroup(QGroupBox):
+    def __init__(self, boxcar: int, median_filter: bool) -> None:
+        super().__init__("Filter")
+        layout = QHBoxLayout()
+        self.setLayout(layout)
+
+        self.boxcar = LabeledSpinBox("Boxcar width", boxcar)
+
+        median_filter_label = QLabel("Median filter")
+        self.median_filter = QCheckBox()
+        self.median_filter.setChecked(median_filter)
+        median_filter_layout = QHBoxLayout()
+        median_filter_layout.addWidget(self.median_filter)
+        median_filter_layout.addWidget(median_filter_label)
+
+        layout.addWidget(self.boxcar)
+        layout.addLayout(median_filter_layout)
