@@ -1,5 +1,5 @@
-import dataclasses
-from typing import Literal, Self, TypeAlias, final
+from typing import Self, final
+
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -98,7 +98,7 @@ class DriftGroup(QGroupBox):
 
     @classmethod
     def from_config(cls, drift_config: DriftConfig) -> Self:
-        return cls(**dataclasses.asdict(drift_config))
+        return cls(**drift_config.model_dump())
 
     @property
     def drift_algorithm(self) -> str:

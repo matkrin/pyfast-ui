@@ -1,20 +1,40 @@
 import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
-import tomllib
-from typing import Self
+from typing import Literal, Self, TypeAlias
 
 import tomli_w
+import tomllib
+from pydantic import BaseModel
+
+ChannelType: TypeAlias = Literal[
+    "udi",
+    "udf",
+    "udb",
+    "uf",
+    "ub",
+    "df",
+    "db",
+    "ui",
+    "di",
+]
+
+FrameExportChannel: TypeAlias = Literal[
+    "ui",
+    "di",
+    "uf",
+    "ub",
+    "df",
+    "db",
+]
 
 
-@dataclass
-class GeneralConfig:
-    channel: str = "udi"
+class GeneralConfig(BaseModel):
+    channel: ChannelType = "udi"
     colormap: str = "bone"
 
 
-@dataclass
-class PhaseConfig:
+class PhaseConfig(BaseModel):
     apply_auto_xphase: bool = True
     additional_x_phase: int = 0
     manual_y_phase: int = 0
@@ -22,8 +42,7 @@ class PhaseConfig:
     sigma_gauss: int = 0
 
 
-@dataclass
-class FftFilterConfig:
+class FftFilterConfig(BaseModel):
     filter_x: bool = True
     filter_y: bool = True
     filter_x_overtones: bool = False
@@ -42,9 +61,8 @@ class FftFilterConfig:
     fft_display_range: tuple[int, int] = (0, 40_000)
 
 
-@dataclass
-class CreepConfig:
-    creep_mode: str = "sin"
+class CreepConfig(BaseModel):
+    creep_mode: Literal["sin", "root", "bezier"] = "sin"
     weight_boundry: float = 0.0
     creep_num_cols: int = 3
     known_input: tuple[float, float, float] | None = None
@@ -53,32 +71,28 @@ class CreepConfig:
     known_params: float | None = None
 
 
-@dataclass
-class DriftConfig:
-    drift_algorithm: str = "correlation"
+class DriftConfig(BaseModel):
+    drift_algorithm: Literal["correlation", "stackreg", "known"] = "correlation"
     fft_drift: bool = True
-    drifttype: str = "common"
+    drifttype: Literal["common", "full"] = "common"
     stepsize: int = 10
     known_drift: bool = False
-    stackreg_reference: str = "previous"
+    stackreg_reference: Literal["previous", "first", "mean"] = "previous"
     boxcar: int = 50
     median_filter: bool = True
 
 
-@dataclass
-class ImageCorrectionConfig:
-    correction_type: str = "align"
-    align_type: str = "median"
+class ImageCorrectionConfig(BaseModel):
+    correction_type: Literal["align", "plane", "fixzero"] = "align"
+    align_type: Literal["median", "mean", "poly2", "poly3"] = "median"
 
 
-@dataclass
-class ImageFilterConfig:
-    filter_type: str = "gaussian2d"
+class ImageFilterConfig(BaseModel):
+    filter_type: Literal["gaussian2d", "median2d", "mean2d"] = "gaussian2d"
     pixel_width: int = 3
 
 
-@dataclass
-class ExportConfig:
+class ExportConfig(BaseModel):
     export_movie: bool = True
     export_tiff: bool = True
     export_frames: bool = False
@@ -86,12 +100,11 @@ class ExportConfig:
     fps_factor: int = 5
     auto_label: bool = True
     frame_export_images: tuple[int, int] = (0, 1)
-    frame_export_channel: str = "udi"
-    frame_export_format: str = "gwy"
+    frame_export_channel: FrameExportChannel = "ui"
+    frame_export_format: Literal["gwy", "png", "jpg", "bmp"] = "gwy"
 
 
-@dataclass
-class Config:
+class Config(BaseModel):
     general: GeneralConfig = field(default_factory=GeneralConfig)
     phase: PhaseConfig = field(default_factory=PhaseConfig)
     fft_filter: FftFilterConfig = field(default_factory=FftFilterConfig)
@@ -104,7 +117,7 @@ class Config:
     export: ExportConfig = field(default_factory=ExportConfig)
 
     def save_toml(self, tomlfile: Path) -> None:
-        config = dataclasses.asdict(self)
+        config = self.model_dump()
         for key, value in config.items():
             if value is None:
                 config[key] = "None"

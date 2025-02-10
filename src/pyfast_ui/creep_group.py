@@ -1,5 +1,5 @@
-import dataclasses
-from typing import Literal, Self, TypeAlias, final
+from typing import Self, final
+
 from PySide6.QtWidgets import (
     QButtonGroup,
     QGridLayout,
@@ -89,7 +89,7 @@ class CreepGroup(QGroupBox):
 
     @classmethod
     def from_config(cls, creep_config: CreepConfig) -> Self:
-        return cls(**dataclasses.asdict(creep_config))
+        return cls(**creep_config.model_dump())
 
     @property
     def creep_mode(self) -> str:

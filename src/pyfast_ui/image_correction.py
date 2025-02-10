@@ -1,5 +1,5 @@
-import dataclasses
 from typing import Self, final
+
 from PySide6.QtWidgets import QGridLayout, QGroupBox, QPushButton
 
 from pyfast_ui.config import ImageCorrectionConfig
@@ -31,7 +31,7 @@ class ImageCorrectionGroup(QGroupBox):
 
     @classmethod
     def from_config(cls, image_correction_config: ImageCorrectionConfig) -> Self:
-        return cls(**dataclasses.asdict(image_correction_config))
+        return cls(**image_correction_config.model_dump())
 
     @property
     def correction_type(self) -> str:

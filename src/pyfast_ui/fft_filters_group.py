@@ -1,4 +1,3 @@
-import dataclasses
 from typing import Self, final
 
 from PySide6.QtWidgets import (
@@ -107,7 +106,7 @@ class FFTFiltersGroup(QGroupBox):
 
     @classmethod
     def from_config(cls, fft_filter_config: FftFilterConfig) -> Self:
-        return cls(**dataclasses.asdict(fft_filter_config))
+        return cls(**fft_filter_config.model_dump())
 
     @property
     def filterparams(self) -> list[bool]:

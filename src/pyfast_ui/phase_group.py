@@ -1,4 +1,3 @@
-import dataclasses
 from typing import Self, final
 
 from PySide6.QtWidgets import (
@@ -81,7 +80,7 @@ class PhaseGroup(QGroupBox):
 
     @classmethod
     def from_config(cls, phase_config: PhaseConfig) -> Self:
-        return cls(**dataclasses.asdict(phase_config))
+        return cls(**phase_config.model_dump())
 
     @property
     def apply_auto_xphase(self) -> bool:

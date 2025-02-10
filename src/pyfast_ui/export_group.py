@@ -1,6 +1,5 @@
-import dataclasses
 from typing import Self
-import matplotlib.pyplot as plt
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -105,7 +104,7 @@ class ExportGroup(QGroupBox):
 
     @classmethod
     def from_config(cls, export_config: ExportConfig) -> Self:
-        return cls(**dataclasses.asdict(export_config))
+        return cls(**export_config.model_dump())
 
     @property
     def export_movie(self) -> bool:

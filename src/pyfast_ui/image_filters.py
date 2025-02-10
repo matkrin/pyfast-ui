@@ -1,5 +1,5 @@
-import dataclasses
 from typing import Self, final
+
 from PySide6.QtWidgets import QGridLayout, QGroupBox, QPushButton
 
 from pyfast_ui.config import ImageFilterConfig
@@ -29,7 +29,7 @@ class ImageFilterGroup(QGroupBox):
 
     @classmethod
     def from_config(cls, image_filer_config: ImageFilterConfig) -> Self:
-        return cls(**dataclasses.asdict(image_filer_config))
+        return cls(**image_filer_config.model_dump())
 
     @property
     def filter_type(self) -> str:
