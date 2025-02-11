@@ -96,14 +96,20 @@ class DriftGroup(QGroupBox):
         btn_layout.addWidget(self.new_btn)
         layout.addLayout(btn_layout)
 
-    @classmethod
-    def from_config(cls, drift_config: DriftConfig) -> Self:
-        return cls(**drift_config.model_dump())
-
     @property
     def drift_algorithm(self) -> str:
         selected_button = self._drift_algo_button_group.checkedButton()
         return selected_button.text()
+
+    @drift_algorithm.setter
+    def drift_algorithm(self, value: str) -> None:
+        match value:
+            case "correlation":
+                self._drift_algo_correlation.setChecked(True)
+            case "stackreg":
+                self._drift_algo_stackreg.setChecked(True)
+            case _:
+                self._known_drift.setChecked(True)
 
     @property
     def stackreg_reference(self) -> str:
@@ -114,27 +120,83 @@ class DriftGroup(QGroupBox):
         # return self.correlation_group.fft_drift.isChecked()
         return True
 
+    @fft_drift.setter
+    def fft_drift(self, value: bool) -> None:
+        self.correlation_group.fft_drift = value
+
     @property
     def drift_type(self) -> str:
         selected_button = self._drift_type_button_group.checkedButton()
         return selected_button.text()
 
+    @drift_type.setter
+    def drift_type(self, value: str) -> None:
+        match value:
+            case "common":
+                self._drift_type_common.setChecked(True)
+            case "full":
+                self._drift_type_full.setChecked(True)
+            case _:
+                raise ValueError("drift type must be 'common' or 'full'")
+
     @property
     def stepsize(self) -> int:
         return self.correlation_group.stepsize.value()
+
+    @stepsize.setter
+    def stepsize(self, value: int) -> None:
+        self.correlation_group.stepsize.setValue(value)
 
     @property
     def known_drift(self) -> bool:
         # return self.correlation_group.known_drift.isChecked()
         return self._known_drift.isChecked()
 
+    @known_drift.setter
+    def known_drift(self, value: bool) -> None:
+        self._known_drift.setChecked(value)
+
     @property
     def boxcar(self) -> int:
         return self._drift_filter_group.boxcar.value()
 
+    @boxcar.setter
+    def boxcar(self, value: int) -> None:
+        self._drift_filter_group.boxcar.setValue(value)
+
     @property
     def median_filter(self) -> bool:
         return self._drift_filter_group.median_filter.isChecked()
+
+    @median_filter.setter
+    def median_filter(self, value: bool) -> None:
+        self._drift_filter_group.median_filter.setChecked(value)
+
+    @classmethod
+    def from_config(cls, drift_config: DriftConfig) -> Self:
+        return cls(**drift_config.model_dump())
+
+    def update_from_config(self, drift_config: DriftConfig) -> None:
+        self.drift_algorithm = drift_config.drift_algorithm
+        self.stackreg_group.reference = drift_config.stackreg_reference
+        self.fft_drift = drift_config.fft_drift
+        self.drift_type = drift_config.drifttype
+        self.stepsize = drift_config.stepsize
+        self.known_drift = drift_config.known_drift
+        self.boxcar = drift_config.boxcar
+        self.median_filter = drift_config.median_filter
+
+    def to_config(self) -> DriftConfig:
+        return DriftConfig(
+            drift_algorithm=self.drift_algorithm,
+            fft_drift=self.fft_drift,
+            drifttype=self.drift_type,
+            stepsize=self.stepsize,
+            known_drift=self.known_drift,
+            stackreg_reference=self.stackreg_reference,
+            boxcar=self.boxcar,
+            median_filter=self.median_filter,
+        )
 
 
 @final
@@ -149,6 +211,7 @@ class CorreclationGroup(QGroupBox):
         ## FFT Drift
         # self.fft_drift = QCheckBox("FFT Drift", self)
         # self.fft_drift.setChecked(fft_drift)
+        self.fft_drift = fft_drift
 
         # Stepsize
         self.stepsize = QSpinBox(self)
@@ -194,6 +257,10 @@ class StackregGroup(QGroupBox):
                 self._reference_first.setChecked(True)
             case "mean":
                 self._reference_mean.setChecked(True)
+            case _:
+                raise ValueError(
+                    "stack reference must be 'previous', 'first' or 'mean'"
+                )
 
         reference_layout = QHBoxLayout()
         reference_layout.addWidget(self._reference_previous)
@@ -206,6 +273,20 @@ class StackregGroup(QGroupBox):
     def reference(self) -> str:
         selected_button = self._reference_btn_group.checkedButton()
         return selected_button.text()
+
+    @reference.setter
+    def reference(self, value: str) -> None:
+        match value:
+            case "previous":
+                self._reference_previous.setChecked(True)
+            case "first":
+                self._reference_first.setChecked(True)
+            case "mean":
+                self._reference_mean.setChecked(True)
+            case _:
+                raise ValueError(
+                    "stack reference must be 'previous', 'first' or 'mean'"
+                )
 
 
 @final

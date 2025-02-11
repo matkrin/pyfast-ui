@@ -156,3 +156,6 @@ class LabeledCombobox(QWidget):
 
     def value(self) -> str:
         return self.combobox.currentText()
+
+    def set_value(self, value: str) -> None:
+        self.combobox.setCurrentText(value)

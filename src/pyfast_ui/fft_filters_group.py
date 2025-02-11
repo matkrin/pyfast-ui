@@ -104,10 +104,6 @@ class FFTFiltersGroup(QGroupBox):
         layout.addWidget(self.apply_btn, 8, 0)
         layout.addWidget(self.new_btn, 8, 1)
 
-    @classmethod
-    def from_config(cls, fft_filter_config: FftFilterConfig) -> Self:
-        return cls(**fft_filter_config.model_dump())
-
     @property
     def filterparams(self) -> list[bool]:
         return [
@@ -124,52 +120,140 @@ class FFTFiltersGroup(QGroupBox):
     def filter_x(self) -> bool:
         return self._filter_x.isChecked()
 
+    @filter_x.setter
+    def filter_x(self, value: bool) -> None:
+        self._filter_x.setChecked(value)
+
     @property
     def filter_y(self) -> bool:
         return self._filter_y.isChecked()
+
+    @filter_y.setter
+    def filter_y(self, value: bool) -> None:
+        self._filter_y.setChecked(value)
 
     @property
     def filter_x_overtones(self) -> bool:
         return self._filter_x_overtones.isChecked()
 
+    @filter_x_overtones.setter
+    def filter_x_overtones(self, value: bool) -> None:
+        self._filter_x_overtones.setChecked(value)
+
     @property
     def filter_high_pass(self) -> bool:
         return self._filter_high_pass.isChecked()
+
+    @filter_high_pass.setter
+    def filter_high_pass(self, value: bool) -> None:
+        self._filter_high_pass.setChecked(value)
 
     @property
     def filter_pump(self) -> bool:
         return self._filter_pump.isChecked()
 
+    @filter_pump.setter
+    def filter_pump(self, value: bool) -> None:
+        self._filter_pump.setChecked(value)
+
     @property
     def filter_noise(self) -> bool:
         return self._filter_noise.isChecked()
 
+    @filter_noise.setter
+    def filter_noise(self, value: bool) -> None:
+        self._filter_noise.setChecked(value)
+
     @property
     def display_spectrum(self) -> bool:
         return self._display_spectrum.isChecked()
+
+    @display_spectrum.setter
+    def display_spectrum(self, value: bool) -> None:
+        self._display_spectrum.setChecked(value)
 
     @property
     def filter_broadness(self) -> int | None:
         filter_broadness = self._filter_broadness.value()
         return None if filter_broadness == 0 else filter_broadness
 
+    @filter_broadness.setter
+    def filter_broadness(self, value: int | None) -> None:
+        self._filter_broadness.setValue(value or 0)
+
     @property
     def num_x_overtones(self) -> int:
         return self._num_x_overtones.value()
+
+    @num_x_overtones.setter
+    def num_x_overtones(self, value: int) -> None:
+        self._num_x_overtones.setValue(value)
 
     @property
     def high_pass_params(self) -> tuple[float, float]:
         return self._high_pass_params.value()
 
+    @high_pass_params.setter
+    def high_pass_params(self, value: tuple[float, float]) -> None:
+        self._high_pass_params.setValue(value)
+
     @property
     def num_pump_overtones(self) -> int:
         return self._num_pump_overtones.value()
+
+    @num_pump_overtones.setter
+    def num_pump_overtones(self, value: int) -> None:
+        self._num_pump_overtones.setValue(value)
 
     @property
     def pump_freqs(self) -> list[float]:
         pump_freqs_text = self._pump_freqs.text()
         return [float(x) for x in pump_freqs_text.split(",")]
 
+    @pump_freqs.setter
+    def pump_freqs(self, values: list[float]) -> None:
+        self._pump_freqs.setText(",".join(str(x) for x in values))
+
     @property
     def fft_display_range(self) -> tuple[int, int]:
         return self._fft_display_range.value()
+
+    @fft_display_range.setter
+    def fft_display_range(self, value: tuple[int, int]) -> None:
+        self._fft_display_range.setValue(value)
+
+    @classmethod
+    def from_config(cls, fft_filter_config: FftFilterConfig) -> Self:
+        return cls(**fft_filter_config.model_dump())
+
+    def update_from_config(self, fft_filter_config: FftFilterConfig) -> None:
+        self.filter_x = fft_filter_config.filter_x
+        self.filter_y = fft_filter_config.filter_y
+        self.filter_x_overtones = fft_filter_config.filter_x_overtones
+        self.filter_high_pass = fft_filter_config.filter_high_pass
+        self.filter_pump = fft_filter_config.filter_pump
+        self.filter_noise = fft_filter_config.filter_noise
+        self.display_spectrum = fft_filter_config.display_spectrum
+        self.filter_broadness = fft_filter_config.filter_broadness
+        self.num_x_overtones = fft_filter_config.num_x_overtones
+        self.high_pass_params = fft_filter_config.high_pass_params
+        self.num_pump_overtones = fft_filter_config.num_pump_overtones
+        self.pump_freqs = fft_filter_config.pump_freqs
+        self.fft_display_range = fft_filter_config.fft_display_range
+
+    def to_config(self) -> FftFilterConfig:
+        return FftFilterConfig(
+            filter_x=self.filter_x,
+            filter_y=self.filter_y,
+            filter_x_overtones=self.filter_x_overtones,
+            filter_high_pass=self.filter_high_pass,
+            filter_pump=self.filter_pump,
+            filter_noise=self.filter_noise,
+            display_spectrum=self.display_spectrum,
+            filter_broadness=self.filter_broadness,
+            num_x_overtones=self.num_x_overtones,
+            high_pass_params=self.high_pass_params,
+            num_pump_overtones=self.num_pump_overtones,
+            pump_freqs=self.pump_freqs,
+            fft_display_range=self.fft_display_range,
+        )

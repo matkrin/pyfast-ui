@@ -1,5 +1,4 @@
-import dataclasses
-from dataclasses import dataclass, field
+from dataclasses import field
 from pathlib import Path
 from typing import Literal, Self, TypeAlias
 
@@ -54,10 +53,10 @@ class FftFilterConfig(BaseModel):
     num_x_overtones: int = 10
     high_pass_params: tuple[float, float] = (1000.0, 600.0)
     num_pump_overtones: int = 3
-    pump_freqs: tuple[float, float] = (
+    pump_freqs: list[float] = [
         1500.0,
         1000.0,
-    )
+    ]
     fft_display_range: tuple[int, int] = (0, 40_000)
 
 

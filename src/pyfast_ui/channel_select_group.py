@@ -35,3 +35,7 @@ class ChannelSelectGroup(QWidget):
     @property
     def channel(self) -> str:
         return self._channel.value()
+
+    @channel.setter
+    def channel(self, value: str) -> None:
+        self._channel.set_value(value)

@@ -27,14 +27,32 @@ class ImageFilterGroup(QGroupBox):
         layout.addWidget(self.apply_btn, 2, 0)
         layout.addWidget(self.new_btn, 2, 1)
 
-    @classmethod
-    def from_config(cls, image_filer_config: ImageFilterConfig) -> Self:
-        return cls(**image_filer_config.model_dump())
-
     @property
     def filter_type(self) -> str:
         return self._filter_type.value()
 
+    @filter_type.setter
+    def filter_type(self, value: str) -> None:
+        self._filter_type.set_value(value)
+
     @property
     def pixel_width(self) -> int:
         return self._pixel_width.value()
+
+    @pixel_width.setter
+    def pixel_width(self, value: int) -> None:
+        self._pixel_width.setValue(value)
+
+    @classmethod
+    def from_config(cls, image_filer_config: ImageFilterConfig) -> Self:
+        return cls(**image_filer_config.model_dump())
+
+    def update_from_config(self, image_filer_config: ImageFilterConfig) -> None:
+        self.filter_type = image_filer_config.filter_type
+        self.pixel_width = image_filer_config.pixel_width
+
+    def to_config(self) -> ImageFilterConfig:
+        return ImageFilterConfig(
+            filter_type=self.filter_type,
+            pixel_width=self.pixel_width,
+        )

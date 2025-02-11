@@ -1,3 +1,4 @@
+from pathlib import Path
 import sys
 from typing import final, override
 
@@ -8,7 +9,6 @@ from PySide6.QtGui import QCloseEvent, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from pyfast_ui.channel_select_group import ChannelSelectGroup
-from pyfast_ui.config import Config, init_config
+from pyfast_ui.config import Config, GeneralConfig, init_config
 from pyfast_ui.creep_group import CreepGroup
 from pyfast_ui.custom_widgets import LabeledCombobox
 from pyfast_ui.drift_group import DriftGroup
@@ -71,7 +71,13 @@ class MainGui(QMainWindow):
 
         self.operate_label = QLabel("Operate on: ")
 
-        self.import_btn = QPushButton("Import")
+        config_layout = QHBoxLayout()
+        self.load_config_btn = QPushButton("Load config")
+        self.save_config_btn = QPushButton("Save config")
+        config_layout.addWidget(self.load_config_btn)
+        config_layout.addWidget(self.save_config_btn)
+
+        self.import_btn = QPushButton("Import movie")
         self.channel_select_group = ChannelSelectGroup()
         # Colormap
         self._colormap = LabeledCombobox("Colormap", plt.colormaps())
@@ -81,8 +87,8 @@ class MainGui(QMainWindow):
         _ = self.histogram_btn.clicked.connect(self.on_histogram_btn)
 
         self.phase_group = PhaseGroup.from_config(config.phase)
-        self.fft_filters_group = FFTFiltersGroup.from_config(config.fft_filter)        # Creep
-        self.creep_group = CreepGroup.from_config(config.creep)        # TODO
+        self.fft_filters_group = FFTFiltersGroup.from_config(config.fft_filter)
+        self.creep_group = CreepGroup.from_config(config.creep)
 
         # TODO
         # streak_removal_group = QGroupBox("Streak Removal")
@@ -90,7 +96,9 @@ class MainGui(QMainWindow):
         # crop_group = QGroupBox("Crop")
 
         self.drift_group = DriftGroup.from_config(config.drift)
-        self.image_correction_group = ImageCorrectionGroup.from_config(config.image_correction)
+        self.image_correction_group = ImageCorrectionGroup.from_config(
+            config.image_correction
+        )
         self.image_filter_group = ImageFilterGroup.from_config(config.image_filter)
         self.export_group = ExportGroup.from_config(config.export)
 
@@ -98,6 +106,7 @@ class MainGui(QMainWindow):
         vertical_layout_left = QVBoxLayout()
         vertical_layout_right = QVBoxLayout()
         vertical_layout_left.addWidget(self.operate_label)
+        vertical_layout_left.addLayout(config_layout)
         vertical_layout_left.addWidget(self.import_btn)
         vertical_layout_left.addWidget(self.channel_select_group)
         vertical_layout_left.addWidget(self._colormap)
@@ -113,9 +122,11 @@ class MainGui(QMainWindow):
         horizontal_layout.addLayout(vertical_layout_right)
         self.central_layout.addLayout(horizontal_layout)
 
-        # Connect signalsin
+        # Connect signals
+        _ = self.load_config_btn.clicked.connect(self.load_config)
+        _ = self.save_config_btn.clicked.connect(self.save_config)
         _ = self.import_btn.clicked.connect(self.on_import_btn_click)
-        _ = self.channel_select_group.new_btn.clicked.connect(self.on_modify_new_btn)
+        _ = self.channel_select_group.new_btn.clicked.connect(self.on_channel_select_new)
         _ = self._colormap.value_changed.connect(self.update_colormap)
         _ = self.phase_group.apply_btn.clicked.connect(self.on_phase_apply)
         _ = self.phase_group.new_btn.clicked.connect(self.on_phase_new)
@@ -190,11 +201,56 @@ class MainGui(QMainWindow):
         else:
             print("No file chosen.")
 
+    def save_config(self) -> None:
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            caption="Save TOML config as...",
+            # directory="",
+            filter="TOML Files (*.toml)",
+        )
+        filepath = Path(filepath).with_suffix(".toml")
+
+        general_config = GeneralConfig(
+            channel=self.channel_select_group.channel, colormap=self._colormap.value()
+        )
+        config = Config(
+            general=general_config,
+            phase=self.phase_group.to_config(),
+            fft_filter=self.fft_filters_group.to_config(),
+            creep=self.creep_group.to_config(),
+            drift=self.drift_group.to_config(),
+            image_correction=self.image_correction_group.to_config(),
+            image_filter=self.image_filter_group.to_config(),
+            export=self.export_group.to_config(),
+        )
+        config.save_toml(filepath)
+
+    def load_config(self) -> None:
+        filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            caption="Choose toml config file",
+            # dir="",
+            filter="TOML Files (*.toml)",
+        )
+
+        config = Config.load_toml(Path(filepath))
+        self._colormap.set_value(config.general.colormap)
+        self.update_colormap(config.general.colormap)
+        self.channel_select_group.channel = config.general.channel
+
+        self.phase_group.update_from_config(config.phase)
+        self.fft_filters_group.update_from_config(config.fft_filter)
+        self.creep_group.update_from_config(config.creep)
+        self.drift_group.update_from_config(config.drift)
+        self.image_correction_group.update_from_config(config.image_correction)
+        self.image_filter_group.update_from_config(config.image_filter)
+        self.export_group.update_from_config(config.export)
+
     def update_colormap(self, value: str) -> None:
         for movie_window in self.plot_windows.values():
             movie_window.set_colormap(value)
 
-    def on_modify_new_btn(self) -> None:
+    def on_channel_select_new(self) -> None:
         if self.operate_on is None:
             return
         fast_movie_window = self.plot_windows.get(self.operate_on)

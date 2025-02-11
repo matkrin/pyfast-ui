@@ -29,6 +29,9 @@ class CreepGroup(QGroupBox):
         layout = QGridLayout()
         self.setLayout(layout)
 
+        self.known_input = known_input
+        self.known_params = known_params
+
         # Create four radio buttons
         self._none = QRadioButton("None", self)
         self._sin = QRadioButton("sin", self)
@@ -87,40 +90,79 @@ class CreepGroup(QGroupBox):
         layout.addWidget(self.apply_btn, 2, 0, 1, 2)
         layout.addWidget(self.new_btn, 2, 2, 1, 2)
 
-    @classmethod
-    def from_config(cls, creep_config: CreepConfig) -> Self:
-        return cls(**creep_config.model_dump())
-
     @property
     def creep_mode(self) -> str:
         selected_button = self.button_group.checkedButton()
-        if selected_button:
-            button_text = selected_button.text()
-            if button_text == "None":
-                return "None"
+        button_text = selected_button.text()
+        if button_text == "None":
+            return "None"
 
-            return button_text
+        return button_text
 
-        # creep_mode: CreepModeType,
-        # weight_boundry: float,
-        # creep_num_cols: int,
-        # known_input: tuple[float, float, float] | None,
-        # initial_guess: float,
-        # guess_ind: float,
-        # known_params: float | None,
+    @creep_mode.setter
+    def creep_mode(self, value: str) -> None:
+        match value:
+            case "None" | None:
+                self._none.setChecked(True)
+            case "sin":
+                self._sin.setChecked(True)
+            case "bezier":
+                self._bezier.setChecked(True)
+            case "root":
+                self._root.setChecked(True)
 
     @property
     def weight_boundry(self) -> float:
         return self._weight_boundry.value()
 
+    @weight_boundry.setter
+    def weight_boundry(self, value: float) -> None:
+        self._weight_boundry.setValue(value)
+
     @property
     def creep_num_cols(self) -> int:
         return self._creep_num_cols.value()
+
+    @creep_num_cols.setter
+    def creep_num_cols(self, value: int) -> None:
+        self._creep_num_cols.setValue(value)
 
     @property
     def initial_guess(self) -> float:
         return self._initial_guess.value()
 
+    @initial_guess.setter
+    def initial_guess(self, value: float) -> None:
+        self._initial_guess.setValue(value)
+
     @property
     def guess_ind(self) -> float:
         return self._guess_ind.value()
+
+    @guess_ind.setter
+    def guess_ind(self, value: float) -> None:
+        self._guess_ind.setValue(value)
+
+    @classmethod
+    def from_config(cls, creep_config: CreepConfig) -> Self:
+        return cls(**creep_config.model_dump())
+
+    def update_from_config(self, creep_config: CreepConfig) -> None:
+        self.creep_mode = creep_config.creep_mode
+        self.weight_boundry = creep_config.weight_boundry
+        self.creep_num_cols = creep_config.creep_num_cols
+        self.initial_guess = creep_config.initial_guess
+        self.guess_ind = creep_config.guess_ind
+        self.known_input = creep_config.known_input
+        self.known_params = creep_config.known_params
+
+    def to_config(self) -> CreepConfig:
+        return CreepConfig(
+            creep_mode=self.creep_mode,
+            weight_boundry=self.weight_boundry,
+            creep_num_cols=self.creep_num_cols,
+            known_input=self.known_input,
+            initial_guess=self.initial_guess,
+            guess_ind=self.guess_ind,
+            known_params=self.known_params,
+        )

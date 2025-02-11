@@ -78,26 +78,62 @@ class PhaseGroup(QGroupBox):
         btn_layout.addWidget(self.new_btn)
         layout.addLayout(btn_layout, 3, 0, 1, 2)
 
-    @classmethod
-    def from_config(cls, phase_config: PhaseConfig) -> Self:
-        return cls(**phase_config.model_dump())
-
     @property
     def apply_auto_xphase(self) -> bool:
         return self._apply_auto_xphase.isChecked()
+
+    @apply_auto_xphase.setter
+    def apply_auto_xphase(self, value: bool) -> None:
+        self._apply_auto_xphase.setChecked(value)
 
     @property
     def additional_x_phase(self) -> int:
         return self._additional_x_phase.value()
 
+    @additional_x_phase.setter
+    def additional_x_phase(self, value: int) -> None:
+        self._additional_x_phase.setValue(value)
+
     @property
     def manual_y_phase(self) -> int:
         return self._manual_y_phase.value()
+
+    @manual_y_phase.setter
+    def manual_y_phase(self, value: int) -> None:
+        self._manual_y_phase.setValue(value)
 
     @property
     def index_frame_to_correlate(self) -> int:
         return self._index_frame_to_correlate.value()
 
+    @index_frame_to_correlate.setter
+    def index_frame_to_correlate(self, value: int) -> None:
+        self._index_frame_to_correlate.setValue(value)
+
     @property
     def sigma_gauss(self) -> int:
         return self._sigma_gauss.value()
+
+    @sigma_gauss.setter
+    def sigma_gauss(self, value: int) -> None:
+        self._sigma_gauss.setValue(value)
+
+    @classmethod
+    def from_config(cls, phase_config: PhaseConfig) -> Self:
+        return cls(**phase_config.model_dump())
+
+    def update_from_config(self, phase_config: PhaseConfig) -> None:
+        self.apply_auto_xphase = phase_config.apply_auto_xphase
+        self.additional_x_phase = phase_config.additional_x_phase
+        self.manual_y_phase = phase_config.manual_y_phase
+        self.index_frame_to_correlate = phase_config.index_frame_to_correlate
+        self.sigma_gauss = phase_config.sigma_gauss
+
+    def to_config(self) -> PhaseConfig:
+        return PhaseConfig(
+            apply_auto_xphase=self.apply_auto_xphase,
+            additional_x_phase=self.additional_x_phase,
+            manual_y_phase=self.manual_y_phase,
+            index_frame_to_correlate=self.index_frame_to_correlate,
+            sigma_gauss=self.sigma_gauss,
+        )

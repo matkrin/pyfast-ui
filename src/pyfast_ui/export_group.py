@@ -102,21 +102,29 @@ class ExportGroup(QGroupBox):
         layout.addWidget(self._auto_label, 7, 0)
         layout.addWidget(self.apply_btn, 8, 0, 1, 3)
 
-    @classmethod
-    def from_config(cls, export_config: ExportConfig) -> Self:
-        return cls(**export_config.model_dump())
-
     @property
     def export_movie(self) -> bool:
         return self._export_movie.isChecked()
+
+    @export_movie.setter
+    def export_movie(self, value: bool) -> None:
+        self._export_movie.setChecked(value)
 
     @property
     def export_tiff(self) -> bool:
         return self._export_tiff.isChecked()
 
+    @export_tiff.setter
+    def export_tiff(self, value: bool) -> None:
+        self._export_tiff.setChecked(value)
+
     @property
     def export_frames(self) -> bool:
         return self._export_frames.isChecked()
+
+    @export_frames.setter
+    def export_frames(self, value: bool) -> None:
+        self._export_frames.setChecked(value)
 
     @property
     def frame_export_images(self) -> tuple[int, int]:
@@ -125,26 +133,76 @@ class ExportGroup(QGroupBox):
             self._frame_export_images_end.value(),
         )
 
+    @frame_export_images.setter
+    def frame_export_images(self, value: tuple[int, int]) -> None:
+        self._frame_export_images_start.setValue(value[0])
+        self._frame_export_images_end.setValue(value[1])
+
     @property
     def frame_export_channel(self) -> str:
         return self._frame_export_channel.currentText()
+
+    @frame_export_channel.setter
+    def frame_export_channel(self, value: str) -> None:
+        self._frame_export_channel.setCurrentText(value)
 
     @property
     def scaling(self) -> tuple[float, float]:
         return (self._scaling_start.value(), self._scaling_end.value())
 
+    @scaling.setter
+    def scaling(self, value: tuple[float, float]) -> None:
+        self._scaling_start.setValue(value[0])
+        self._scaling_end.setValue(value[1])
+
     @property
     def fps_factor(self) -> int:
         return self._fps_factor.value()
 
-    @property
-    def color_map(self) -> str:
-        return self._color_map.currentText()
+    @fps_factor.setter
+    def fps_factor(self, value: int) -> None:
+        self._fps_factor.setValue(value)
 
     @property
     def frame_export_format(self) -> str:
         return self._frame_export_format.currentText()
 
+    @frame_export_format.setter
+    def frame_export_format(self, value: str) -> None:
+        self._frame_export_format.setCurrentText(value)
+
     @property
     def auto_label(self) -> bool:
         return self._auto_label.isChecked()
+
+    @auto_label.setter
+    def auto_label(self, value: bool) -> None:
+        self._auto_label.setChecked(value)
+
+    @classmethod
+    def from_config(cls, export_config: ExportConfig) -> Self:
+        return cls(**export_config.model_dump())
+
+    def update_from_config(self, export_config: ExportConfig) -> None:
+        self.export_movie = export_config.export_movie
+        self.export_tiff = export_config.export_tiff
+        self.export_frames = export_config.export_frames
+        self.scaling = export_config.scaling
+        self.fps_factor = export_config.fps_factor
+        self.auto_label = export_config.auto_label
+        self.frame_export_images = export_config.frame_export_images
+        self.frame_export_channel = export_config.frame_export_channel
+        self.frame_export_format = export_config.frame_export_format
+
+    def to_config(self) -> ExportConfig:
+        return ExportConfig(
+            export_movie=self.export_movie,
+            export_tiff=self.export_tiff,
+            export_frames=self.export_frames,
+            scaling=self.scaling,
+            fps_factor=self.fps_factor,
+            auto_label=self.auto_label,
+            frame_export_images=self.frame_export_images,
+            frame_export_channel=self.frame_export_channel,
+            frame_export_format=self.frame_export_format,
+        )
