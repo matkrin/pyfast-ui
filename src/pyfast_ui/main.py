@@ -1,3 +1,4 @@
+from ntpath import isfile
 from pathlib import Path
 import sys
 from typing import final, override
@@ -85,6 +86,10 @@ class MainGui(QMainWindow):
         # Histogram
         self.histogram_btn = QPushButton("Histogram")
         _ = self.histogram_btn.clicked.connect(self.on_histogram_btn)
+        # Batch mode
+        self.batch_btn = QPushButton("Batch")
+        _ = self.batch_btn.clicked.connect(self.batch_mode)
+
 
         self.phase_group = PhaseGroup.from_config(config.phase)
         self.fft_filters_group = FFTFiltersGroup.from_config(config.fft_filter)
@@ -111,6 +116,7 @@ class MainGui(QMainWindow):
         vertical_layout_left.addWidget(self.channel_select_group)
         vertical_layout_left.addWidget(self._colormap)
         vertical_layout_left.addWidget(self.histogram_btn)
+        vertical_layout_left.addWidget(self.batch_btn)
         vertical_layout_left.addWidget(self.phase_group)
         vertical_layout_left.addWidget(self.fft_filters_group)
         vertical_layout_left.addWidget(self.creep_group)
@@ -126,7 +132,9 @@ class MainGui(QMainWindow):
         _ = self.load_config_btn.clicked.connect(self.load_config)
         _ = self.save_config_btn.clicked.connect(self.save_config)
         _ = self.import_btn.clicked.connect(self.on_import_btn_click)
-        _ = self.channel_select_group.new_btn.clicked.connect(self.on_channel_select_new)
+        _ = self.channel_select_group.new_btn.clicked.connect(
+            self.on_channel_select_new
+        )
         _ = self._colormap.value_changed.connect(self.update_colormap)
         _ = self.phase_group.apply_btn.clicked.connect(self.on_phase_apply)
         _ = self.phase_group.new_btn.clicked.connect(self.on_phase_new)
@@ -245,6 +253,45 @@ class MainGui(QMainWindow):
         self.image_correction_group.update_from_config(config.image_correction)
         self.image_filter_group.update_from_config(config.image_filter)
         self.export_group.update_from_config(config.export)
+
+    def batch_mode(self) -> None:
+        dirname = QFileDialog.getExistingDirectory(
+            self,
+            caption="Choose folder to process",
+            # directory="",
+            options=QFileDialog.Option.ShowDirsOnly,
+        )
+        dirpath = Path(dirname)
+        for filepath in dirpath.iterdir():
+            if filepath.is_file() and filepath.suffix == ".h5":
+                print("===== START IN BATCH", filepath)
+                ft = pf.FastMovie(str(filepath), y_phase=0)
+                colormap = self._colormap.value()
+                movie_window = MovieWindow(ft, "udi", colormap)
+                _ = movie_window.window_focused.connect(self.update_focused_window)
+                self.plot_windows.update({movie_window.info.id_: movie_window})
+                self.update_focused_window(movie_window.info)
+                # movie_window.show()
+                print("===== START PHASE")
+                self.on_phase_apply()
+                print("===== START FFT")
+                self.on_fft_filter_apply()
+                _ = self.thread_pool.waitForDone()
+                print("===== START CREEP")
+                self.on_creep_apply()
+                _ = self.thread_pool.waitForDone()
+                print("===== START DRIFT")
+                self.on_drift_apply()
+                _ = self.thread_pool.waitForDone()
+                print("===== START IMAGE CORRECTION")
+                self.on_image_correction_apply()
+                _ = self.thread_pool.waitForDone()
+                print("===== START IMAGE FILTER")
+                self.on_image_filter_apply()
+                _ = self.thread_pool.waitForDone()
+                print("===== START EXPORT")
+                self.on_export_apply()
+                _ = self.thread_pool.waitForDone()
 
     def update_colormap(self, value: str) -> None:
         for movie_window in self.plot_windows.values():
