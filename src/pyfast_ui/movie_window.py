@@ -7,6 +7,7 @@ from typing import final, override
 
 import numpy as np
 import skimage as ski
+from matplotlib.widgets import RectangleSelector
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.backends.backend_qtagg import FigureCanvas
 
@@ -74,6 +75,7 @@ class MovieWindow(QWidget):
         self.plot_data = self.ft.data
         self.ax = None
         self.img_plot = None
+        self.rectangle_selection = None
         self.create_plot()
 
         # Layout
@@ -143,6 +145,7 @@ class MovieWindow(QWidget):
             num_frames = self.plot_data.shape[0]
             y_shape = self.plot_data.shape[1]
             x_shape = self.plot_data.shape[2] * 2
+            print(num_frames, y_shape, x_shape)
             data_scaled = np.zeros((num_frames, y_shape, x_shape))
             for i in range(num_frames):
                 data_scaled[i] = ski.transform.resize(
@@ -158,9 +161,10 @@ class MovieWindow(QWidget):
         )
 
         self.img_plot.set_clim(self.ft.data.min(), self.ft.data.max())
-        self.ax.get_xaxis().set_visible(False)
-        self.ax.get_yaxis().set_visible(False)
+        # self.ax.get_xaxis().set_visible(False)
+        # self.ax.get_yaxis().set_visible(False)
         self.img_plot.figure.tight_layout(pad=0)
+        self.connect_selection()
 
     def recreate_plot(self) -> None:
         if self.img_plot:
@@ -177,6 +181,48 @@ class MovieWindow(QWidget):
         if self.img_plot is not None:
             self.img_plot.set_cmap(new_colormap)
         self.colormap = new_colormap
+
+    def connect_selection(self) -> None:
+        self.rectangle_selection = RectangleSelector(
+            self.ax,
+            minspanx=5,
+            minspany=5,
+            useblit=True,
+            use_data_coordinates=True,
+            interactive=True,
+            drag_from_anywhere=True,
+        )
+        self.rectangle_selection.add_state('square')
+        self.rectangle_selection.set_active(False)
+
+    def is_selection_active(self) -> bool:
+        if self.rectangle_selection is not None:
+            return self.rectangle_selection.get_active()
+
+    def selection_set_active(self, value: bool):
+        if self.rectangle_selection is not None:
+            self.rectangle_selection.set_active(value)
+
+    def get_selection(
+        self,
+    ) -> (
+        tuple[
+            tuple[int, int],
+            tuple[int, int],
+            tuple[int, int],
+            tuple[int, int],
+        ]
+        | None
+    ):
+        # Corners of rectangle in data coordinates from lower left, moving clockwise.
+        if self.rectangle_selection is not None:
+            corners = self.rectangle_selection.corners
+            ul = (round(corners[0][0]), round(corners[1][0]))
+            ur = (round(corners[0][1]), round(corners[1][1]))
+            lr = (round(corners[0][2]), round(corners[1][2]))
+            ll = (round(corners[0][3]), round(corners[1][3]))
+            return (ul, ur, lr, ll)
+        return None
 
     def start_processing(self, message: str) -> None:
         self.process_indicator.status_label.setText(message)

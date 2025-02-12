@@ -1,9 +1,9 @@
-from ntpath import isfile
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import final, override
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pyfastspm as pf
 from PySide6.QtCore import QCoreApplication, QThreadPool
 from PySide6.QtGui import QCloseEvent, Qt
@@ -29,6 +29,7 @@ from pyfast_ui.fft_filters_group import FFTFiltersGroup
 from pyfast_ui.histogram_window import HistogramWindow
 from pyfast_ui.image_correction import ImageCorrectionGroup
 from pyfast_ui.image_filters import ImageFilterGroup
+from pyfast_ui.modify_group import ModifyGroup
 from pyfast_ui.movie_window import MovieInfo, MovieWindow
 from pyfast_ui.phase_group import PhaseGroup
 from pyfast_ui.workers import CreepWorker, DriftWorker, FftFilterWorker
@@ -79,6 +80,9 @@ class MainGui(QMainWindow):
         config_layout.addWidget(self.save_config_btn)
 
         self.import_btn = QPushButton("Import movie")
+        # Batch mode
+        self.batch_btn = QPushButton("Batch")
+        _ = self.batch_btn.clicked.connect(self.batch_mode)
         self.channel_select_group = ChannelSelectGroup()
         # Colormap
         self._colormap = LabeledCombobox("Colormap", plt.colormaps())
@@ -86,11 +90,8 @@ class MainGui(QMainWindow):
         # Histogram
         self.histogram_btn = QPushButton("Histogram")
         _ = self.histogram_btn.clicked.connect(self.on_histogram_btn)
-        # Batch mode
-        self.batch_btn = QPushButton("Batch")
-        _ = self.batch_btn.clicked.connect(self.batch_mode)
 
-
+        self.modify_group = ModifyGroup((0, 0))
         self.phase_group = PhaseGroup.from_config(config.phase)
         self.fft_filters_group = FFTFiltersGroup.from_config(config.fft_filter)
         self.creep_group = CreepGroup.from_config(config.creep)
@@ -111,12 +112,14 @@ class MainGui(QMainWindow):
         vertical_layout_left = QVBoxLayout()
         vertical_layout_right = QVBoxLayout()
         vertical_layout_left.addWidget(self.operate_label)
-        vertical_layout_left.addLayout(config_layout)
         vertical_layout_left.addWidget(self.import_btn)
+        vertical_layout_left.addLayout(config_layout)
+        vertical_layout_left.addWidget(self.batch_btn)
         vertical_layout_left.addWidget(self.channel_select_group)
         vertical_layout_left.addWidget(self._colormap)
         vertical_layout_left.addWidget(self.histogram_btn)
-        vertical_layout_left.addWidget(self.batch_btn)
+        # Groups
+        vertical_layout_left.addWidget(self.modify_group)
         vertical_layout_left.addWidget(self.phase_group)
         vertical_layout_left.addWidget(self.fft_filters_group)
         vertical_layout_left.addWidget(self.creep_group)
@@ -136,6 +139,10 @@ class MainGui(QMainWindow):
             self.on_channel_select_new
         )
         _ = self._colormap.value_changed.connect(self.update_colormap)
+        _ = self.modify_group.toggle_selection_btn.clicked.connect(
+            self.on_toggle_selection_btn
+        )
+        _ = self.modify_group.crop_btn.clicked.connect(self.on_crop_btn)
         _ = self.phase_group.apply_btn.clicked.connect(self.on_phase_apply)
         _ = self.phase_group.new_btn.clicked.connect(self.on_phase_new)
         _ = self.fft_filters_group.apply_btn.clicked.connect(self.on_fft_filter_apply)
@@ -305,6 +312,49 @@ class MainGui(QMainWindow):
         _ = new_movie_window.window_focused.connect(self.update_focused_window)
         self.plot_windows.update({new_movie_window.info.id_: new_movie_window})
         self.update_focused_window(new_movie_window.info)
+
+    def on_toggle_selection_btn(self) -> None:
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        is_active = fast_movie_window.is_selection_active()
+        fast_movie_window.selection_set_active(not is_active)
+        print(f"{is_active=}")
+        self.modify_group.toggle_selection_btn.setDefault(not is_active)
+
+    def on_crop_btn(self) -> None:
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+
+        if fast_movie_window.ft.mode == "timeseries":
+            print("not in image mode")
+            return
+
+        rectangle = fast_movie_window.get_selection()
+        self.create_new_movie_window()
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if rectangle is not None and fast_movie_window is not None:
+            ft = fast_movie_window.ft
+            ul, ur, lr, ll = rectangle
+            x_start, y_start = ul
+            y_end = ll[1]
+            x_end = lr[0]
+            if "i" in ft.channels:
+                x_start = round(x_start / 2)
+                x_end = round(x_end / 2)
+            print(f"cropping with {y_start}, {y_end=}, {x_start=}, {x_end=}")
+
+            fast_movie_window.stop_playing()
+            ft.data = ft.data[:, y_start:y_end, x_start:x_end]
+            fast_movie_window.recreate_plot()
+            fast_movie_window.start_playing()
 
     def on_phase_apply(self) -> None:
         if self.operate_on is None:
