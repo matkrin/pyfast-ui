@@ -78,7 +78,7 @@ class ExportGroup(QGroupBox):
 
         frame_export_format_lbl = QLabel("Frame export format")
         self._frame_export_format = QComboBox()
-        self._frame_export_format.addItems(["png", "jpg", "bmp", "gwy"])
+        self._frame_export_format.addItems(["png", "jpg", "bmp", "gwy", "txt"])
         self._frame_export_format.setCurrentText(frame_export_format)
         frame_export_format_layout = QHBoxLayout()
         frame_export_format_layout.addWidget(frame_export_format_lbl)
