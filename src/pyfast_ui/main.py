@@ -39,7 +39,7 @@ FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 @final
 class MainGui(QMainWindow):
-    """Main GUI"""
+    """The main GUI window with parameters for image correction"""
 
     def __init__(self) -> None:
         super().__init__()
@@ -66,7 +66,7 @@ class MainGui(QMainWindow):
         self.central_layout.addWidget(self.open_btn)
         ###
 
-        self.plot_windows: dict[int, MovieWindow] = dict()
+        self.movie_windows: dict[int, MovieWindow] = dict()
         self.histogram_windows: dict[int, HistogramWindow] = dict()
         self.operate_on: int | None = None
         config = init_config()
@@ -91,10 +91,10 @@ class MainGui(QMainWindow):
         self.histogram_btn = QPushButton("Histogram")
         _ = self.histogram_btn.clicked.connect(self.on_histogram_btn)
 
-        self.modify_group = ModifyGroup((0, 0))
         self.phase_group = PhaseGroup.from_config(config.phase)
         self.fft_filters_group = FFTFiltersGroup.from_config(config.fft_filter)
         self.creep_group = CreepGroup.from_config(config.creep)
+        self.modify_group = ModifyGroup((0, 0))
 
         # TODO
         # streak_removal_group = QGroupBox("Streak Removal")
@@ -108,9 +108,11 @@ class MainGui(QMainWindow):
         self.image_filter_group = ImageFilterGroup.from_config(config.image_filter)
         self.export_group = ExportGroup.from_config(config.export)
 
+        # Create layouts
         horizontal_layout = QHBoxLayout()
         vertical_layout_left = QVBoxLayout()
         vertical_layout_right = QVBoxLayout()
+        # General
         vertical_layout_left.addWidget(self.operate_label)
         vertical_layout_left.addWidget(self.import_btn)
         vertical_layout_left.addLayout(config_layout)
@@ -119,10 +121,10 @@ class MainGui(QMainWindow):
         vertical_layout_left.addWidget(self._colormap)
         vertical_layout_left.addWidget(self.histogram_btn)
         # Groups
-        vertical_layout_left.addWidget(self.modify_group)
         vertical_layout_left.addWidget(self.phase_group)
         vertical_layout_left.addWidget(self.fft_filters_group)
         vertical_layout_left.addWidget(self.creep_group)
+        vertical_layout_left.addWidget(self.modify_group)
         vertical_layout_right.addWidget(self.drift_group)
         vertical_layout_right.addWidget(self.image_correction_group)
         vertical_layout_right.addWidget(self.image_filter_group)
@@ -131,7 +133,9 @@ class MainGui(QMainWindow):
         horizontal_layout.addLayout(vertical_layout_right)
         self.central_layout.addLayout(horizontal_layout)
 
-        # Connect signals
+        self._connect_signals()
+
+    def _connect_signals(self) -> None:
         _ = self.load_config_btn.clicked.connect(self.load_config)
         _ = self.save_config_btn.clicked.connect(self.save_config)
         _ = self.import_btn.clicked.connect(self.on_import_btn_click)
@@ -165,6 +169,12 @@ class MainGui(QMainWindow):
         _ = self.export_group.apply_btn.clicked.connect(self.on_export_apply)
 
     def update_focused_window(self, movie_info: MovieInfo) -> None:
+        """Updates widgets the show information about the currently selected
+            movie window.
+
+        Args:
+            movie_info: The `MovieInfo` from the new selected `movie_window`
+        """
         print(f"{movie_info.is_selection_active=}")
         self.modify_group.toggle_selection_btn.setDefault(
             movie_info.is_selection_active
@@ -176,9 +186,13 @@ class MainGui(QMainWindow):
         )
 
     def create_new_movie_window(self) -> None:
+        """Creates a new `MovieWindow` from the currently selected one, adds
+        it to `self.movie_windows` dictionary and sets focus on it.
+
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -187,22 +201,30 @@ class MainGui(QMainWindow):
         new_movie_window = MovieWindow(new_ft, channel, self._colormap.value())
         new_movie_window.show()
         _ = new_movie_window.window_focused.connect(self.update_focused_window)
-        self.plot_windows.update({new_movie_window.info.id_: new_movie_window})
+        self.movie_windows.update({new_movie_window.info.id_: new_movie_window})
         self.update_focused_window(new_movie_window.info)
 
     def on_movie_window_closed(self, movie_info: MovieInfo) -> None:
-        del self.plot_windows[movie_info.id_]
+        """Callback: When a `MovieWindow` is closed, it gets deleted from the
+        `self.movie_windows` dict.
+        """
+        del self.movie_windows[movie_info.id_]
 
     def on_open_btn_click(self) -> None:
+        """Just for TEST button"""
         ft = pf.FastMovie(FAST_FILE, y_phase=0)
         movie_window = MovieWindow(ft, "udi", self._colormap.value())
         _ = movie_window.window_focused.connect(self.update_focused_window)
         _ = movie_window.window_closed.connect(self.on_movie_window_closed)
-        self.plot_windows.update({movie_window.info.id_: movie_window})
+        self.movie_windows.update({movie_window.info.id_: movie_window})
         self.update_focused_window(movie_window.info)
         movie_window.show()
 
     def on_import_btn_click(self) -> None:
+        """Callback on 'Import movie' button. Imports a new HDF5 file, creates
+        a new `MovieWindow` from that file, adds it to `self.movie_windows`
+        and sets focus on it.
+        """
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             caption="Choose HDF5 file",
@@ -215,13 +237,16 @@ class MainGui(QMainWindow):
             colormap = self._colormap.value()
             movie_window = MovieWindow(ft, "udi", colormap)
             _ = movie_window.window_focused.connect(self.update_focused_window)
-            self.plot_windows.update({movie_window.info.id_: movie_window})
+            self.movie_windows.update({movie_window.info.id_: movie_window})
             self.update_focused_window(movie_window.info)
             movie_window.show()
         else:
             print("No file chosen.")
 
     def save_config(self) -> None:
+        """Call on 'Save config' button. Prompts the user to create a .toml
+        config file and saves it.
+        """
         filepath, _ = QFileDialog.getSaveFileName(
             self,
             caption="Save TOML config as...",
@@ -246,6 +271,9 @@ class MainGui(QMainWindow):
         config.save_toml(filepath)
 
     def load_config(self) -> None:
+        """Callback on 'Load config' button. Prompts the user to load a
+        .toml config file and sets all parameters from that
+        """
         filepath, _ = QFileDialog.getOpenFileName(
             self,
             caption="Choose toml config file",
@@ -267,6 +295,9 @@ class MainGui(QMainWindow):
         self.export_group.update_from_config(config.export)
 
     def batch_mode(self) -> None:
+        """Prompts the user to choose a folder. All '.h5' files contained in
+        the folder get processed and exported with the currently set parameters.
+        """
         dirname = QFileDialog.getExistingDirectory(
             self,
             caption="Choose folder to process",
@@ -280,7 +311,7 @@ class MainGui(QMainWindow):
                 colormap = self._colormap.value()
                 movie_window = MovieWindow(ft, "udi", colormap)
                 _ = movie_window.window_focused.connect(self.update_focused_window)
-                self.plot_windows.update({movie_window.info.id_: movie_window})
+                self.movie_windows.update({movie_window.info.id_: movie_window})
                 self.update_focused_window(movie_window.info)
                 # movie_window.show()
                 self.on_phase_apply()
@@ -298,13 +329,23 @@ class MainGui(QMainWindow):
                 _ = self.thread_pool.waitForDone()
 
     def update_colormap(self, value: str) -> None:
-        for movie_window in self.plot_windows.values():
+        """Changes the colormap for all open `MovieWindow`s.
+
+        Args:
+            value: The name of the new colormap.
+                All [`matplotlib` colormaps](https://matplotlib.org/stable/users/explain/colors/colormaps.html)
+                are valid.
+        """
+        for movie_window in self.movie_windows.values():
             movie_window.set_colormap(value)
 
     def on_channel_select_new(self) -> None:
+        """Callback on 'New' button of channel selection. Creates a new
+        `MovieWindow` with the channel form the channels selection input.
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -315,13 +356,17 @@ class MainGui(QMainWindow):
         new_movie_window = MovieWindow(new_ft, channel, self._colormap.value())
         new_movie_window.show()
         _ = new_movie_window.window_focused.connect(self.update_focused_window)
-        self.plot_windows.update({new_movie_window.info.id_: new_movie_window})
+        self.movie_windows.update({new_movie_window.info.id_: new_movie_window})
         self.update_focused_window(new_movie_window.info)
 
     def on_toggle_selection_btn(self) -> None:
+        """Callback for 'Toggle crop selection' button's status from default to
+        non-default. If active (default), a selection can be drawn on the
+        `MovieWindow`s canvas.
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -330,9 +375,12 @@ class MainGui(QMainWindow):
         self.modify_group.toggle_selection_btn.setDefault(not is_active)
 
     def on_crop_btn(self) -> None:
+        """Callback for 'Crop' button. Crops the currently selected movie
+        according to the crop selection.
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -342,7 +390,7 @@ class MainGui(QMainWindow):
 
         rectangle = fast_movie_window.get_selection()
         self.create_new_movie_window()
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if rectangle is not None and fast_movie_window is not None:
             ft = fast_movie_window.ft
             ul, ur, lr, ll = rectangle
@@ -360,10 +408,13 @@ class MainGui(QMainWindow):
             fast_movie_window.start_playing()
 
     def on_cut_btn(self) -> None:
+        """Callback for 'Cut' button. Cuts the currently selected movie
+        according to the crop range.
+        """
         self.create_new_movie_window()
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -381,9 +432,12 @@ class MainGui(QMainWindow):
         fast_movie_window.start_playing()
 
     def on_phase_apply(self) -> None:
+        """Callback for 'Apply' button of the `PhaseGroup`. Applies a phase
+        correction with the set parameters.
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -406,13 +460,19 @@ class MainGui(QMainWindow):
         fast_movie_window.recreate_plot()
 
     def on_phase_new(self) -> None:
+        """Callback for 'New' button of the `PhaseGroup`. Creates a new
+        `MovieWindow` and applies a phase correction to that.
+        """
         self.create_new_movie_window()
         self.on_phase_apply()
 
     def on_fft_filter_apply(self) -> None:
+        """Callback for 'Apply' button of the `FftFilterGroup`. Applies FFT
+        filtering with the set parameters.
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
         ft = fast_movie_window.ft
@@ -443,13 +503,19 @@ class MainGui(QMainWindow):
         self.thread_pool.start(fft_filter_worker)
 
     def on_fft_filter_new(self) -> None:
+        """Callback for 'New' button of the `FftFilterGroup`. Creates a new
+        `MovieWindow` and applies FFT filtering to that.
+        """
         self.create_new_movie_window()
         self.on_fft_filter_apply()
 
     def on_creep_apply(self) -> None:
+        """Callback for 'Apply' button of the `CreepGroup`. Applies a creep
+        correction with the set parameters.
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -494,13 +560,19 @@ class MainGui(QMainWindow):
         self.thread_pool.start(creep_worker)
 
     def on_creep_new(self) -> None:
+        """Callback for 'New' button of the `CreepGroup`. Creates a new
+        `MovieWindow` and applies a creep correction to that.
+        """
         self.create_new_movie_window()
         self.on_creep_apply()
 
     def on_drift_apply(self) -> None:
+        """Callback for 'Apply' button of the `DriftGroup`. Applies a drift
+        correction with the set parameters.
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -552,13 +624,19 @@ class MainGui(QMainWindow):
         #     last = image_range[1]
 
     def on_drift_new(self) -> None:
+        """Callback for 'New' button of the `DriftGroup`. Creates a new
+        `MovieWindow` and applies a drift correction to that.
+        """
         self.create_new_movie_window()
         self.on_drift_apply()
 
     def on_export_apply(self) -> None:
+        """Callback for 'Export' button. Exports the movie of the currently
+        selected `MovieWindow`.
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -613,9 +691,12 @@ class MainGui(QMainWindow):
             ft.export_tiff(image_range)
 
     def on_image_correction_apply(self) -> None:
+        """Callback for 'Apply' button of the `ImageCorrectionGroup`. Applies
+        a image correction with the set parameters.
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -633,13 +714,19 @@ class MainGui(QMainWindow):
         fast_movie_window.recreate_plot()
 
     def on_image_correction_new(self) -> None:
+        """Callback for 'New' button of the `ImageCorrectionGroup`. Creates a
+        new `MovieWindow` and applies a image correction to that.
+        """
         self.create_new_movie_window()
         self.on_image_correction_apply()
 
     def on_image_filter_apply(self) -> None:
+        """Callback for 'Apply' button of the `ImageFilterGroup`. Applies
+        an image filter with the set parameters.
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -657,13 +744,19 @@ class MainGui(QMainWindow):
         fast_movie_window.recreate_plot()
 
     def on_image_filter_new(self) -> None:
+        """Callback for 'New' button of the `ImageFilterGroup`. Creates a
+        new `MovieWindow` and applies an image filter to that.
+        """
         self.create_new_movie_window()
         self.on_image_filter_apply()
 
     def on_histogram_btn(self) -> None:
+        """Shows a new `HistogramWindow` with the height distribution of the
+        currently selected `MovieWindow`.
+        """
         if self.operate_on is None:
             return
-        fast_movie_window = self.plot_windows.get(self.operate_on)
+        fast_movie_window = self.movie_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
 
@@ -676,7 +769,7 @@ class MainGui(QMainWindow):
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
-        for plot_window in list(self.plot_windows.values()):
+        for plot_window in list(self.movie_windows.values()):
             _ = plot_window.close()
         QCoreApplication.quit()
 
