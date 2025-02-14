@@ -15,3 +15,9 @@ build:
 
 clean:
     rm -r build/ dist/ *.spec
+
+docs-serve:
+	uv run mkdocs serve
+
+docs-build:
+	uv run mkdocs build

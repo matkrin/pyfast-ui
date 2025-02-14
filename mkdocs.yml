@@ -1,0 +1,56 @@
+site_name: pyfast-ui
+site_description: Program for interative processing of FastSPM movies
+site_url: https://matkrin.github.io/pyfast-ui
+
+theme:
+  name: "material"
+  features:
+    - content.code.copy
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      primary: teal
+      scheme: default
+      toggle:
+        icon: material/lightbulb
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      primary: teal
+      scheme: slate
+      toggle:
+        icon: material/lightbulb-outline
+        name: Switch to light mode
+
+repo_name: matkrin/pyfast-ui
+repo_url: https://github.com/matkrin/pyfast-ui
+
+nav:
+- Home: index.md
+# - Examples: examples.md
+# - API Reference: api-user.md
+- Development:
+  - MainGui: api-dev/main_gui.md
+  - MovieWindow: api-dev/movie_window.md
+  - HistogramWindow: api-dev/histogram_window.md
+
+plugins:
+- search
+- mkdocstrings:
+    handlers:
+      python:
+        paths: [.]
+        options:
+          show_root_heading: true
+          show_category_heading: true
+
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
