@@ -33,6 +33,8 @@ from PySide6.QtWidgets import (
 
 @dataclass
 class MovieInfo:
+    """Info about a `FastMovie` in a `MovieWindow`"""
+
     id_: int
     filename: str
     is_selection_active: bool
@@ -40,6 +42,8 @@ class MovieInfo:
 
 @final
 class MovieWindow(QWidget):
+    """Window containing a `FastMovie`"""
+
     window_focused = Signal(MovieInfo)
     window_closed = Signal(MovieInfo)
 
@@ -116,13 +120,26 @@ class MovieWindow(QWidget):
         self.movie_controls.play_btn.setChecked(True)
 
     def clone_fast_movie(self) -> FastMovie:
+        """Clones the `FastMovie` contained in this `MovieWindow`.
+
+        Returns:
+            A deepcopy of the `FastMovie`.
+        """
         return self.ft.clone()
 
     def set_movie_id(self, new_movie_id: int) -> None:
+        """Sets the `id_` of the `FastMovie`s `MovieInfo`.
+
+        Args:
+            new_movie_id: The new movie_id.
+        """
         self.info.id_ = new_movie_id
         self.setWindowTitle(f"{self.info.filename}({self.info.id_})-{self.channel}")
 
     def update_plot_data(self) -> None:
+        """Updates `self.plot_data`. This function should be called after the
+        `FastMovie`'s data changed.
+        """
         if self.ft.mode == "timeseries":
             data: NDArray[np.float32] = self.ft.reshape_data(
                 copy.deepcopy(self.ft.data),
@@ -141,6 +158,7 @@ class MovieWindow(QWidget):
         self.plot_data = data
 
     def create_plot(self) -> None:
+        """Creates an image plot of the `FastMovie`'s data."""
         self.update_plot_data()
 
         if "i" in self.channel:
@@ -170,6 +188,7 @@ class MovieWindow(QWidget):
         self.connect_selection()
 
     def recreate_plot(self) -> None:
+        """Recreates an image plot of the `FastMovie`'s data.'"""
         self.current_frame_num = 0
         if self.img_plot:
             self.img_plot.remove()
@@ -178,15 +197,23 @@ class MovieWindow(QWidget):
         self.create_plot()
 
     def set_clim(self, lower_limit: float, upper_limit: float) -> None:
+        """Sets upper limit and lower limit of the image plot."""
         if self.img_plot is not None:
             self.img_plot.set_clim(lower_limit, upper_limit)
 
     def set_colormap(self, new_colormap: str) -> None:
+        """Sets the colormap of the image plot.
+
+        Args:
+            new_colormap: The name of the colormap to set. (Any colormap
+                support by matplotlib is valid)
+        """
         if self.img_plot is not None:
             self.img_plot.set_cmap(new_colormap)
         self.colormap = new_colormap
 
     def connect_selection(self) -> None:
+        """Connects a `RetangleSelector` to the image plot's canvas."""
         self.rectangle_selection = RectangleSelector(
             self.ax,
             minspanx=5,
@@ -200,6 +227,13 @@ class MovieWindow(QWidget):
         self.rectangle_selection.set_active(False)
 
     def selection_set_active(self, value: bool):
+        """Sets the rectangle selection on the image plot's canvas as active
+            or non-active.
+
+        Args:
+            value: `True` for activating, `False` for non-active.
+        """
+
         self.info.is_selection_active = value
         if self.rectangle_selection is not None:
             self.rectangle_selection.set_active(value)
@@ -215,6 +249,12 @@ class MovieWindow(QWidget):
         ]
         | None
     ):
+        """Get the coordinates of the `RectangleSelection` if one exists.
+
+        Returns:
+            The coordinates of `RectangleSelection`'s corners start from upper
+            left, moving clockwise.
+        """
         # Corners of rectangle in data coordinates from lower left, moving clockwise.
         if self.rectangle_selection is not None:
             corners = self.rectangle_selection.corners
@@ -226,20 +266,31 @@ class MovieWindow(QWidget):
         return None
 
     def start_processing(self, message: str) -> None:
+        """Shows an indicator on `MovieWindow`, indicating that a processing
+        function is running.
+
+        Args:
+            message: The message displayed next to the indicator.
+        """
         self.process_indicator.status_label.setText(message)
         self.process_indicator.show()
 
     def end_processing(self) -> None:
+        """Hides the processing indicator and recreates the plot."""
         self.process_indicator.hide()
         self.recreate_plot()
 
     def update_frame(self) -> None:
+        """Update the image plot to show the next frame and the inputs to show
+        this current frame number.
+        """
         self.img_plot.set_data(self.plot_data[self.current_frame_num])
         self.img_plot.figure.canvas.draw()
         self.movie_controls.curr_frame_input.setValue(self.current_frame_num)
         self.movie_controls.current_frame_lbl.setText(f"/{self.num_frames - 1}")
 
     def start_playing(self) -> None:
+        """Starts playing the movie."""
         fps = self.movie_controls.fps_input.value()
         update_time = 1 / fps * 1000
 
@@ -248,9 +299,11 @@ class MovieWindow(QWidget):
         self.timer.start()
 
     def stop_playing(self) -> None:
+        """Stops playing the movie."""
         self.timer.stop()
 
     def on_prev_btn_clicked(self) -> None:
+        """Callback for the previous-frame-button (<<)."""
         if self.current_frame_num > 0:
             self.current_frame_num -= 1
         else:
@@ -259,6 +312,7 @@ class MovieWindow(QWidget):
         self.update_frame()
 
     def on_next_btn_clicked(self) -> None:
+        """Callback for the next-frame-button (>>)."""
         if self.current_frame_num < self.num_frames - 1:
             self.current_frame_num += 1
         else:
@@ -267,14 +321,21 @@ class MovieWindow(QWidget):
         self.update_frame()
 
     def on_first_btn_clicked(self) -> None:
+        """Callback for the first-frame-button (>>|)."""
         self.current_frame_num = 0
         self.update_frame()
 
     def on_last_btn_clicked(self) -> None:
+        """Callback for the last-frame-button (|<<)."""
         self.current_frame_num = self.num_frames - 1
         self.update_frame()
 
     def on_current_frame_changed(self, value: int) -> None:
+        """Callback for the current-frame input (on change).
+
+        Args:
+            value: The new frame number.
+        """
         if value > self.num_frames - 1:
             self.current_frame_num = self.num_frames - 1
         elif value < 0:
@@ -285,6 +346,7 @@ class MovieWindow(QWidget):
         self.update_frame()
 
     def on_play_btn_clicked(self) -> None:
+        """Callback for the play-button (|>)."""
         if self.movie_controls.play_btn.isChecked():
             self.start_playing()
         else:
@@ -292,12 +354,18 @@ class MovieWindow(QWidget):
 
     @override
     def focusInEvent(self, event: QFocusEvent) -> None:
+        """Overrides the `focusInEvent` of `super`. Additionally to the
+        default behavior, a signal is sent that the window is focused.
+        """
         print(f"Focused: {self.info.id_}")
         self.window_focused.emit(self.info)
         super().focusInEvent(event)
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
+        """Overrides the `closeEvent` of `super`. Additionally to the
+        default behavior, a signal is sent that the window was is closed.
+        """
         print(f"Closed {self.info}")
         self.timer.stop()
         self.window_closed.emit(self.info)
@@ -306,6 +374,13 @@ class MovieWindow(QWidget):
 
 @final
 class MovieControlButton(QPushButton):
+    """A button of `MovieControls`.
+
+    Args:
+        icon: The button's icon.
+        checkable: Decides if the button is checkable or not.
+    """
+
     def __init__(self, icon: QStyle.StandardPixmap, checkable: bool = False) -> None:
         super().__init__()
         self.setIcon(self.style().standardIcon(icon))
@@ -317,6 +392,15 @@ class MovieControlButton(QPushButton):
 
 @final
 class MovieControlSpinBox(QSpinBox):
+    """A spinbox of `MovieControls`.
+
+    Args:
+        focus_signal: The signal for sending if the `MovieWindow` which
+            contains this `MovieControlsSpinBox` is focused.
+        movie_info: The `MovieInfo` of the `MovieWindow` which contains this
+            `MovieControlSpinBox`.
+    """
+
     def __init__(self, focus_signal: SignalInstance, movie_info: MovieInfo) -> None:
         super().__init__()
         self.focus_signal = focus_signal
@@ -325,12 +409,26 @@ class MovieControlSpinBox(QSpinBox):
 
     @override
     def focusInEvent(self, event: QFocusEvent) -> None:
+        """Overrides the `focusInEvent` of `super`. Additionally, a signal gets
+        emitted.
+        """
         self.focus_signal.emit(self.movie_info)
         super().focusInEvent(event)
 
 
 @final
 class MovieControls(QWidget):
+    """The controls of a `MovieWindow`.
+
+    Args:
+        num_frames: The number of frames of the `MovieWindows`'s `FastMovie`.
+        fps: The default frames-per-second.
+        focus_signal: The signal that gets emitted when this `MovieControls`'s
+            is focused.
+        movie_info: The `MovieInfo` of the `MovieWindow` that contains this
+            `MovieControls`.
+    """
+
     def __init__(
         self,
         num_frames: int,
@@ -378,11 +476,22 @@ class MovieControls(QWidget):
         layout.setStretch(10, 2)
 
     def set_num_frames(self, new_num_frames: int) -> None:
+        """Sets the frames-number label to the new total number of frames.
+
+        Args:
+            new_num_frames: The new total number of frames.
+        """
         self.current_frame_lbl.setText(f"/{new_num_frames}")
 
 
 @final
 class ProcessIndicator(QWidget):
+    """An indicator shown when a processing function is running.
+
+    Args:
+        label: The message next to the processing indicator.
+    """
+
     def __init__(self, label: str):
         super().__init__()
         self.progress_bar = QProgressBar()
