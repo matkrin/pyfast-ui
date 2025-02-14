@@ -170,6 +170,7 @@ class MovieWindow(QWidget):
         self.connect_selection()
 
     def recreate_plot(self) -> None:
+        self.current_frame_num = 0
         if self.img_plot:
             self.img_plot.remove()
         self.ax.cla()

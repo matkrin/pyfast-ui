@@ -143,6 +143,7 @@ class MainGui(QMainWindow):
             self.on_toggle_selection_btn
         )
         _ = self.modify_group.crop_btn.clicked.connect(self.on_crop_btn)
+        _ = self.modify_group.cut_btn.clicked.connect(self.on_cut_btn)
         _ = self.phase_group.apply_btn.clicked.connect(self.on_phase_apply)
         _ = self.phase_group.new_btn.clicked.connect(self.on_phase_new)
         _ = self.fft_filters_group.apply_btn.clicked.connect(self.on_fft_filter_apply)
@@ -357,6 +358,27 @@ class MainGui(QMainWindow):
             ft.data = ft.data[:, y_start:y_end, x_start:x_end]
             fast_movie_window.recreate_plot()
             fast_movie_window.start_playing()
+
+    def on_cut_btn(self) -> None:
+        self.create_new_movie_window()
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.plot_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        if fast_movie_window.ft.mode == "timeseries":
+            print("not in image mode")
+            return
+
+        ft = fast_movie_window.ft
+        frame_start, frame_end = self.modify_group.cut_range
+        print(f"cutting from {frame_start=} to {frame_end=}")
+        fast_movie_window.stop_playing()
+        ft.data = ft.data[frame_start : frame_end + 1, :, :]
+        fast_movie_window.num_frames = ft.data.shape[0]
+        fast_movie_window.recreate_plot()
+        fast_movie_window.start_playing()
 
     def on_phase_apply(self) -> None:
         if self.operate_on is None:

@@ -16,12 +16,12 @@ class ModifyGroup(QGroupBox):
         self.crop_btn = QPushButton("Crop")
 
         self._cut_range = LabeledSpinBoxes("Cut frames", cut_range)
-        self._cut_btn = QPushButton("Cut")
+        self.cut_btn = QPushButton("Cut")
 
         layout.addWidget(self.toggle_selection_btn)
         layout.addWidget(self.crop_btn)
         layout.addWidget(self._cut_range)
-        layout.addWidget(self._cut_btn)
+        layout.addWidget(self.cut_btn)
 
     @property
     def cut_range(self) -> tuple[int, int]:
