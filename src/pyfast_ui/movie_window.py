@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 class MovieInfo:
     id_: int
     filename: str
+    is_selection_active: bool
 
 
 @final
@@ -52,7 +53,9 @@ class MovieWindow(QWidget):
         self.ft.channel = channel
         self.colormap = colormap
         self.info = MovieInfo(
-            id_=id(self), filename=os.path.basename(fast_movie.filename)
+            id_=id(self),
+            filename=os.path.basename(fast_movie.filename),
+            is_selection_active=False,
         )
 
         self.setWindowTitle(f"{self.info.filename}({self.info.id_})-{self.channel}")
@@ -192,14 +195,11 @@ class MovieWindow(QWidget):
             interactive=True,
             drag_from_anywhere=True,
         )
-        self.rectangle_selection.add_state('square')
+        self.rectangle_selection.add_state("square")
         self.rectangle_selection.set_active(False)
 
-    def is_selection_active(self) -> bool:
-        if self.rectangle_selection is not None:
-            return self.rectangle_selection.get_active()
-
     def selection_set_active(self, value: bool):
+        self.info.is_selection_active = value
         if self.rectangle_selection is not None:
             self.rectangle_selection.set_active(value)
 

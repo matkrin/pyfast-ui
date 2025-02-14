@@ -164,6 +164,10 @@ class MainGui(QMainWindow):
         _ = self.export_group.apply_btn.clicked.connect(self.on_export_apply)
 
     def update_focused_window(self, movie_info: MovieInfo) -> None:
+        print(f"{movie_info.is_selection_active=}")
+        self.modify_group.toggle_selection_btn.setDefault(
+            movie_info.is_selection_active
+        )
         print(f"Focus on: {movie_info}")
         self.operate_on = movie_info.id_
         self.operate_label.setText(
@@ -320,9 +324,8 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
-        is_active = fast_movie_window.is_selection_active()
+        is_active = fast_movie_window.info.is_selection_active
         fast_movie_window.selection_set_active(not is_active)
-        print(f"{is_active=}")
         self.modify_group.toggle_selection_btn.setDefault(not is_active)
 
     def on_crop_btn(self) -> None:
@@ -331,7 +334,6 @@ class MainGui(QMainWindow):
         fast_movie_window = self.plot_windows.get(self.operate_on)
         if fast_movie_window is None:
             return
-
 
         if fast_movie_window.ft.mode == "timeseries":
             print("not in image mode")
