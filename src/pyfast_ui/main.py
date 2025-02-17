@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import final, override
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pyfastspm as pf
 from PySide6.QtCore import QCoreApplication, QThreadPool
 from PySide6.QtGui import QCloseEvent, Qt
@@ -13,6 +12,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -167,6 +167,18 @@ class MainGui(QMainWindow):
         _ = self.drift_group.apply_btn.clicked.connect(self.on_drift_apply)
         _ = self.drift_group.new_btn.clicked.connect(self.on_drift_new)
         _ = self.export_group.apply_btn.clicked.connect(self.on_export_apply)
+
+    def show_info_message(self, message: str) -> None:
+        """Shows a window with an info message.
+        Used e.g., if the user sets wrong parameters.
+
+        Args:
+            message: The info messag to display
+        """
+        msg = QMessageBox()
+        msg.setText(message)
+        msg.setIcon(QMessageBox.Information)
+        _ = msg.exec()
 
     def update_focused_window(self, movie_info: MovieInfo) -> None:
         """Updates widgets the show information about the currently selected
@@ -385,7 +397,7 @@ class MainGui(QMainWindow):
             return
 
         if fast_movie_window.ft.mode == "timeseries":
-            print("not in image mode")
+            self.show_info_message("Cropping is only possible after creep correction.")
             return
 
         rectangle = fast_movie_window.get_selection()
@@ -411,6 +423,17 @@ class MainGui(QMainWindow):
         """Callback for 'Cut' button. Cuts the currently selected movie
         according to the crop range.
         """
+        if self.operate_on is None:
+            return
+        fast_movie_window = self.movie_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+
+        frame_start, frame_end = self.modify_group.cut_range
+        if frame_end > fast_movie_window.ft.data.shape[0]:
+            self.show_info_message(f"Movie does not have {frame_end} frames")
+            return
+
         self.create_new_movie_window()
         if self.operate_on is None:
             return
@@ -419,12 +442,10 @@ class MainGui(QMainWindow):
             return
 
         if fast_movie_window.ft.mode == "timeseries":
-            print("not in image mode")
+            self.show_info_message("Cutting is only possible after creep correction.")
             return
 
         ft = fast_movie_window.ft
-        frame_start, frame_end = self.modify_group.cut_range
-        print(f"cutting from {frame_start=} to {frame_end=}")
         fast_movie_window.stop_playing()
         ft.data = ft.data[frame_start : frame_end + 1, :, :]
         fast_movie_window.num_frames = ft.data.shape[0]

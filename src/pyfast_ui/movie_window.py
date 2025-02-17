@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 
 @dataclass
 class MovieInfo:
-    """Info about a `FastMovie` in a `MovieWindow`"""
+    """Info about a `FastMovie` in a [`MovieWindow`][pyfast_ui.movie_window.MovieWindow]."""
 
     id_: int
     filename: str
@@ -42,7 +42,27 @@ class MovieInfo:
 
 @final
 class MovieWindow(QWidget):
-    """Window containing a `FastMovie`"""
+    """Window containing a `FastMovie`.
+
+    Args:
+        fast_movie: The `FastMovie` to display.
+        channel: The channel to be selected from `FastMovie`.
+        colormap: The colormap in which the movie should be displayed.
+
+    Attributes:
+        fast_movie: The `FastMovie` to display.
+        channel: The channel to be selected from `FastMovie`.
+        colormap: The colormap in which the movie should be displayed.
+        info: [`MovieInfo`][pyfast_ui.movie_window.MovieInfo] about `fast_movie`.
+        num_frames: Total number of frames of `fast_movie`.
+        current_frame_num: The current frame number that is displayed.
+        canvas: The matplotlib canvas on which `img_plot` is displayed.
+        ax: The matplotlib axis of `img_plot`.
+        img_plot: The image plot of the current movie frame.
+        rectangle_selection: The matplotlib [`RectangleSelector`](https://matplotlib.org/stable/api/widgets_api.html#matplotlib.widgets.RectangleSelector).
+        process_indicator: The process indicator that is active if movie
+            processing takes place.
+    """
 
     window_focused = Signal(MovieInfo)
     window_closed = Signal(MovieInfo)
@@ -137,8 +157,8 @@ class MovieWindow(QWidget):
         self.setWindowTitle(f"{self.info.filename}({self.info.id_})-{self.channel}")
 
     def update_plot_data(self) -> None:
-        """Updates `self.plot_data`. This function should be called after the
-        `FastMovie`'s data changed.
+        """Updates [`self.plot_data`][pyfast_ui.movie_window.MovieWindow.plot_data].
+        This function should be called after the `FastMovie`'s data changed.
         """
         if self.ft.mode == "timeseries":
             data: NDArray[np.float32] = self.ft.reshape_data(
@@ -374,7 +394,7 @@ class MovieWindow(QWidget):
 
 @final
 class MovieControlButton(QPushButton):
-    """A button of `MovieControls`.
+    """A button of [`MovieControls`][pyfast_ui.movie_window.MovieControls].
 
     Args:
         icon: The button's icon.
@@ -392,7 +412,7 @@ class MovieControlButton(QPushButton):
 
 @final
 class MovieControlSpinBox(QSpinBox):
-    """A spinbox of `MovieControls`.
+    """A spinbox of [`MovieControls`][pyfast_ui.movie_window.MovieControls].
 
     Args:
         focus_signal: The signal for sending if the `MovieWindow` which
@@ -418,7 +438,7 @@ class MovieControlSpinBox(QSpinBox):
 
 @final
 class MovieControls(QWidget):
-    """The controls of a `MovieWindow`.
+    """The controls of a [`MovieWindow`][pyfast_ui.movie_window.MovieWindow].
 
     Args:
         num_frames: The number of frames of the `MovieWindows`'s `FastMovie`.
