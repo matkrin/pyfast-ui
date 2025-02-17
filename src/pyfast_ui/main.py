@@ -19,19 +19,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pyfast_ui.channel_select_group import ChannelSelectGroup
 from pyfast_ui.config import Config, GeneralConfig, init_config
-from pyfast_ui.creep_group import CreepGroup
 from pyfast_ui.custom_widgets import LabeledCombobox
-from pyfast_ui.drift_group import DriftGroup
-from pyfast_ui.export_group import ExportGroup
-from pyfast_ui.fft_filters_group import FFTFiltersGroup
+from pyfast_ui.groups.channel_select_group import ChannelSelectGroup
+from pyfast_ui.groups.creep_group import CreepGroup
+from pyfast_ui.groups.drift_group import DriftGroup
+from pyfast_ui.groups.export_group import ExportGroup
+from pyfast_ui.groups.fft_filters_group import FFTFiltersGroup
+from pyfast_ui.groups.image_correction import ImageCorrectionGroup
+from pyfast_ui.groups.image_filters import ImageFilterGroup
+from pyfast_ui.groups.modify_group import ModifyGroup
+from pyfast_ui.groups.phase_group import PhaseGroup
 from pyfast_ui.histogram_window import HistogramWindow
-from pyfast_ui.image_correction import ImageCorrectionGroup
-from pyfast_ui.image_filters import ImageFilterGroup
-from pyfast_ui.modify_group import ModifyGroup
 from pyfast_ui.movie_window import MovieInfo, MovieWindow
-from pyfast_ui.phase_group import PhaseGroup
 from pyfast_ui.workers import CreepWorker, DriftWorker, FftFilterWorker
 
 FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
@@ -39,7 +39,14 @@ FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 @final
 class MainGui(QMainWindow):
-    """The main GUI window with parameters for image correction"""
+    """The main GUI window with parameters for image correction.
+
+    Attributes:
+        central_widget: The central QT widget of this window.
+        threadpool: The threadpool that is used to run processing functions.
+        movie_windows: Dictionary with id as keys and
+            [`MovieWindow`][pyfast_ui.movie_window.MovieWindow] as values.
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -57,7 +64,7 @@ class MainGui(QMainWindow):
         scroll_area.setWidget(self.central_widget)
         self.setCentralWidget(scroll_area)
 
-        self.thread_pool = QThreadPool()
+        self.threadpool = QThreadPool()
 
         ### TEST BUTTON
         self.open_btn = QPushButton("Open test file")
@@ -94,12 +101,10 @@ class MainGui(QMainWindow):
         self.phase_group = PhaseGroup.from_config(config.phase)
         self.fft_filters_group = FFTFiltersGroup.from_config(config.fft_filter)
         self.creep_group = CreepGroup.from_config(config.creep)
-        self.modify_group = ModifyGroup((0, 0))
+        self.modify_group = ModifyGroup(cut_range=(0, 0))
 
         # TODO
         # streak_removal_group = QGroupBox("Streak Removal")
-        # TODO
-        # crop_group = QGroupBox("Crop")
 
         self.drift_group = DriftGroup.from_config(config.drift)
         self.image_correction_group = ImageCorrectionGroup.from_config(
@@ -136,6 +141,8 @@ class MainGui(QMainWindow):
         self._connect_signals()
 
     def _connect_signals(self) -> None:
+        """Connects all relevant signals to widgets."""
+        # General
         _ = self.load_config_btn.clicked.connect(self.load_config)
         _ = self.save_config_btn.clicked.connect(self.save_config)
         _ = self.import_btn.clicked.connect(self.on_import_btn_click)
@@ -143,6 +150,7 @@ class MainGui(QMainWindow):
             self.on_channel_select_new
         )
         _ = self._colormap.value_changed.connect(self.update_colormap)
+        # Groups
         _ = self.modify_group.toggle_selection_btn.clicked.connect(
             self.on_toggle_selection_btn
         )
@@ -328,17 +336,17 @@ class MainGui(QMainWindow):
                 # movie_window.show()
                 self.on_phase_apply()
                 self.on_fft_filter_apply()
-                _ = self.thread_pool.waitForDone()
+                _ = self.threadpool.waitForDone()
                 self.on_creep_apply()
-                _ = self.thread_pool.waitForDone()
+                _ = self.threadpool.waitForDone()
                 self.on_drift_apply()
-                _ = self.thread_pool.waitForDone()
+                _ = self.threadpool.waitForDone()
                 self.on_image_correction_apply()
-                _ = self.thread_pool.waitForDone()
+                _ = self.threadpool.waitForDone()
                 self.on_image_filter_apply()
-                _ = self.thread_pool.waitForDone()
+                _ = self.threadpool.waitForDone()
                 self.on_export_apply()
-                _ = self.thread_pool.waitForDone()
+                _ = self.threadpool.waitForDone()
 
     def update_colormap(self, value: str) -> None:
         """Changes the colormap for all open `MovieWindow`s.
@@ -521,7 +529,7 @@ class MainGui(QMainWindow):
         )
 
         _ = fft_filter_worker.signals.finished.connect(fast_movie_window.end_processing)
-        self.thread_pool.start(fft_filter_worker)
+        self.threadpool.start(fft_filter_worker)
 
     def on_fft_filter_new(self) -> None:
         """Callback for 'New' button of the `FftFilterGroup`. Creates a new
@@ -547,19 +555,9 @@ class MainGui(QMainWindow):
             ft.reshape_to_movie(fast_movie_window.channel)
 
         creep_mode = self.creep_group.creep_mode
-        # if self.import_group.is_image_range:
-        #     image_range = self.import_group.image_range
-        # else:
-        #     image_range = None
         image_range = None
         print(f"{image_range=}")
 
-        # Basic settings -> Streak removal for interlacing
-        # remove_streaks = False
-        # Basic setting -> Export
-        # export_movie = True
-        # export_frames = False
-        # Advanced settings
         guess_ind = self.creep_group.guess_ind
         weight_boundary = self.creep_group.weight_boundry
         creep_num_cols = self.creep_group.creep_num_cols
@@ -578,7 +576,7 @@ class MainGui(QMainWindow):
             known_params=known_params,
         )
         _ = creep_worker.signals.finished.connect(fast_movie_window.end_processing)
-        self.thread_pool.start(creep_worker)
+        self.threadpool.start(creep_worker)
 
     def on_creep_new(self) -> None:
         """Callback for 'New' button of the `CreepGroup`. Creates a new
@@ -612,10 +610,6 @@ class MainGui(QMainWindow):
         boxcar = self.drift_group.boxcar
         median_filter = self.drift_group.median_filter
 
-        # if self.import_group.is_image_range:
-        #     image_range = self.import_group.image_range
-        # else:
-        #     image_range = None
         image_range = None
         print(f"Drift correction with {drift_algorithm=}")
 
@@ -632,7 +626,7 @@ class MainGui(QMainWindow):
         )
 
         _ = drift_worker.signals.finished.connect(fast_movie_window.end_processing)
-        self.thread_pool.start(drift_worker)
+        self.threadpool.start(drift_worker)
 
         # if image_range == None:
         #     first = 0
@@ -682,10 +676,6 @@ class MainGui(QMainWindow):
         frame_export_channel = self.export_group.frame_export_channel
         frame_export_format = self.export_group.frame_export_format
 
-        # if self.import_group.is_image_range:
-        #     image_range = self.import_group.image_range
-        # else:
-        #     image_range = None
         image_range = None
 
         if export_movie:
@@ -772,8 +762,9 @@ class MainGui(QMainWindow):
         self.on_image_filter_apply()
 
     def on_histogram_btn(self) -> None:
-        """Shows a new `HistogramWindow` with the height distribution of the
-        currently selected `MovieWindow`.
+        """Shows a new [`HistogramWindow`][pyfast_ui.historgram_window.HistogramWindow]
+        with the height distribution of the currently selected
+        [`MovieWindow`][pyfast_ui.movie_window.MovieWindow].
         """
         if self.operate_on is None:
             return

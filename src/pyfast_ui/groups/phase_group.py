@@ -15,6 +15,15 @@ from pyfast_ui.config import PhaseConfig
 
 @final
 class PhaseGroup(QGroupBox):
+    """Grouping of phase related widgets.
+
+    Args:
+        apply_auto_xphase: Whether to apply autmotically determined x-phase correction.
+        additional_x_phase: Manually chosen additional x-phase.
+        manual_y_phase: Manually chosen additional y-phase.
+        index_frame_to_correlate: Index of the frame to correlate to.
+        sigma_gauss:
+    """
     def __init__(
         self,
         apply_auto_xphase: bool,
