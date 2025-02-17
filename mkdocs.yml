@@ -17,7 +17,7 @@ theme:
 
     # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
-      primary: teal
+      primary: blue
       scheme: slate
       toggle:
         icon: material/lightbulb-outline
@@ -28,12 +28,12 @@ repo_url: https://github.com/matkrin/pyfast-ui
 
 nav:
 - Home: index.md
-# - Examples: examples.md
-# - API Reference: api-user.md
+- Usage: usage.md
 - Development:
-  - MainGui: api-dev/main_gui.md
-  - MovieWindow: api-dev/movie_window.md
-  - HistogramWindow: api-dev/histogram_window.md
+  - MainGui: api/main_gui.md
+  - MovieWindow: api/movie_window.md
+  - HistogramWindow: api/histogram_window.md
+  - Groups: api/groups.md
 
 plugins:
 - search
@@ -49,12 +49,14 @@ plugins:
           show_root_toc_entry: true
           show_source: false
           show_signature_annotations: true
+          # show_if_no_docstring: true
           # separate_signature: true
           heading_level: 1
           summary: true
 
 
 markdown_extensions:
+  - admonition
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
