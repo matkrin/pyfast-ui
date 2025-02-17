@@ -43,7 +43,15 @@ plugins:
         paths: [.]
         options:
           show_root_heading: true
-          show_category_heading: true
+          show_category_heading: false
+          show_symbol_type_heading: true
+          show_symbol_type_toc: true
+          show_root_toc_entry: true
+          show_source: false
+          show_signature_annotations: true
+          # separate_signature: true
+          heading_level: 1
+          summary: true
 
 
 markdown_extensions:
