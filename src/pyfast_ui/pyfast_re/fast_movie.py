@@ -10,7 +10,10 @@ import h5py as h5
 import numpy as np
 from numpy.typing import NDArray
 
+from pyfast_ui.pyfast_re.creep import Creep
 from pyfast_ui.pyfast_re.fft_filter import FftFilter
+from pyfast_ui.pyfast_re.interpolation import apply_interpolation, determine_interpolation
+
 
 from .phase import PhaseCorrection
 
@@ -35,6 +38,15 @@ class Channels(Enum):
     def is_backward(self) -> bool:
         return "b" in self.value
 
+    def is_up_and_down(self) -> bool:
+        return "u" in self.value and "d" in self.value
+
+    def is_up_not_down(self) -> bool:
+        return "u" in self.value and not "d" in self.value
+
+    def is_down_not_up(self) -> bool:
+        return "d" in self.value and not "u" in self.value
+
 
 class DataMode(Enum):
     TIMESERIES = 0
@@ -55,6 +67,8 @@ class FastMovie:
 
         self.channels: Channels | None = None
         self.mode: DataMode = DataMode.TIMESERIES
+        self.grid = None
+        self.num_images = self.metadata.num_images
 
     def clone(self) -> Self:
         return copy.deepcopy(self)
@@ -86,6 +100,8 @@ class FastMovie:
             manual_y_phase=manual_y_phase,
         )
         result = phase_correction.correct_phase()
+        _applied_x_phase = result.applied_x_phase
+        _applied_y_phase = result.applied_y_phase
         self.data = result.data
 
     def fft_filter(
@@ -98,7 +114,7 @@ class FastMovie:
         high_pass_params: tuple[float, float],
     ) -> None:
         fft_filtering = FftFilter(
-            self,
+            fast_movie=self,
             filter_config=filter_config,
             filter_broadness=filter_broadness,
             num_x_overtones=num_x_overtones,
@@ -111,13 +127,15 @@ class FastMovie:
 
     def correct_creep_non_bezier(
         self,
+        creep_mode: Literal["sin", "root"],
         initial_guess: float,
         guess_ind: float,
         known_params: float | None,
     ) -> None:
         # must be movie mode now
-        creep = Creep(self, index_linear=guess_ind)
-        grid = creep.fit_creep(initial_guess, known_params)
+        mode = CreepMode(creep_mode)
+        creep = Creep(self, index_to_linear=guess_ind, creep_mode=mode)
+        self.grid = creep.fit_creep(initial_guess, known_params)
 
     def correct_creep_bezier(
         self,
@@ -130,11 +148,16 @@ class FastMovie:
         col_inds = np.linspace(
             self.data.shape[2] * 0.25, self.data.shape[2] * 0.75, creep_num_cols
         ).astype(int)
-        opt, grid = creep.fit_creep_bez(
+        opt, self.grid = creep.fit_creep_bez(
             col_inds=col_inds, w=weight_boundary, known_input=known_input
         )
 
-    def interpolate(self) -> None: ...
+    def interpolate(self) -> None:
+        interpolation_matrix_up, interpolation_matrix_down = determine_interpolation(
+            self, offset=0.0, grid=self.grid
+        )
+        # Mutates self.data
+        apply_interpolation(self, interpolation_matrix_up, interpolation_matrix_down)
 
     def remove_streaks(self) -> None: ...
 

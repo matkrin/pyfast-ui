@@ -64,7 +64,7 @@ class PhaseCorrection:
 
         x_phase += self.additional_x_phase
         y_phase = self.manual_y_phase
-        x_points = data.shape[3]
+        x_points = data.shape[2]
 
         y_phase_roll = y_phase * x_points * 2
         data = np.roll(data.flatten(), x_phase + y_phase_roll)
@@ -90,7 +90,7 @@ def get_x_phase_autocorrection(
 
     create_hamming = np.outer(
         np.ones(len(data[0, :, 0])), np.hamming(len(data[0, 0, :]))
-    )
+    ).astype(np.float32)
     frame_to_correlate = frame_to_correlate * create_hamming
 
     if sigma_gauss != 0:
