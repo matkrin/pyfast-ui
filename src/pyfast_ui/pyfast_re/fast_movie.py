@@ -10,9 +10,13 @@ import h5py as h5
 import numpy as np
 from numpy.typing import NDArray
 
-from pyfast_ui.pyfast_re.creep import Creep
+from pyfast_ui.pyfast_re.creep import Creep, CreepMode
+from pyfast_ui.pyfast_re.drift import Drift, DriftMode, StackRegReferenceType
 from pyfast_ui.pyfast_re.fft_filter import FftFilter
-from pyfast_ui.pyfast_re.interpolation import apply_interpolation, determine_interpolation
+from pyfast_ui.pyfast_re.interpolation import (
+    apply_interpolation,
+    determine_interpolation,
+)
 
 
 from .phase import PhaseCorrection
@@ -42,10 +46,10 @@ class Channels(Enum):
         return "u" in self.value and "d" in self.value
 
     def is_up_not_down(self) -> bool:
-        return "u" in self.value and not "d" in self.value
+        return "u" in self.value and "d" not in self.value
 
     def is_down_not_up(self) -> bool:
-        return "d" in self.value and not "u" in self.value
+        return "d" in self.value and "u" not in self.value
 
 
 class DataMode(Enum):
@@ -75,7 +79,8 @@ class FastMovie:
 
     def set_channels(
         self, channels: Literal["udi", "udf", "udb", "uf", "ub", "df", "db", "ui", "di"]
-    ): ...
+    ):
+        self.channels = Channels(channels)
 
     def rescale(self, scaling_factor: tuple[int, int]) -> None: ...
 
@@ -123,6 +128,7 @@ class FastMovie:
             high_pass_params=high_pass_params,
         )
         filtered_data = fft_filtering.filter_movie()
+        # Mutate data
         self.data = filtered_data
 
     def correct_creep_non_bezier(
@@ -141,6 +147,7 @@ class FastMovie:
         self,
         weight_boundary: float,
         creep_num_cols: int,
+        guess_ind: float,
         known_input: tuple[float, float, float] | None,
     ) -> None:
         # must be movie mode now
@@ -148,7 +155,7 @@ class FastMovie:
         col_inds = np.linspace(
             self.data.shape[2] * 0.25, self.data.shape[2] * 0.75, creep_num_cols
         ).astype(int)
-        opt, self.grid = creep.fit_creep_bez(
+        _opt, self.grid = creep.fit_creep_bez(
             col_inds=col_inds, w=weight_boundary, known_input=known_input
         )
 
@@ -156,24 +163,77 @@ class FastMovie:
         interpolation_matrix_up, interpolation_matrix_down = determine_interpolation(
             self, offset=0.0, grid=self.grid
         )
-        # Mutates self.data
+        # Mutates data
         apply_interpolation(self, interpolation_matrix_up, interpolation_matrix_down)
 
     def remove_streaks(self) -> None: ...
 
-    def correct_drift(
+    def correct_drift_correlation(
         self,
         fft_drift: bool,
         drifttype: Literal["common", "full"],
         stepsize: int,
+        boxcar: int,
+        median_filter: bool,
         known_drift: Literal["integrated", "sequential"] | None,
-    ) -> None: ...
+    ) -> None:
+        mode = DriftMode(drifttype)
+        drift = Drift(
+            self, stepsize=stepsize, boxcar=boxcar, median_filter=median_filter
+        )
+        self.data, _drift_path = drift.correct_correlation(mode)
 
-    def correct_frames(
+        # if self.show_path is True:
+        #     plt.plot(self.integrated_trans[0, :], self.integrated_trans[1, :])
+        #     plt.plot(transformations_conv[0, :], transformations_conv[1, :])
+        #     plt.title("Drift path both raw and smoothed")
+        #     plt.show()
+
+    def correct_drift_stackreg(
         self,
-        correction_type: Literal["align", "plane", "fixzero"],
-        align_type: Literal["median", "mean", "poly2", "poly3"],
-    ) -> None: ...
+        drifttype: Literal["common", "full"],
+        # stepsize: int,
+        stackreg_reference: Literal["previous", "first", "mean"],
+        boxcar: int,
+        median_filter: bool,
+    ):
+        mode = DriftMode(drifttype)
+        reference = StackRegReferenceType(stackreg_reference)
+        drift = Drift(self, stepsize=1, boxcar=boxcar, median_filter=median_filter)
+        self.data, _drift_path = drift.correct_stackreg(mode, reference)
+
+    def correct_drift_known(
+        self,
+        drifttype: Literal["common", "full"],
+    ):
+        mode = DriftMode(drifttype)
+        drift = Drift(self)
+        self.data, _drift_path = drift.correct_known(mode)
+
+    # def correct_frames(
+    #     self,
+    #     correction_type: Literal["align", "plane", "fixzero"],
+    #     align_type: Literal["median", "mean", "poly2", "poly3"],
+    # ) -> None: ...
+    def align_rows(self):
+        if self.mode != DataMode.MOVIE:
+            raise ValueError("Data must be reshaped into movie mode")
+
+        # def _median_bkg(line):
+        #     return np.full(line.shape[0], np.median(line))
+
+        for i in range(self.data.shape[0]):
+            # fast_movie.data[i], _ = _align_img(frame, baseline=align_type, axis=1)
+            # # _align_img
+            # bkg = np.apply_along_axis(_median_bkg, axis=1, self.data[i])
+
+            background = np.apply_along_axis(
+                lambda row: np.full(row.shape[0], np.median(row)),
+                axis=1,
+                arr=self.data[i],
+            )
+            # Mutate data
+            self.data[i] -= background
 
     def filter_frames(
         self,
@@ -205,22 +265,6 @@ class FftFilterConfig:
     filter_high_pass: bool
     filter_pump: bool
     filter_noise: bool
-
-
-class CreepMode(Enum):
-    SIN = "sin"
-    BEZIER = "bezier"
-    ROOT = "root"
-
-
-class DriftType(Enum):
-    FULL = "full"
-    COMMON = "common"
-
-
-class KnownDriftType(Enum):
-    INTEGREATED = "integrated"
-    SEQUENTIAL = "sequential"
 
 
 class FrameCorrectionType(Enum):
