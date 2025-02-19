@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from enum import Enum, auto
+import itertools
 from pathlib import Path
 from typing import Literal, Self, final
 
@@ -51,6 +52,20 @@ class Channels(Enum):
     def is_down_not_up(self) -> bool:
         return "d" in self.value and "u" not in self.value
 
+    def frame_channel_iterator(self) -> itertools.cycle[str]:
+        cycle_list = []
+        match self:
+            case Channels.UDI:
+                cycle_list = ["ui", "di"]
+            case Channels.UDF:
+                cycle_list = ["uf", "df"]
+            case Channels.UDB:
+                cycle_list = ["ub", "db"]
+            case _:
+                cycle_list = [self.value]
+
+        return itertools.cycle(cycle_list)
+
 
 class DataMode(Enum):
     TIMESERIES = 0
@@ -61,8 +76,9 @@ class DataMode(Enum):
 class FastMovie:
     def __init__(self, filename: str) -> None:
         self.filename = filename
-        self.basename = str(Path(filename).stem)
-        self.parent_dir = str(Path(filename).resolve().parent)
+        self.path = Path(filename)
+        self.basename = str(self.path.stem)
+        self.parent_dir = str(self.path.resolve().parent)
 
         with h5.File(filename, mode="r") as f:
             self.data: NDArray[np.float32] = f["data"][()].astype(np.float32)  # pyright: ignore
@@ -245,11 +261,34 @@ class FastMovie:
 
     def export_tiff(self) -> None: ...
 
-    def export_gwy(
+    def export_frames_txt(self, frame_range: tuple[int, int]) -> None:
+        if self.mode != DataMode.MOVIE:
+            raise ValueError("Data must be reshaped into movie mode")
+
+        if self.channels is None:
+            raise ValueError("FastMovie.channels must be set")
+
+        save_folder = self.path.resolve().parent
+        basename = self.path.stem
+        frame_channel_iterator = self.channels.frame_channel_iterator()
+
+        frame_start, frame_end = frame_range
+        data = self.data[frame_start:frame_end, :, :]
+
+        for i in range(data.shape[0]):
+            frame: NDArray[np.float32] = data[i]
+            frame_id = i // 2 + 1 if self.channels.is_up_and_down() else i
+            channel_id = next(frame_channel_iterator)
+            frame_name = f"{basename}_{frame_id}-{channel_id}.txt"
+            save_path = save_folder / frame_name
+            header = f"Channel: {frame_name}\nWidth: 1 m\nHeight: 1 m\nValue units: m"
+            np.savetxt(save_path, frame, delimiter="\t", header=header, fmt="%.4e")
+
+    def export_frames_gwy(
         self, gwy_type: Literal["images", "volume"], frame_range: tuple[int, int]
     ) -> None: ...
 
-    def export_frames(
+    def export_frames_image(
         self,
         image_format: Literal["png", "jpg", "bmp"],
         frame_range: tuple[int, int],
@@ -302,8 +341,8 @@ class Metadata:
         self.scanner_x_points: int = int(meta_attrs["Scanner.X_Points"])  # pyright: ignore[reportArgumentType]
         self.scanner_y_points: int = int(meta_attrs["Scanner.Y_Points"])  # pyright: ignore[reportArgumentType]
         self.acquisition_adc_samplingrate: float = float(
-            meta_attrs["Acquisition.ADC_Samplingrate"]
-        )  # pyright: ignore[reportArgumentType]
+            meta_attrs["Acquisition.ADC_Samplingrate"]  # pyright: ignore[reportArgumentType]
+        )
         self.num_images: int = int(meta_attrs["Acquisition.NumImages"])  # pyright: ignore[reportArgumentType]
         self.num_images = self._get_correct_num_images(num_pixels)
         self.num_frames = self.num_images * 4
