@@ -1,14 +1,18 @@
 """Exact interpolation for interlacing"""
-
+from __future__ import annotations
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
-from pyfast_ui.pyfast_re.fast_movie import DataMode, FastMovie
 from scipy.sparse import csr_matrix, lil_matrix
 from scipy.spatial import Delaunay
 from tqdm import tqdm
 
+from pyfast_ui.pyfast_re.data_mode import DataMode
+
+if TYPE_CHECKING:
+    from pyfast_ui.pyfast_re.fast_movie import  FastMovie
 
 log = logging.getLogger(__name__)
 

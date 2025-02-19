@@ -4,8 +4,9 @@ OpenCV. Parts of the code are inspired by:
 learnopencv.com/video-stabilisation-using-point-feature-matching-in-opencv
 """
 
+from __future__ import annotations
 from enum import Enum
-from typing import final
+from typing import TYPE_CHECKING, final
 import matplotlib.pyplot as plt
 import numpy as np
 from pystackreg import StackReg
@@ -13,7 +14,10 @@ from scipy.ndimage import convolve
 from scipy.signal import correlate, medfilt
 from skimage.transform import resize
 
-from pyfast_ui.pyfast_re.fast_movie import DataMode, FastMovie
+from pyfast_ui.pyfast_re.data_mode import DataMode
+
+if TYPE_CHECKING:
+    from pyfast_ui.pyfast_re.fast_movie import FastMovie
 
 
 class DriftMode(Enum):
@@ -177,7 +181,7 @@ class Drift:
     def _get_drift_stackreg(self, reference):
         stackreg = StackReg(StackReg.TRANSLATION)
         transformation_matrices = stackreg.register_stack(
-            self.data, reference=reference
+            self.data, reference=reference.value
         )
         x_path_integrated = []
         y_path_integrated = []

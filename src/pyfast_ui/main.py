@@ -485,6 +485,7 @@ class MainGui(QMainWindow):
             additional_x_phase=additional_x_phase,
             manual_y_phase=manual_y_phase,
         )
+        print(f"{_x_phase}")
 
         fast_movie_window.recreate_plot()
 

@@ -1,18 +1,23 @@
-from enum import Enum
+from __future__ import annotations
 import logging
 import traceback
 from copy import copy
-from typing import final
+from enum import Enum
+from typing import TYPE_CHECKING, final
 
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
-from pyfast_ui.pyfast_re.fast_movie import DataMode, FastMovie
 from scipy.interpolate import Rbf, splev, splrep
 from scipy.optimize import LinearConstraint, NonlinearConstraint, curve_fit, minimize
 from scipy.signal import correlate
 
-# from ..fast_movie import FastMovie
+from pyfast_ui.pyfast_re.data_mode import DataMode
+
+
+if TYPE_CHECKING:
+    from pyfast_ui.pyfast_re.fast_movie import FastMovie
+
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +62,7 @@ class Creep:
         # self.processing_log = fast_movie.processing_log
         self.number_xpixels = fast_movie.metadata.scanner_x_points
         self.number_ypixels = fast_movie.metadata.scanner_y_points * 2
+        self.rel_ind_raw = index_to_linear
         self.data = fast_movie.data
         self.ygridfold, self.ygridstraight = self.ygrid()
         self.pixel_shift = self._get_shift(0.5)
@@ -66,10 +72,10 @@ class Creep:
             "sin": self.sin_limit_function,
             "root": self.root_limit_function,
         }
-        self.creep_function = creep_functions[creep_mode]
-        self.limit_function = creep_limit_function[creep_mode]
+        self.creep_function = creep_functions[creep_mode.value]
+        self.limit_function = creep_limit_function[creep_mode.value]
         self.limit_function()
-        self.bounds = self.creep_bounds[creep_mode]
+        self.bounds = self.creep_bounds[creep_mode.value]
 
     def _get_shift(self, imrange: float):
         """

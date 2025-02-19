@@ -1,26 +1,28 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
-from enum import Enum, auto
 import itertools
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Literal, Self, final
 
 import h5py as h5
+import matplotlib.animation as animation
+import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
+import skimage
 
 from pyfast_ui.pyfast_re.creep import Creep, CreepMode
+from pyfast_ui.pyfast_re.data_mode import DataMode
 from pyfast_ui.pyfast_re.drift import Drift, DriftMode, StackRegReferenceType
 from pyfast_ui.pyfast_re.fft_filter import FftFilter
 from pyfast_ui.pyfast_re.interpolation import (
     apply_interpolation,
     determine_interpolation,
 )
-
-
-from .phase import PhaseCorrection
+from pyfast_ui.pyfast_re.phase import PhaseCorrection
 
 
 class Channels(Enum):
@@ -67,11 +69,6 @@ class Channels(Enum):
         return itertools.cycle(cycle_list)
 
 
-class DataMode(Enum):
-    TIMESERIES = 0
-    MOVIE = auto()
-
-
 @final
 class FastMovie:
     def __init__(self, filename: str) -> None:
@@ -89,6 +86,13 @@ class FastMovie:
         self.mode: DataMode = DataMode.TIMESERIES
         self.grid = None
         self.num_images = self.metadata.num_images
+        self.cut_range = (0, self.num_images)
+
+        # Initial phase correction from file metadata
+        y_phase_roll = (
+            self.metadata.scanner_x_points * self.metadata.acquisition_y_phase * 2
+        )
+        self.data = np.roll(self.data, self.metadata.acquisition_x_phase + y_phase_roll)
 
     def clone(self) -> Self:
         return copy.deepcopy(self)
@@ -98,9 +102,29 @@ class FastMovie:
     ):
         self.channels = Channels(channels)
 
-    def rescale(self, scaling_factor: tuple[int, int]) -> None: ...
+    def to_movie_mode(
+        self, channels: Literal["udi", "udf", "udb", "uf", "ub", "df", "db", "ui", "di"]
+    ):
+        self.channels = Channels(channels)
+        data = reshape_data(
+            self.data,
+            self.channels,
+            self.num_images,
+            self.metadata.scanner_x_points,
+            self.metadata.scanner_y_points,
+        )
+        self.data = data
+        self.mode = DataMode.MOVIE
 
-    def cut(self, cut_range: tuple[int, int]) -> None: ...
+    def rescale(self, scaling_factor: tuple[int, int]) -> None:
+        scaled: list[NDArray[np.float32]] = []
+        for i in range(self.data.shape[0]):
+            scaled.append(skimage.transform.rescale(self.data[i], scaling_factor))  # pyright: ignore[reportAny, reportUnknownMemberType, reportUnknownArgumentType]
+
+        self.data = np.array(scaled)
+
+    def cut(self, cut_range: tuple[int, int]) -> None:
+        self.cut_range = cut_range
 
     def crop(self, x_range: tuple[int, int], y_range: tuple[int, int]) -> None: ...
 
@@ -123,6 +147,7 @@ class FastMovie:
         result = phase_correction.correct_phase()
         _applied_x_phase = result.applied_x_phase
         _applied_y_phase = result.applied_y_phase
+        # Mutate data
         self.data = result.data
 
     def fft_filter(
@@ -157,7 +182,7 @@ class FastMovie:
         # must be movie mode now
         mode = CreepMode(creep_mode)
         creep = Creep(self, index_to_linear=guess_ind, creep_mode=mode)
-        self.grid = creep.fit_creep(initial_guess, known_params)
+        self.grid = creep.fit_creep((initial_guess,), known_params=known_params)
 
     def correct_creep_bezier(
         self,
@@ -186,17 +211,17 @@ class FastMovie:
 
     def correct_drift_correlation(
         self,
-        fft_drift: bool,
+        # fft_drift: bool,
         drifttype: Literal["common", "full"],
         stepsize: int,
         boxcar: int,
         median_filter: bool,
-        known_drift: Literal["integrated", "sequential"] | None,
     ) -> None:
         mode = DriftMode(drifttype)
         drift = Drift(
             self, stepsize=stepsize, boxcar=boxcar, median_filter=median_filter
         )
+        # Mutate data
         self.data, _drift_path = drift.correct_correlation(mode)
 
         # if self.show_path is True:
@@ -246,7 +271,7 @@ class FastMovie:
             background = np.apply_along_axis(
                 lambda row: np.full(row.shape[0], np.median(row)),
                 axis=1,
-                arr=self.data[i],
+                arr=self.data[i],  # pyright: ignore[reportAny]
             )
             # Mutate data
             self.data[i] -= background
@@ -257,7 +282,65 @@ class FastMovie:
         kernel_size: int,
     ) -> None: ...
 
-    def export_mp4(self, fps: int, color_map: str, auto_label: bool) -> None: ...
+    def export_mp4(
+        self, fps_factor: int = 1, color_map: str = "bone", auto_label: bool = True
+    ) -> None:
+        if self.mode != DataMode.MOVIE:
+            raise ValueError("Data must be reshaped into movie mode")
+
+        num_frames, num_y_pixels, num_x_pixels = self.data.shape
+
+        px: float = 1 / plt.rcParams["figure.dpi"]  # pixel in inches
+
+        fig, ax = plt.subplots(  # pyright: ignore[reportUnknownMemberType]
+            figsize=(num_x_pixels * px, num_y_pixels * px),
+            frameon=False,
+        )
+        img_plot = ax.imshow(self.data[0], cmap=color_map)  # pyright: ignore[reportAny, reportUnknownMemberType]
+        img_plot.set_clim(self.data.min(), self.data.max())  # pyright: ignore[reportAny]
+        fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+        padding = 0.02
+        fontsize = 0.05 * num_y_pixels
+        text = "test"
+        text_left = ax.text(
+            num_x_pixels * padding,
+            num_x_pixels * padding,
+            text,
+            fontsize=fontsize,
+            color="white",
+            alpha=0.8,
+            horizontalalignment="left",
+            verticalalignment="top",
+        )
+        text_right = ax.text(
+            num_x_pixels - (num_x_pixels * padding),
+            num_x_pixels * padding,
+            text,
+            fontsize=fontsize,
+            color="white",
+            alpha=0.8,
+            horizontalalignment="right",
+            verticalalignment="top",
+        )
+
+        def update(frame_index: int) -> None:
+            img_plot.set_data(self.data[frame_index])  # pyright: ignore[reportAny]
+            text_left.set_text(f"{frame_index}")
+            text_right.set_text(f"{frame_index}")
+
+        fps = fps_factor * self.fps()
+        interval = 1 / fps * 1000
+        ani = animation.FuncAnimation(
+            fig=fig, func=update, frames=num_frames, interval=interval
+        )
+        ani.save("test.mp4")
+
+    def fps(self) -> int:
+        if self.channels is not None and self.channels.is_up_and_down():
+            return self.metadata.scanner_y_frequency * 2
+
+        return self.metadata.scanner_y_frequency
 
     def export_tiff(self) -> None: ...
 
@@ -278,6 +361,7 @@ class FastMovie:
         for i in range(data.shape[0]):
             frame: NDArray[np.float32] = data[i]
             frame_id = i // 2 + 1 if self.channels.is_up_and_down() else i
+            frame_id += self.cut_range[0]
             channel_id = next(frame_channel_iterator)
             frame_name = f"{basename}_{frame_id}-{channel_id}.txt"
             save_path = save_folder / frame_name
@@ -294,6 +378,97 @@ class FastMovie:
         frame_range: tuple[int, int],
         color_map: str,
     ) -> None: ...
+
+
+def reshape_data(
+    time_series_data: NDArray[np.float32],
+    channels: Channels,
+    num_images: int,
+    x_points: int,
+    y_points: int,
+):
+    """
+    Returns a 3D numpy array from an HDF5 file containing (image number, the 4 channels, rows).
+
+    Args:
+        time_series (1darray): the FAST data in timeseries format
+        channels: a string specifying the channels to extract
+        x_points (int): the number of x points
+        y_points (int): the number of y points
+        num_images (int): number of images
+        num_frames (int): number of frames
+
+    Returns:
+        ndarray: the reshaped data as (image number, the 4 channels, rows)
+
+    """
+
+    data: NDArray[np.float32] = np.reshape(
+        time_series_data, (num_images, y_points * 4, x_points)
+    )
+    num_frames = num_images * 4
+
+    match channels:
+        case Channels.UDF:
+            data = data[:, 0 : (4 * y_points) : 2, :]
+            data = np.resize(data, (num_images * 2, y_points, x_points))
+            # flip every up frame upside down
+            data[0 : num_frames * 2 - 1 : 2, :, :] = data[
+                0 : num_frames * 2 - 1 : 2, ::-1, :
+            ]
+
+        case Channels.UDB:
+            data = data[:, 1 : (4 * y_points) : 2, :]
+            data = np.resize(data, (num_images * 2, y_points, x_points))
+            # flip every up frame upside down
+            data[0 : num_frames * 2 - 1 : 2, :, :] = data[
+                0 : num_frames * 2 - 1 : 2, ::-1, :
+            ]
+            # flip backwards frames horizontally
+            data[0 : num_frames * 2, :, :] = data[0 : num_frames * 2, :, ::-1]
+
+        case Channels.UF:
+            data = data[:, 0 : (2 * y_points) : 2, :]
+            # flip every up frame upside down
+            data[0:num_frames, :, :] = data[0:num_frames, ::-1, :]
+
+        case Channels.UB:
+            data = data[:, 1 : (2 * y_points) : 2, :]
+            # flip backwards frames horizontally
+            data[0:num_frames, :, :] = data[0:num_frames, :, ::-1]
+            # flip every up frame upside down
+            data[0:num_frames, :, :] = data[0:num_frames, ::-1, :]
+
+        case Channels.DF:
+            data = data[:, (2 * y_points) : (4 * y_points) : 2, :]
+
+        case Channels.DB:
+            data = data[:, (2 * y_points + 1) : (4 * y_points) : 2, :]
+            # flip backwards frames horizontally
+            data[0:num_frames, :, :] = data[0:num_frames, :, ::-1]
+
+        case Channels.UDI:
+            data = np.resize(data, (num_images * 2, y_points * 2, x_points))
+            # flip backwards lines horizontally
+            data[:, 1 : y_points * 2 : 2, :] = data[:, 1 : y_points * 2 : 2, ::-1]
+            # flip every up frame upside down
+            data[0 : num_frames * 2 - 1 : 2, :, :] = data[
+                0 : num_frames * 2 - 1 : 2, ::-1, :
+            ]
+
+        case Channels.UI:
+            data = data[:, : (2 * y_points), :]
+            # flip backwards lines horizontally
+            data[:, 1 : y_points * 2 : 2, :] = data[:, 1 : y_points * 2 : 2, ::-1]
+            # flip every up frame upside down
+            data[0:num_frames, :, :] = data[0:num_frames, ::-1, :]
+
+        case Channels.DI:
+            data = data[:, (2 * y_points) :, :]
+            # flip backwards lines horizontally
+            data[:, 1 : y_points * 2 : 2, :] = data[:, 1 : y_points * 2 : 2, ::-1]
+
+    return data
 
 
 @dataclass
@@ -336,13 +511,14 @@ class Metadata:
     def __init__(self, meta_attrs: h5.AttributeManager, num_pixels: int) -> None:
         self.meta_attrs = meta_attrs
         self._correct_missspelled_keys()
-        self.acquisition_x_phase: int = int(meta_attrs["Acquisition_X_phase"])  # pyright: ignore[reportArgumentType]
-        self.acquisition_y_phase: int = int(meta_attrs["Acquisition_Y_phase"])  # pyright: ignore[reportArgumentType]
-        self.scanner_x_points: int = int(meta_attrs["Scanner.X_Points"])  # pyright: ignore[reportArgumentType]
-        self.scanner_y_points: int = int(meta_attrs["Scanner.Y_Points"])  # pyright: ignore[reportArgumentType]
-        self.acquisition_adc_samplingrate: float = float(
-            meta_attrs["Acquisition.ADC_Samplingrate"]  # pyright: ignore[reportArgumentType]
+        self.acquisition_x_phase = int(meta_attrs["Acquisition.X_Phase"])  # pyright: ignore[reportArgumentType]
+        self.acquisition_y_phase = int(meta_attrs["Acquisition.Y_Phase"])  # pyright: ignore[reportArgumentType]
+        self.scanner_x_points = int(meta_attrs["Scanner.X_Points"])  # pyright: ignore[reportArgumentType]
+        self.scanner_y_points = int(meta_attrs["Scanner.Y_Points"])  # pyright: ignore[reportArgumentType]
+        self.acquisition_adc_samplingrate = float(
+            meta_attrs["Acquisition.ADC_SamplingRate"]  # pyright: ignore[reportArgumentType]
         )
+        self.scanner_y_frequency = int(meta_attrs["Scanner.Y_Frequency"])  # pyright: ignore[reportArgumentType]
         self.num_images: int = int(meta_attrs["Acquisition.NumImages"])  # pyright: ignore[reportArgumentType]
         self.num_images = self._get_correct_num_images(num_pixels)
         self.num_frames = self.num_images * 4

@@ -1,45 +1,57 @@
-from enum import Enum
+from pyfast_ui.pyfast_re.fast_movie import FastMovie, FftFilterConfig
 
+h5_file = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
-class Channels(Enum):
-    UDI = "udi"
-    UDF = "udf"
-    UDB = "udb"
-    UF = "uf"
-    UB = "ub"
-    DF = "df"
-    DB = "db"
-    UI = "ui"
-    DI = "di"
+fast_movie = FastMovie(h5_file)
 
-    def is_interlaced(self) -> bool:
-        return "i" in self.value
+fast_movie.correct_phase(auto_x_phase=True, frame_index_to_correlate=0, additional_x_phase=0)
 
-    def is_forward(self) -> bool:
-        return "f" in self.value
+# fft_filter_config = FftFilterConfig(
+#     filter_x=True,
+#     filter_y=True,
+#     filter_x_overtones=True,
+#     filter_high_pass=True,
+#     filter_pump=True,
+#     filter_noise=False,
+# )
+#
+# fast_movie.fft_filter(
+#     fft_filter_config,
+#     num_x_overtones=10,
+#     filter_broadness=0,
+#     num_pump_overtones=3,
+#     pump_freqs=[1500, 1000],
+#     high_pass_params=(1000.0, 600.0),
+# )
 
-    def is_backward(self) -> bool:
-        return "b" in self.value
+fast_movie.to_movie_mode("udi")
 
-    def is_up_and_down(self) -> bool:
-        return "u" in self.value and "d" in self.value
+# fast_movie.correct_creep_non_bezier(
+#     creep_mode="sin",
+#     initial_guess=0.3,
+#     guess_ind=0.2,
+#     known_params=None,
+# )
+#
+# fast_movie.interpolate()
 
-    def is_up_not_down(self) -> bool:
-        return "u" in self.value and "d" not in self.value
+# fast_movie.correct_drift_correlation(
+#     fft_drift=True,
+#     drifttype="full",
+#     stepsize=20,
+#     boxcar=50,
+#     median_filter = True,
+# )
 
-    def is_down_not_up(self) -> bool:
-        return "d" in self.value and "u" not in self.value
+# fast_movie.correct_drift_stackreg(
+#     drifttype="full",
+#     stackreg_reference="previous",
+#     boxcar=50,
+#     median_filter = True,
+# )
+#
+# fast_movie.align_rows()
 
+fast_movie.rescale((1, 2))
+fast_movie.export_mp4()
 
-channels = Channels("udi")
-frame_range = 447
-
-
-if channels.is_up_and_down():
-    frame_id = image_range[0] * 2
-else:
-    frame_id = image_range[0]
-for image_id in range(image_range[0], image_range[-1] + 1):
-    for channel_id in self.channel_list:
-        yield image_id, channel_id, frame_id
-        frame_id += 1

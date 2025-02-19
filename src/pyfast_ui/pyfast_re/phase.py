@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, final
 
@@ -6,8 +7,10 @@ from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter
 from scipy.signal import correlate
 
+from pyfast_ui.pyfast_re.data_mode import DataMode
+
 if TYPE_CHECKING:
-    from pyfast_ui.pyfast_re.fast_movie import DataMode, FastMovie
+    from pyfast_ui.pyfast_re.fast_movie import FastMovie
 
 
 @dataclass
@@ -36,18 +39,24 @@ class PhaseCorrection:
         self.manual_y_phase = manual_y_phase
 
     def correct_phase(self) -> PhaseCorrectionResult:
-        if len(self.fast_movie.data.shape) == 1 or self.fast_movie.mode != DataMode.MOVIE:
-            num_images = self.fast_movie.metadata.num_images
-            num_frames = self.fast_movie.metadata.num_frames
-            y_points = self.fast_movie.metadata.scanner_y_points
-            x_points = self.fast_movie.metadata.scanner_x_points
+        """Does not mutate data of self.fast_movie"""
+        num_images = self.fast_movie.metadata.num_images
+        num_frames = self.fast_movie.metadata.num_frames
+        num_y_points = self.fast_movie.metadata.scanner_y_points
+        num_x_points = self.fast_movie.metadata.scanner_x_points
+
+        if self.fast_movie.mode != DataMode.MOVIE:
             ### Reshape to udi
             # Create a new array
-            data = np.resize(
-                self.fast_movie.data, (num_images * 2, y_points * 2, x_points)
+            data = np.reshape(
+                self.fast_movie.data,
+                (num_images, num_y_points * 4, num_x_points),
             )
+            data = np.resize(data, (num_images * 2, num_y_points * 2, num_x_points))
             # flip backwards lines horizontally
-            data[:, 1 : y_points * 2 : 2, :] = data[:, 1 : y_points * 2 : 2, ::-1]
+            data[:, 1 : num_y_points * 2 : 2, :] = data[
+                :, 1 : num_y_points * 2 : 2, ::-1
+            ]
             # flip every up frame upside down
             data[0 : num_frames * 2 - 1 : 2, :, :] = data[
                 0 : num_frames * 2 - 1 : 2, ::-1, :
@@ -55,21 +64,16 @@ class PhaseCorrection:
         else:
             data = self.fast_movie.data.copy()
 
+        x_phase_correction = 0
         if self.auto_x_phase:
-            x_phase = get_x_phase_autocorrection(
+            x_phase_correction = get_x_phase_autocorrection(
                 data, self.frame_index_to_correlate, self.sigma_gauss
             )
-        else:
-            x_phase = self.fast_movie.metadata.acquisition_x_phase
 
-        x_phase += self.additional_x_phase
+        x_phase = x_phase_correction + self.additional_x_phase
         y_phase = self.manual_y_phase
-        x_points = data.shape[2]
-
-        y_phase_roll = y_phase * x_points * 2
-        data = np.roll(data.flatten(), x_phase + y_phase_roll)
-
-        # self.reload_timeseries(y_phase=manual_y_phase, x_phase=x_phase)
+        y_phase_roll = self.manual_y_phase * num_x_points * 2
+        data = np.roll(self.fast_movie.data, x_phase + y_phase_roll)
 
         return PhaseCorrectionResult(data, x_phase, y_phase)
 
@@ -78,7 +82,7 @@ def get_x_phase_autocorrection(
     data: NDArray[np.float32], index_frame_to_correlate: int, sigma_gauss: int
 ) -> int:
     if len(data.shape) != 3:
-        raise ValueError("Argument `data` must be 3 dimensional numpy array")
+        raise ValueError("`data` must be 3 dimensional numpy array")
 
     num_of_correlated_lines = (len(data[0, :, 0]) - 4) / 2
     correlation_peak_values = np.zeros(int(num_of_correlated_lines))
@@ -101,8 +105,11 @@ def get_x_phase_autocorrection(
 
     for i in range(2, len(data[0, :, 0]) - 2, 2):
         # create foreward different mean - like finite difference approx in numerical differentiation
-        correlational_data_forewards = correlate(
+        correlational_data_forewards: NDArray[np.float32] = correlate(
             frame_to_correlate[i, :], frame_to_correlate[i + 1, :]
+        )
+        print(
+            f"{correlational_data_forewards=}, {correlational_data_forewards.shape=}, {correlational_data_forewards.dtype=}"
         )
         correlational_data_backwards = correlate(
             frame_to_correlate[i, :], frame_to_correlate[i - 1, :]
@@ -119,10 +126,10 @@ def get_x_phase_autocorrection(
     ) / 2  # -1 to get correct index
     xphase_autocorrection = int(np.round(raw_xphase_correction))
 
-    # log.info(
-    #     "Automatic xphase detection yielded a raw value of {} which was rounded to {}".format(
-    #         round(raw_xphase_correction, 3), xphase_autocorrection
-    #     )
-    # )
+    print(
+        "Automatic xphase detection yielded a raw value of {} which was rounded to {}".format(
+            round(raw_xphase_correction, 3), xphase_autocorrection
+        )
+    )
 
     return xphase_autocorrection
