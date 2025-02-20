@@ -94,6 +94,12 @@ class FastMovie:
         )
         self.data = np.roll(self.data, self.metadata.acquisition_x_phase + y_phase_roll)
 
+    def fps(self) -> int:
+        if self.channels is not None and self.channels.is_up_and_down():
+            return self.metadata.scanner_y_frequency * 2
+
+        return self.metadata.scanner_y_frequency
+
     def clone(self) -> Self:
         return copy.deepcopy(self)
 
@@ -207,8 +213,6 @@ class FastMovie:
         # Mutates data
         apply_interpolation(self, interpolation_matrix_up, interpolation_matrix_down)
 
-    def remove_streaks(self) -> None: ...
-
     def correct_drift_correlation(
         self,
         # fft_drift: bool,
@@ -250,6 +254,8 @@ class FastMovie:
         mode = DriftMode(drifttype)
         drift = Drift(self)
         self.data, _drift_path = drift.correct_known(mode)
+
+    def remove_streaks(self) -> None: ...
 
     # def correct_frames(
     #     self,
@@ -297,26 +303,32 @@ class FastMovie:
             frameon=False,
         )
         img_plot = ax.imshow(self.data[0], cmap=color_map)  # pyright: ignore[reportAny, reportUnknownMemberType]
+        # TODO Adjustable scale
         img_plot.set_clim(self.data.min(), self.data.max())  # pyright: ignore[reportAny]
         fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
+        frame_channel_iterator = self.channels.frame_channel_iterator()
+        fps = self.fps()
+        text_left = f"0{next(frame_channel_iterator)}"
+        right_text = f"{0 / fps:.3f}s"
+
         padding = 0.02
         fontsize = 0.05 * num_y_pixels
-        text = "test"
-        text_left = ax.text(
+
+        label_left = ax.text(
             num_x_pixels * padding,
             num_x_pixels * padding,
-            text,
+            text_left,
             fontsize=fontsize,
             color="white",
             alpha=0.8,
             horizontalalignment="left",
             verticalalignment="top",
         )
-        text_right = ax.text(
+        label_right = ax.text(
             num_x_pixels - (num_x_pixels * padding),
             num_x_pixels * padding,
-            text,
+            right_text,
             fontsize=fontsize,
             color="white",
             alpha=0.8,
@@ -325,22 +337,23 @@ class FastMovie:
         )
 
         def update(frame_index: int) -> None:
-            img_plot.set_data(self.data[frame_index])  # pyright: ignore[reportAny]
-            text_left.set_text(f"{frame_index}")
-            text_right.set_text(f"{frame_index}")
+            frame_id = (
+                frame_index // 2 if self.channels.is_up_and_down() else frame_index
+            )
+            frame_id += self.cut_range[0]
+            channel_id = next(frame_channel_iterator)
+            frame_text = f"{frame_id}{channel_id}"
+            time_text = f"{frame_index / fps:.3f}s"
 
-        fps = fps_factor * self.fps()
-        interval = 1 / fps * 1000
+            img_plot.set_data(self.data[frame_index])  # pyright: ignore[reportAny]
+            label_left.set_text(frame_text)
+            label_right.set_text(time_text)
+
+        interval = 1 / (fps_factor * self.fps()) * 1000
         ani = animation.FuncAnimation(
             fig=fig, func=update, frames=num_frames, interval=interval
         )
-        ani.save("test.mp4")
-
-    def fps(self) -> int:
-        if self.channels is not None and self.channels.is_up_and_down():
-            return self.metadata.scanner_y_frequency * 2
-
-        return self.metadata.scanner_y_frequency
+        ani.save(f"test-{self.channels.value}.mp4")
 
     def export_tiff(self) -> None: ...
 
@@ -360,7 +373,7 @@ class FastMovie:
 
         for i in range(data.shape[0]):
             frame: NDArray[np.float32] = data[i]
-            frame_id = i // 2 + 1 if self.channels.is_up_and_down() else i
+            frame_id = i // 2 if self.channels.is_up_and_down() else i
             frame_id += self.cut_range[0]
             channel_id = next(frame_channel_iterator)
             frame_name = f"{basename}_{frame_id}-{channel_id}.txt"
