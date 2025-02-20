@@ -245,6 +245,7 @@ class FastMovie:
         mode = DriftMode(drifttype)
         reference = StackRegReferenceType(stackreg_reference)
         drift = Drift(self, stepsize=1, boxcar=boxcar, median_filter=median_filter)
+        # Mutate data
         self.data, _drift_path = drift.correct_stackreg(mode, reference)
 
     def correct_drift_known(
@@ -253,6 +254,7 @@ class FastMovie:
     ):
         mode = DriftMode(drifttype)
         drift = Drift(self)
+        # Mutate data
         self.data, _drift_path = drift.correct_known(mode)
 
     def remove_streaks(self) -> None: ...
@@ -293,6 +295,8 @@ class FastMovie:
     ) -> None:
         if self.mode != DataMode.MOVIE:
             raise ValueError("Data must be reshaped into movie mode")
+        if self.channels is None:
+            raise ValueError("FastMovie.channels must be set")
 
         num_frames, num_y_pixels, num_x_pixels = self.data.shape
 
@@ -376,7 +380,7 @@ class FastMovie:
             frame_id = i // 2 if self.channels.is_up_and_down() else i
             frame_id += self.cut_range[0]
             channel_id = next(frame_channel_iterator)
-            frame_name = f"{basename}_{frame_id}-{channel_id}.txt"
+            frame_name = f"{basename}_{frame_id}{channel_id}.txt"
             save_path = save_folder / frame_name
             header = f"Channel: {frame_name}\nWidth: 1 m\nHeight: 1 m\nValue units: m"
             np.savetxt(save_path, frame, delimiter="\t", header=header, fmt="%.4e")
@@ -390,7 +394,41 @@ class FastMovie:
         image_format: Literal["png", "jpg", "bmp"],
         frame_range: tuple[int, int],
         color_map: str,
-    ) -> None: ...
+    ) -> None:
+        """frame_range: from inclusive, end exclusive, (0, -1) for all frames"""
+        if self.mode != DataMode.MOVIE:
+            raise ValueError("Data must be reshaped into movie mode")
+
+        if self.channels is None:
+            raise ValueError("FastMovie.channels must be set")
+
+        num_frames, num_y_pixels, num_x_pixels = self.data.shape
+
+        save_folder = self.path.resolve().parent
+        basename = self.path.stem
+        frame_channel_iterator = self.channels.frame_channel_iterator()
+
+        frame_start, frame_end = frame_range
+        data = self.data[frame_start:frame_end, :, :]
+
+        px: float = 1 / plt.rcParams["figure.dpi"]  # pixel in inches
+
+        for i in range(data.shape[0]):
+            frame: NDArray[np.float32] = data[i]
+            frame_id = i // 2 if self.channels.is_up_and_down() else i
+            frame_id += self.cut_range[0]
+            channel_id = next(frame_channel_iterator)
+            frame_name = f"{basename}_{frame_id}{channel_id}.{image_format}"
+            save_path = save_folder / frame_name
+            fig, ax = plt.subplots(  # pyright: ignore[reportUnknownMemberType]
+                figsize=(num_x_pixels * px, num_y_pixels * px),
+                frameon=False,
+            )
+            img_plot = ax.imshow(self.data[i], cmap=color_map)  # pyright: ignore[reportAny, reportUnknownMemberType]
+            # TODO Adjustable scale
+            img_plot.set_clim(self.data.min(), self.data.max())  # pyright: ignore[reportAny]
+            fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+            fig.savefig(save_path)
 
 
 def reshape_data(
