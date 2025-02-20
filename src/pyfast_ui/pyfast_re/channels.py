@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import itertools
 from enum import Enum
+from typing import Literal, TypeAlias
+
+
+FrameChannelType: TypeAlias = Literal["uf", "ub", "ui", "df", "db", "di"]
 
 
 class Channels(Enum):
@@ -33,8 +37,9 @@ class Channels(Enum):
     def is_down_not_up(self) -> bool:
         return "d" in self.value and "u" not in self.value
 
-    def frame_channel_iterator(self) -> itertools.cycle[str]:
-        cycle_list = []
+    def frame_channel_iterator( self, ) -> itertools.cycle[FrameChannelType]:
+        """"""
+        cycle_list: list[FrameChannelType] = []
         match self:
             case Channels.UDI:
                 cycle_list = ["ui", "di"]

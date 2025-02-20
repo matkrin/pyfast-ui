@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING, final
 
@@ -15,6 +16,16 @@ class FftFilterType(Enum):
     GAUSS = auto()
     HIGHPASS = auto()
     LOWPASS = auto()
+
+
+@dataclass
+class FftFilterConfig:
+    filter_x: bool
+    filter_y: bool
+    filter_x_overtones: bool
+    filter_high_pass: bool
+    filter_pump: bool
+    filter_noise: bool
 
 
 @final
