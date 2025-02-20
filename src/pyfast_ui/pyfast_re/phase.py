@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, final
 
 import numpy as np
 from numpy.typing import NDArray
+from pyfast_ui.pyfast_re.channels import Channels
+from pyfast_ui.pyfast_re.data_mode import reshape_data
 from scipy.ndimage import gaussian_filter
 from scipy.signal import correlate
 
@@ -48,19 +50,28 @@ class PhaseCorrection:
         if self.fast_movie.mode != DataMode.MOVIE:
             ### Reshape to udi
             # Create a new array
-            data = np.reshape(
+            # data = np.reshape(
+            #     self.fast_movie.data,
+            #     (num_images, num_y_points * 4, num_x_points),
+            # )
+            # data = np.resize(data, (num_images * 2, num_y_points * 2, num_x_points))
+            # # flip backwards lines horizontally
+            # data[:, 1 : num_y_points * 2 : 2, :] = data[
+            #     :, 1 : num_y_points * 2 : 2, ::-1
+            # ]
+            # # flip every up frame upside down
+            # data[0 : num_frames * 2 - 1 : 2, :, :] = data[
+            #     0 : num_frames * 2 - 1 : 2, ::-1, :
+            # ]
+            data = reshape_data(
                 self.fast_movie.data,
-                (num_images, num_y_points * 4, num_x_points),
+                Channels.UDI,
+                num_images,
+                num_x_points,
+                num_y_points,
             )
-            data = np.resize(data, (num_images * 2, num_y_points * 2, num_x_points))
-            # flip backwards lines horizontally
-            data[:, 1 : num_y_points * 2 : 2, :] = data[
-                :, 1 : num_y_points * 2 : 2, ::-1
-            ]
-            # flip every up frame upside down
-            data[0 : num_frames * 2 - 1 : 2, :, :] = data[
-                0 : num_frames * 2 - 1 : 2, ::-1, :
-            ]
+            assert data.shape[0] != self.fast_movie.data.shape[0]
+            print(f"{data.shape=}, {self.fast_movie.data.shape=}")
         else:
             data = self.fast_movie.data.copy()
 
@@ -107,9 +118,6 @@ def get_x_phase_autocorrection(
         # create foreward different mean - like finite difference approx in numerical differentiation
         correlational_data_forewards: NDArray[np.float32] = correlate(
             frame_to_correlate[i, :], frame_to_correlate[i + 1, :]
-        )
-        print(
-            f"{correlational_data_forewards=}, {correlational_data_forewards.shape=}, {correlational_data_forewards.dtype=}"
         )
         correlational_data_backwards = correlate(
             frame_to_correlate[i, :], frame_to_correlate[i - 1, :]

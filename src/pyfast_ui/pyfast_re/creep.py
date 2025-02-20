@@ -97,7 +97,6 @@ class Creep:
             dat1: NDArray[np.float32] = (dat1 - dat1.mean()) / dat1.std()
             dat2: NDArray[np.float32] = (dat2 - dat2.mean()) / dat2.std()
             l1: NDArray[np.float32] = correlate(dat1, dat2)
-            print(f"{l1}")
             l2[i] = np.argmax(l1)
 
         mean_shift = np.mean(l2)

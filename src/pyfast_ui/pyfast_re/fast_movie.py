@@ -5,17 +5,19 @@ import itertools
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Self, final
+from typing import Literal, Self, TypeAlias, final
 
+from PIL import Image
 import h5py as h5
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
+from pyfast_ui.pyfast_re.channels import Channels
 import skimage
 
 from pyfast_ui.pyfast_re.creep import Creep, CreepMode
-from pyfast_ui.pyfast_re.data_mode import DataMode
+from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
 from pyfast_ui.pyfast_re.drift import Drift, DriftMode, StackRegReferenceType
 from pyfast_ui.pyfast_re.fft_filter import FftFilter
 from pyfast_ui.pyfast_re.interpolation import (
@@ -23,50 +25,6 @@ from pyfast_ui.pyfast_re.interpolation import (
     determine_interpolation,
 )
 from pyfast_ui.pyfast_re.phase import PhaseCorrection
-
-
-class Channels(Enum):
-    UDI = "udi"
-    UDF = "udf"
-    UDB = "udb"
-    UF = "uf"
-    UB = "ub"
-    DF = "df"
-    DB = "db"
-    UI = "ui"
-    DI = "di"
-
-    def is_interlaced(self) -> bool:
-        return "i" in self.value
-
-    def is_forward(self) -> bool:
-        return "f" in self.value
-
-    def is_backward(self) -> bool:
-        return "b" in self.value
-
-    def is_up_and_down(self) -> bool:
-        return "u" in self.value and "d" in self.value
-
-    def is_up_not_down(self) -> bool:
-        return "u" in self.value and "d" not in self.value
-
-    def is_down_not_up(self) -> bool:
-        return "d" in self.value and "u" not in self.value
-
-    def frame_channel_iterator(self) -> itertools.cycle[str]:
-        cycle_list = []
-        match self:
-            case Channels.UDI:
-                cycle_list = ["ui", "di"]
-            case Channels.UDF:
-                cycle_list = ["uf", "df"]
-            case Channels.UDB:
-                cycle_list = ["ub", "db"]
-            case _:
-                cycle_list = [self.value]
-
-        return itertools.cycle(cycle_list)
 
 
 @final
@@ -106,12 +64,12 @@ class FastMovie:
     def set_channels(
         self, channels: Literal["udi", "udf", "udb", "uf", "ub", "df", "db", "ui", "di"]
     ):
-        self.channels = Channels(channels)
+        self.channels = Channels(channels.lower())
 
     def to_movie_mode(
         self, channels: Literal["udi", "udf", "udb", "uf", "ub", "df", "db", "ui", "di"]
     ):
-        self.channels = Channels(channels)
+        self.channels = Channels(channels.lower())
         data = reshape_data(
             self.data,
             self.channels,
@@ -186,7 +144,7 @@ class FastMovie:
         known_params: float | None,
     ) -> None:
         # must be movie mode now
-        mode = CreepMode(creep_mode)
+        mode = CreepMode(creep_mode.lower())
         creep = Creep(self, index_to_linear=guess_ind, creep_mode=mode)
         self.grid = creep.fit_creep((initial_guess,), known_params=known_params)
 
@@ -216,17 +174,17 @@ class FastMovie:
     def correct_drift_correlation(
         self,
         # fft_drift: bool,
-        drifttype: Literal["common", "full"],
+        mode: Literal["common", "full"],
         stepsize: int,
         boxcar: int,
         median_filter: bool,
     ) -> None:
-        mode = DriftMode(drifttype)
+        driftmode = DriftMode(mode.lower())
         drift = Drift(
             self, stepsize=stepsize, boxcar=boxcar, median_filter=median_filter
         )
         # Mutate data
-        self.data, _drift_path = drift.correct_correlation(mode)
+        self.data, _drift_path = drift.correct_correlation(driftmode)
 
         # if self.show_path is True:
         #     plt.plot(self.integrated_trans[0, :], self.integrated_trans[1, :])
@@ -291,7 +249,7 @@ class FastMovie:
     ) -> None: ...
 
     def export_mp4(
-        self, fps_factor: int = 1, color_map: str = "bone", auto_label: bool = True
+        self, fps_factor: int = 1, color_map: str = "bone", label_frames: bool = True
     ) -> None:
         if self.mode != DataMode.MOVIE:
             raise ValueError("Data must be reshaped into movie mode")
@@ -313,32 +271,34 @@ class FastMovie:
 
         frame_channel_iterator = self.channels.frame_channel_iterator()
         fps = self.fps()
-        text_left = f"0{next(frame_channel_iterator)}"
-        right_text = f"{0 / fps:.3f}s"
 
-        padding = 0.02
-        fontsize = 0.05 * num_y_pixels
+        if label_frames:
+            text_left = f"0{next(frame_channel_iterator)}"
+            right_text = f"{0 / fps:.3f}s"
 
-        label_left = ax.text(
-            num_x_pixels * padding,
-            num_x_pixels * padding,
-            text_left,
-            fontsize=fontsize,
-            color="white",
-            alpha=0.8,
-            horizontalalignment="left",
-            verticalalignment="top",
-        )
-        label_right = ax.text(
-            num_x_pixels - (num_x_pixels * padding),
-            num_x_pixels * padding,
-            right_text,
-            fontsize=fontsize,
-            color="white",
-            alpha=0.8,
-            horizontalalignment="right",
-            verticalalignment="top",
-        )
+            padding = 0.02
+            fontsize = 0.05 * num_y_pixels
+
+            label_left = ax.text(
+                num_x_pixels * padding,
+                num_x_pixels * padding,
+                text_left,
+                fontsize=fontsize,
+                color="white",
+                alpha=0.8,
+                horizontalalignment="left",
+                verticalalignment="top",
+            )
+            label_right = ax.text(
+                num_x_pixels - (num_x_pixels * padding),
+                num_x_pixels * padding,
+                right_text,
+                fontsize=fontsize,
+                color="white",
+                alpha=0.8,
+                horizontalalignment="right",
+                verticalalignment="top",
+            )
 
         def update(frame_index: int) -> None:
             frame_id = (
@@ -350,8 +310,10 @@ class FastMovie:
             time_text = f"{frame_index / fps:.3f}s"
 
             img_plot.set_data(self.data[frame_index])  # pyright: ignore[reportAny]
-            label_left.set_text(frame_text)
-            label_right.set_text(time_text)
+
+            if label_frames:
+                label_left.set_text(frame_text)
+                label_right.set_text(time_text)
 
         interval = 1 / (fps_factor * self.fps()) * 1000
         ani = animation.FuncAnimation(
@@ -359,10 +321,29 @@ class FastMovie:
         )
         ani.save(f"test-{self.channels.value}.mp4")
 
-    def export_tiff(self) -> None: ...
+    def export_tiff(self) -> None:
+        if self.mode != DataMode.MOVIE or len(self.data.shape) != 3:
+            raise ValueError("Data must be reshaped into movie mode")
+
+        if self.channels is None:
+            raise ValueError("FastMovie.channels must be set")
+
+        num_frames, num_y_pixels, num_x_pixels = self.data.shape
+        save_folder = self.path.resolve().parent
+        basename = self.path.stem
+        save_path = f"{save_folder / basename}_{self.cut_range[0]}-{self.cut_range[1]}_{self.channels.value}.tiff"
+
+        frame_stack = [Image.fromarray(frame) for frame in self.data]
+        frame_stack[0].save(
+            save_path,
+            save_all=True,
+            append_images=frame_stack[1:],
+            compression=None,
+            tiffinfo={277: 1},
+        )
 
     def export_frames_txt(self, frame_range: tuple[int, int]) -> None:
-        if self.mode != DataMode.MOVIE:
+        if self.mode != DataMode.MOVIE or len(self.data.shape) != 3:
             raise ValueError("Data must be reshaped into movie mode")
 
         if self.channels is None:
@@ -391,7 +372,7 @@ class FastMovie:
 
     def export_frames_image(
         self,
-        image_format: Literal["png", "jpg", "bmp"],
+        image_format: FrameExportFormat,
         frame_range: tuple[int, int],
         color_map: str,
     ) -> None:
@@ -431,95 +412,22 @@ class FastMovie:
             fig.savefig(save_path)
 
 
-def reshape_data(
-    time_series_data: NDArray[np.float32],
-    channels: Channels,
-    num_images: int,
-    x_points: int,
-    y_points: int,
-):
-    """
-    Returns a 3D numpy array from an HDF5 file containing (image number, the 4 channels, rows).
-
-    Args:
-        time_series (1darray): the FAST data in timeseries format
-        channels: a string specifying the channels to extract
-        x_points (int): the number of x points
-        y_points (int): the number of y points
-        num_images (int): number of images
-        num_frames (int): number of frames
-
-    Returns:
-        ndarray: the reshaped data as (image number, the 4 channels, rows)
-
-    """
-
-    data: NDArray[np.float32] = np.reshape(
-        time_series_data, (num_images, y_points * 4, x_points)
-    )
-    num_frames = num_images * 4
-
-    match channels:
-        case Channels.UDF:
-            data = data[:, 0 : (4 * y_points) : 2, :]
-            data = np.resize(data, (num_images * 2, y_points, x_points))
-            # flip every up frame upside down
-            data[0 : num_frames * 2 - 1 : 2, :, :] = data[
-                0 : num_frames * 2 - 1 : 2, ::-1, :
-            ]
-
-        case Channels.UDB:
-            data = data[:, 1 : (4 * y_points) : 2, :]
-            data = np.resize(data, (num_images * 2, y_points, x_points))
-            # flip every up frame upside down
-            data[0 : num_frames * 2 - 1 : 2, :, :] = data[
-                0 : num_frames * 2 - 1 : 2, ::-1, :
-            ]
-            # flip backwards frames horizontally
-            data[0 : num_frames * 2, :, :] = data[0 : num_frames * 2, :, ::-1]
-
-        case Channels.UF:
-            data = data[:, 0 : (2 * y_points) : 2, :]
-            # flip every up frame upside down
-            data[0:num_frames, :, :] = data[0:num_frames, ::-1, :]
-
-        case Channels.UB:
-            data = data[:, 1 : (2 * y_points) : 2, :]
-            # flip backwards frames horizontally
-            data[0:num_frames, :, :] = data[0:num_frames, :, ::-1]
-            # flip every up frame upside down
-            data[0:num_frames, :, :] = data[0:num_frames, ::-1, :]
-
-        case Channels.DF:
-            data = data[:, (2 * y_points) : (4 * y_points) : 2, :]
-
-        case Channels.DB:
-            data = data[:, (2 * y_points + 1) : (4 * y_points) : 2, :]
-            # flip backwards frames horizontally
-            data[0:num_frames, :, :] = data[0:num_frames, :, ::-1]
-
-        case Channels.UDI:
-            data = np.resize(data, (num_images * 2, y_points * 2, x_points))
-            # flip backwards lines horizontally
-            data[:, 1 : y_points * 2 : 2, :] = data[:, 1 : y_points * 2 : 2, ::-1]
-            # flip every up frame upside down
-            data[0 : num_frames * 2 - 1 : 2, :, :] = data[
-                0 : num_frames * 2 - 1 : 2, ::-1, :
-            ]
-
-        case Channels.UI:
-            data = data[:, : (2 * y_points), :]
-            # flip backwards lines horizontally
-            data[:, 1 : y_points * 2 : 2, :] = data[:, 1 : y_points * 2 : 2, ::-1]
-            # flip every up frame upside down
-            data[0:num_frames, :, :] = data[0:num_frames, ::-1, :]
-
-        case Channels.DI:
-            data = data[:, (2 * y_points) :, :]
-            # flip backwards lines horizontally
-            data[:, 1 : y_points * 2 : 2, :] = data[:, 1 : y_points * 2 : 2, ::-1]
-
-    return data
+FrameExportFormat: TypeAlias = Literal[
+    "eps",
+    "jpeg",
+    "jpg",
+    "pdf",
+    "pgf",
+    "png",
+    "ps",
+    "raw",
+    "rgba",
+    "svg",
+    "svgz",
+    "tif",
+    "tiff",
+    "webp",
+]
 
 
 @dataclass
