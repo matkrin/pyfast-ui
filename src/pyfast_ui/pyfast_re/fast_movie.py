@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Self, final
+from typing import Any, Hashable, Literal, Mapping, Self, final
 
 import h5py as h5
 import numpy as np
@@ -92,6 +92,7 @@ class FastMovie:
     def cut(self, cut_range: tuple[int, int]) -> None:
         """"""
         self.cut_range = cut_range
+        # TODO
 
     def crop(self, x_range: tuple[int, int], y_range: tuple[int, int]) -> None:
         """"""
@@ -325,39 +326,46 @@ class FrameFilterType(Enum):
 @final
 class Metadata:
     def __init__(self, meta_attrs: h5.AttributeManager, num_pixels: int) -> None:
-        self.meta_attrs = meta_attrs
+        # If scalars are numpy types, convert to python types
+        self._meta_attrs: dict[Hashable, int | float | str] = {
+            k: (v.item() if isinstance(v, np.generic) else v)
+            for k, v in meta_attrs.items()
+        }
         self._correct_missspelled_keys()
-        self.acquisition_x_phase = int(meta_attrs["Acquisition.X_Phase"])  # pyright: ignore[reportArgumentType]
-        self.acquisition_y_phase = int(meta_attrs["Acquisition.Y_Phase"])  # pyright: ignore[reportArgumentType]
-        self.scanner_x_points = int(meta_attrs["Scanner.X_Points"])  # pyright: ignore[reportArgumentType]
-        self.scanner_y_points = int(meta_attrs["Scanner.Y_Points"])  # pyright: ignore[reportArgumentType]
+        self.acquisition_x_phase = int(self._meta_attrs["Acquisition.X_Phase"])
+        self.acquisition_y_phase = int(self._meta_attrs["Acquisition.Y_Phase"])
+        self.scanner_x_points = int(self._meta_attrs["Scanner.X_Points"])
+        self.scanner_y_points = int(self._meta_attrs["Scanner.Y_Points"])
         self.acquisition_adc_samplingrate = float(
-            meta_attrs["Acquisition.ADC_SamplingRate"]  # pyright: ignore[reportArgumentType]
+            self._meta_attrs["Acquisition.ADC_SamplingRate"]
         )
-        self.scanner_y_frequency = int(meta_attrs["Scanner.Y_Frequency"])  # pyright: ignore[reportArgumentType]
-        self.num_images: int = int(meta_attrs["Acquisition.NumImages"])  # pyright: ignore[reportArgumentType]
+        self.scanner_y_frequency = int(self._meta_attrs["Scanner.Y_Frequency"])
+        self.num_images = int(self._meta_attrs["Acquisition.NumImages"])
         self.num_images = self._get_correct_num_images(num_pixels)
         self.num_frames = self.num_images * 4
 
+    def as_dict(self) -> dict[Hashable, int | float | str]:
+        return self._meta_attrs
+
     def _get_correct_num_images(self, num_pixels: int) -> int:
-        num_x_points: int = int(self.meta_attrs["Scanner.X_Points"])  # pyright: ignore[reportArgumentType]
-        num_y_points: int = int(self.meta_attrs["Scanner.Y_Points"])  # pyright: ignore[reportArgumentType]
+        num_x_points: int = int(self._meta_attrs["Scanner.X_Points"])
+        num_y_points: int = int(self._meta_attrs["Scanner.Y_Points"])
         return int(num_pixels / (num_x_points * num_y_points * 4))
 
     def _correct_missspelled_keys(self) -> None:
-        # remove misspelled key, if present, and add the correct one
+        """Remove misspelled key, if present, and add the correct one."""
         try:
-            self.meta_attrs["Acquisition.X_Phase"] = self.meta_attrs.pop(
+            self._meta_attrs["Acquisition.X_Phase"] = self._meta_attrs.pop(
                 "Acquisiton.X_Phase"
             )
-            self.meta_attrs["Acquisition.Y_Phase"] = self.meta_attrs.pop(
+            self._meta_attrs["Acquisition.Y_Phase"] = self._meta_attrs.pop(
                 "Acquisiton.Y_Phase"
             )
         except KeyError:
             pass
 
         try:
-            self.meta_attrs["Acquisition.LogAmp"] = self.meta_attrs.pop(
+            self._meta_attrs["Acquisition.LogAmp"] = self._meta_attrs.pop(
                 "Acquisition.LogAmp."
             )
         except KeyError:
