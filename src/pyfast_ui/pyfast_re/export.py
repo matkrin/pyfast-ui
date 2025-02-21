@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, TypeAlias, final
+import struct
+from typing import TYPE_CHECKING, Hashable, Literal, TypeAlias, final
 
 from PIL import Image
 import matplotlib.animation as animation
@@ -200,10 +201,260 @@ class FrameExport:
             )
             fig.savefig(export_filename)  # pyright: ignore[reportUnknownMemberType]
 
-    def _export_filename(self, frame_id: int, channel_id: FrameChannelType):
-        return f"{self.export_path}_{frame_id}{channel_id}"
-
     def export_gwy(self, gwy_type: Literal["images", "volume"]) -> None:
         """"""
-        ...
-        # TODO
+        match gwy_type:
+            case "images":
+                _gwy_writer_images(
+                    self.fast_movie, "test_gwy_images.gwy", self.frame_range
+                )
+            case "volume":
+                _gwy_writer_volume(
+                    self.fast_movie, "test_gwy_volume.gwy", self.frame_range
+                )
+
+    def _export_filename(self, frame_id: int, channel_id: FrameChannelType):
+        """No fileextension yet. <Path to original movie><Name of original movie>_<Frame ID><Channels of Frame>"""
+        return f"{self.export_path}_{frame_id}{channel_id}"
+
+
+def _gwy_writer_images(
+    fast_movie: FastMovie,
+    filename: str,
+    frame_range: tuple[int, int],
+) -> None:
+    """Writes frames within `image_range` to disc as a .gwy file where
+    all images can be accessed separately.
+
+    Args:
+        fast_movie: A `FastMovie` instance which contains the image data
+        channel: Channel to export (up/down, forward/backward)
+        filename: Name of the exported file (full path)
+        image_range: The range of frames that will be included in the written
+            file
+        scaling: Scaling to apply to each frame in xy dimensions
+        metadata: Metadata that will be included in the .gwy file
+    """
+    assert fast_movie.channels is not None
+    GWY_HEADER = b"GWYP"
+    top_level_container_content: bytes = b""
+
+    frame_channel_iterator = fast_movie.channels.frame_channel_iterator()
+
+    frame_start, frame_end = frame_range
+    if fast_movie.channels.is_up_and_down():
+        frame_end *= 2
+    data: NDArray[np.float32] = fast_movie.data[frame_start:frame_end, :, :]
+
+    for i in range(data.shape[0]):
+        frame_id = i // 2 if fast_movie.channels.is_up_and_down() else i
+        frame_id += fast_movie.cut_range[0]
+        channel_id = next(frame_channel_iterator)
+
+        channel_title = bytes(f"{frame_id}-{channel_id}\0", "utf-8")
+        channel_key = bytes(f"/{i}/data\0o", "utf-8")
+        title_key = bytes(f"/{i}/data/title\0s", "utf-8")
+
+        top_level_container_content += (
+            channel_key
+            + _gwy_make_datafield(data[i])  # pyright: ignore[reportAny]
+            + title_key
+            + channel_title
+            + _gwy_make_datafield_meta(i, fast_movie.metadata.as_dict())
+        )
+
+    container_size = struct.pack("<i", len(top_level_container_content))
+    result: bytes = b"GwyContainer\0" + container_size + top_level_container_content
+    content = GWY_HEADER + result
+
+    with open(filename, "wb") as f:
+        _ = f.write(content)
+
+
+def _gwy_writer_volume(
+    fast_movie: FastMovie,
+    filename: str,
+    frame_range: tuple[int, int],
+) -> None:
+    """Writes frames within `image_range` to disc as a .gwy file where
+    all images are contained in one volume data.
+
+    Args:
+        fast_movie: A `FastMovie` instance which contains the image data
+        channel: Channel to export (up/down, forward/backward)
+        filename: Name of the exported file (full path)
+        image_range: The range of frames that will be included in the written
+            file
+        scaling: Scaling to apply to each frame in xy dimensions
+        metadata: Metadata that will be included in the .gwy file
+    """
+    frame_start, frame_end = frame_range
+    if fast_movie.channels.is_up_and_down():
+        frame_end *= 2
+    data: NDArray[np.float32] = fast_movie.data[frame_start:frame_end, :, :]
+
+    preview = b"/brick/0/preview\0o" + _gwy_make_datafield(data[0])
+
+    GWY_HEADER = b"GWYP"
+    top_level_container: bytes = b""
+    channel_key = b"/brick/0\0o"
+    title = bytes(
+        f"/brick/0/title\0s{frame_start}-{frame_end}{fast_movie.channels.value}\0",
+        "utf-8",
+    )
+
+    top_level_container += (
+        channel_key
+        + _gwy_make_brick(data)
+        + preview
+        + title
+        + _gwy_make_brick_meta(fast_movie.metadata.as_dict())
+    )
+
+    container_size = struct.pack("<i", len(top_level_container))
+    result: bytes = b"GwyContainer\0" + container_size + top_level_container
+    content = GWY_HEADER + result
+
+    with open(filename, "wb") as f:
+        _ = f.write(content)
+
+
+def _gwy_make_datafield(frame: NDArray[np.float32]) -> bytes:
+    """Constructs a GwyDatafield as defined by the .gwy file format
+    (http://gwyddion.net/documentation/user-guide-en/gwyfile-format.html)
+
+    Args:
+        frame: The frame (2D array) for which the datafield bytes are created
+
+    Returns:
+        GwyDataField as bytes
+    """
+    if frame.ndim != 2:
+        raise ValueError(f"frame must be 2D array, got {frame.ndim}")
+
+    yres, xres = frame.shape
+
+    datafield = b"".join(
+        [
+            b"xreal\0d" + struct.pack("<d", 1.0),
+            b"yreal\0d" + struct.pack("<d", 1.0),
+            b"xoff\0d" + struct.pack("<d", 0),
+            b"yoff\0d" + struct.pack("<d", 0),
+            b"xres\0i" + struct.pack("<i", xres),
+            b"yres\0i" + struct.pack("<i", yres),
+        ]
+    )
+
+    datafield += _gwy_make_si_unit("xy")
+    datafield += _gwy_make_si_unit("z")
+
+    frame[0:10, :] = 0.0
+    data_arr = frame.flatten().astype(np.float64)
+    data_arr_size = len(data_arr)
+
+    datafield += b"data\0D" + struct.pack("<i", data_arr_size)
+    datafield += data_arr.tobytes()
+
+    datafield_size = struct.pack("<i", len(datafield))
+
+    return b"GwyDataField\0" + datafield_size + datafield
+
+
+def _gwy_make_brick(movie: NDArray[np.float32]) -> bytes:
+    """Constructs a GwyBrick as defined by the .gwy file format.
+    (http://gwyddion.net/documentation/user-guide-en/gwyfile-format.html)
+
+    Args:
+        movie: The movie (3D array) for which the brick bytes are created.
+
+    Returns:
+        GwyBrick as bytes.
+    """
+    if movie.ndim != 3:
+        raise ValueError(f"movie must be 3D array, got {movie.ndim}D")
+
+    zres, yres, xres = movie.shape
+
+    brick = b"".join(
+        [
+            b"xreal\0d" + struct.pack("<d", 1.0),
+            b"yreal\0d" + struct.pack("<d", 1.0),
+            b"xoff\0d" + struct.pack("<d", 0),
+            b"yoff\0d" + struct.pack("<d", 0),
+            b"xres\0i" + struct.pack("<i", xres),
+            b"yres\0i" + struct.pack("<i", yres),
+            b"zres\0i" + struct.pack("<i", zres),
+        ]
+    )
+
+    brick += _gwy_make_si_unit("xy")
+    brick += _gwy_make_si_unit("z")
+
+    data_arr = movie.flatten().astype(np.float64)
+    data_arr_size = len(data_arr)
+
+    brick += b"data\0D" + struct.pack("<i", data_arr_size)
+    brick += data_arr.tobytes()
+
+    brick_size = struct.pack("<i", len(brick))
+
+    return b"GwyBrick\0" + brick_size + brick
+
+
+def _gwy_make_si_unit(dimension: str) -> bytes:
+    """Constructs GwySIUnit.
+
+    Args:
+        dimension: Spacial dimension of the SI Unit (either xy or z).
+
+    Returns:
+        GwySIUnit as bytes.
+    """
+    si_name = b"si_unit_" + bytes(dimension, "utf-8") + b"\0o" + b"GwySIUnit\0"
+    unit = b"unitstr\0s" + b"m\0"
+    unit_size = struct.pack("<i", len(unit))
+
+    return si_name + unit_size + unit
+
+
+def _gwy_make_datafield_meta(
+    channel_num: int, metadata: dict[Hashable, int | float | str]
+) -> bytes:
+    """Constructs a GwyContainer containing the meta-data of an image.
+
+    Args:
+        channel_num: Number of channel the metadata belongs to
+            (a contiguous number within the .gwy format).
+        metadata: Metadata for the corresponding datafield.
+
+    Returns:
+        Metadata as bytes for usage within a .gwy file.
+    """
+    meta_name = bytes(f"/{channel_num}/meta\0o", "utf-8")
+    meta_name += b"GwyContainer\0"
+    meta_data = _gwy_make_meta(metadata)
+    meta_data_size = struct.pack("<i", len(meta_data))
+    return meta_name + meta_data_size + meta_data
+
+
+def _gwy_make_brick_meta(metadata: dict[Hashable, int | float | str]) -> bytes:
+    meta_name = b"/brick/0/meta\0o"
+    meta_name += b"GwyContainer\0"
+    meta_data = _gwy_make_meta(metadata)
+    meta_data_size = struct.pack("<i", len(meta_data))
+    return meta_name + meta_data_size + meta_data
+
+
+def _gwy_make_meta(metadata: dict[Hashable, int | float | str]) -> bytes:
+    """Constructs a GwyContainer containing the metadata of an image.
+
+    Args:
+        metadata: The metadata dict that gets converted to bytes.
+
+    Return:
+        GwyContainer containing metadata in bytes.
+    """
+
+    return b"".join(
+        [bytes(f"{key}\0s{val}\0", "utf-8", "replace") for key, val in metadata.items()]
+    )

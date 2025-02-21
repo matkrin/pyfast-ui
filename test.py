@@ -2,10 +2,11 @@ from pyfast_ui.pyfast_re.fast_movie import FastMovie, FftFilterConfig
 from pyfast_ui.pyfast_re.channels import Channels
 
 # h5_file = "/home/matthias/Documents/fast_movies/FS_240715_035.h5"
-h5_file = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
+h5_file = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 for channel in [c.value for c in Channels]:
     fast_movie = FastMovie(h5_file)
+    metadata = fast_movie.metadata
 
     fast_movie.correct_phase(auto_x_phase=True, frame_index_to_correlate=0, additional_x_phase=0)
 
@@ -53,8 +54,8 @@ for channel in [c.value for c in Channels]:
     if "i" in channel:
         fast_movie.rescale((1, 2))
 
-    fast_movie.export_mp4(fps_factor=2)
-    fast_movie.export_frames_image("png", (0, 3), color_map="bone")
-    fast_movie.export_tiff()
-    # break
-
+    # fast_movie.export_mp4(fps_factor=2)
+    # fast_movie.export_frames_image("png", (0, 3), color_map="bone")
+    # fast_movie.export_tiff()
+    fast_movie.export_frames_gwy("volume", (0, 5))
+    break
