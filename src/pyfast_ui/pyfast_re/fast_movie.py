@@ -42,11 +42,6 @@ class FastMovie:
         self.num_images = self.metadata.num_images
         self.cut_range = (0, self.num_images - 1)
 
-        # Initial phase correction from file metadata
-        y_phase_roll = (
-            self.metadata.scanner_x_points * self.metadata.acquisition_y_phase * 2
-        )
-        self.data = np.roll(self.data, self.metadata.acquisition_x_phase + y_phase_roll)
 
     def fps(self) -> int:
         """"""
@@ -105,9 +100,19 @@ class FastMovie:
         frame_index_to_correlate: int,
         sigma_gauss: int = 0,
         additional_x_phase: int = 0,
-        manual_y_phase: int = 0,
+        manual_y_phase: int | None = None,
     ) -> None:
         """"""
+        # Initial phase correction from file metadata
+        y_phase = self.metadata.acquisition_y_phase
+        if manual_y_phase is not None:
+            y_phase = manual_y_phase
+        y_phase_roll = y_phase * self.metadata.scanner_x_points * 2
+        print("Before initial", self.data[:30])
+        self.data = np.roll(self.data, self.metadata.acquisition_x_phase + y_phase_roll)
+        print("After initial", self.data[:30])
+        print(f"{self.metadata.acquisition_x_phase=} , {self.metadata.acquisition_y_phase=}, {y_phase_roll=}")
+
         phase_correction = PhaseCorrection(
             fast_movie=self,
             auto_x_phase=auto_x_phase,
@@ -121,6 +126,7 @@ class FastMovie:
         _applied_y_phase = result.applied_y_phase
         # Mutate data
         self.data = result.data
+        print("After auto", self.data[:30])
 
     def fft_filter(
         self,

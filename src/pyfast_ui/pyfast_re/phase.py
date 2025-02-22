@@ -31,7 +31,7 @@ class PhaseCorrection:
         frame_index_to_correlate: int,
         sigma_gauss: int = 0,
         additional_x_phase: int = 0,
-        manual_y_phase: int = 0,
+        manual_y_phase: int | None = None,
     ):
         self.fast_movie = fast_movie
         self.auto_x_phase = auto_x_phase
@@ -82,8 +82,10 @@ class PhaseCorrection:
             )
 
         x_phase = x_phase_correction + self.additional_x_phase
-        y_phase = self.manual_y_phase
-        y_phase_roll = self.manual_y_phase * num_x_points * 2
+        y_phase = self.fast_movie.metadata.acquisition_y_phase
+        if self.manual_y_phase is not None:
+            y_phase = self.manual_y_phase
+        y_phase_roll = y_phase * num_x_points * 2
         data = np.roll(self.fast_movie.data, x_phase + y_phase_roll)
 
         return PhaseCorrectionResult(data, x_phase, y_phase)
