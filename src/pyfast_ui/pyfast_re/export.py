@@ -203,15 +203,18 @@ class FrameExport:
 
     def export_gwy(self, gwy_type: Literal["images", "volume"]) -> None:
         """"""
+        export_filename = (
+            f"{self.export_path}_{self.frame_range[0]}-"
+            + f"{self.frame_range[1]}_{self.fast_movie.channels.value}"
+        )
+
         match gwy_type:
             case "images":
-                _gwy_writer_images(
-                    self.fast_movie, "test_gwy_images.gwy", self.frame_range
-                )
+                export_filename += ".imgs.gwy"
+                _gwy_writer_images(self.fast_movie, export_filename, self.frame_range)
             case "volume":
-                _gwy_writer_volume(
-                    self.fast_movie, "test_gwy_volume.gwy", self.frame_range
-                )
+                export_filename += ".vol.gwy"
+                _gwy_writer_volume(self.fast_movie, export_filename, self.frame_range)
 
     def _export_filename(self, frame_id: int, channel_id: FrameChannelType):
         """No fileextension yet. <Path to original movie><Name of original movie>_<Frame ID><Channels of Frame>"""
