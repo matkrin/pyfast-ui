@@ -1,5 +1,6 @@
 from pyfast_ui.pyfast_re.fast_movie import FastMovie, FftFilterConfig
 from pyfast_ui.pyfast_re.channels import Channels
+import matplotlib.pyplot as plt
 
 # h5_file = "/home/matthias/Documents/fast_movies/FS_240715_035.h5"
 # h5_file = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
@@ -16,7 +17,6 @@ for channel in [c.value for c in Channels]:
         manual_y_phase=0,
     )
 
-    # break
     fft_filter_config = FftFilterConfig(
         filter_x=True,
         filter_y=True,

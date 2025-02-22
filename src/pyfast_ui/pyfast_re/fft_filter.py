@@ -90,8 +90,8 @@ class FftFilter:
     def _determine_filter_frequencies(
         self,
     ) -> tuple[list[float], list[float], list[FftFilterType]]:
-        x_frequency = self.fast_movie.metadata.scanner_x_points
-        y_frequency = self.fast_movie.metadata.scanner_y_points
+        x_frequency = self.fast_movie.metadata.scanner_x_frequency
+        y_frequency = self.fast_movie.metadata.scanner_y_frequency
         filter_broadness = self.filter_broadness or y_frequency
 
         freqs: list[float] = []

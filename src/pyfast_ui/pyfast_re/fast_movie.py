@@ -108,10 +108,7 @@ class FastMovie:
         if manual_y_phase is not None:
             y_phase = manual_y_phase
         y_phase_roll = y_phase * self.metadata.scanner_x_points * 2
-        print("Before initial", self.data[:30])
         self.data = np.roll(self.data, self.metadata.acquisition_x_phase + y_phase_roll)
-        print("After initial", self.data[:30])
-        print(f"{self.metadata.acquisition_x_phase=} , {self.metadata.acquisition_y_phase=}, {y_phase_roll=}")
 
         phase_correction = PhaseCorrection(
             fast_movie=self,
@@ -126,7 +123,6 @@ class FastMovie:
         _applied_y_phase = result.applied_y_phase
         # Mutate data
         self.data = result.data
-        print("After auto", self.data[:30])
 
     def fft_filter(
         self,
@@ -150,6 +146,7 @@ class FastMovie:
         filtered_data = fft_filtering.filter_movie()
         # Mutate data
         self.data = filtered_data
+        print(self.data[:3])
 
     def correct_creep_non_bezier(
         self,
@@ -345,7 +342,8 @@ class Metadata:
         self.acquisition_adc_samplingrate = float(
             self._meta_attrs["Acquisition.ADC_SamplingRate"]
         )
-        self.scanner_y_frequency = int(self._meta_attrs["Scanner.Y_Frequency"])
+        self.scanner_x_frequency = float(self._meta_attrs["Scanner.X_Frequency"])
+        self.scanner_y_frequency = float(self._meta_attrs["Scanner.Y_Frequency"])
         self.num_images = int(self._meta_attrs["Acquisition.NumImages"])
         self.num_images = self._get_correct_num_images(num_pixels)
         self.num_frames = self.num_images * 4
