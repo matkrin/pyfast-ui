@@ -44,12 +44,13 @@ for channel in [c.value for c in Channels]:
     )
     fast_movie.interpolate()
 
-    fast_movie.correct_drift_correlation(
-        mode="full",
-        stepsize=20,
-        boxcar=50,
-        median_filter=True,
-    )
+    # fast_movie.correct_drift_correlation(
+    #     mode="full",
+    #     stepsize=20,
+    #     boxcar=50,
+    #     median_filter=True,
+    # )
+
 
     # fast_movie.correct_drift_stackreg(
     #     drifttype="full",
@@ -58,14 +59,21 @@ for channel in [c.value for c in Channels]:
     #     median_filter = True,
     # )
 
-    fast_movie.align_rows()
+    # fast_movie.align_rows()
+
 
     if "i" in channel:
         fast_movie.rescale((1, 2))
 
+    print(fast_movie.data.shape)
+    fast_movie.crop((50, 250), (50, 250))
+    print(fast_movie.data.shape)
+    fast_movie.cut((5, 25))
+    print(fast_movie.data.shape)
+
     fast_movie.export_mp4(fps_factor=2)
-    # fast_movie.export_frames_image("png", (0, 3), color_map="bone")
-    # fast_movie.export_tiff()
+    fast_movie.export_frames_image("png", (0, 3), color_map="bone")
+    fast_movie.export_tiff()
     fast_movie.export_frames_gwy("images", (0, 5))
     fast_movie.export_frames_gwy("volume", (0, 5))
     break

@@ -43,26 +43,10 @@ class PhaseCorrection:
     def correct_phase(self) -> PhaseCorrectionResult:
         """Does not mutate data of self.fast_movie"""
         num_images = self.fast_movie.metadata.num_images
-        num_frames = self.fast_movie.metadata.num_frames
         num_y_points = self.fast_movie.metadata.scanner_y_points
         num_x_points = self.fast_movie.metadata.scanner_x_points
 
         if self.fast_movie.mode != DataMode.MOVIE:
-            ### Reshape to udi
-            # Create a new array
-            # data = np.reshape(
-            #     self.fast_movie.data,
-            #     (num_images, num_y_points * 4, num_x_points),
-            # )
-            # data = np.resize(data, (num_images * 2, num_y_points * 2, num_x_points))
-            # # flip backwards lines horizontally
-            # data[:, 1 : num_y_points * 2 : 2, :] = data[
-            #     :, 1 : num_y_points * 2 : 2, ::-1
-            # ]
-            # # flip every up frame upside down
-            # data[0 : num_frames * 2 - 1 : 2, :, :] = data[
-            #     0 : num_frames * 2 - 1 : 2, ::-1, :
-            # ]
             data = reshape_data(
                 self.fast_movie.data,
                 Channels.UDI,
@@ -70,8 +54,6 @@ class PhaseCorrection:
                 num_x_points,
                 num_y_points,
             )
-            assert data.shape[0] != self.fast_movie.data.shape[0]
-            print(f"{data.shape=}, {self.fast_movie.data.shape=}")
         else:
             data = self.fast_movie.data.copy()
 

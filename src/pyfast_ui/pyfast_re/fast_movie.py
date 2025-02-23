@@ -39,11 +39,11 @@ class FastMovie:
         self.channels: Channels | None = None
         self.mode: DataMode = DataMode.TIMESERIES
         self.grid = None
-        self.num_images = self.metadata.num_images
-        self.cut_range = (0, self.num_images - 1)
+        self._num_images = self.metadata.num_images
+        self._num_frames = self.metadata.num_frames
+        self.cut_range = (0, self._num_images - 1)
 
-
-    def fps(self) -> int:
+    def fps(self) -> float:
         """"""
         if self.channels is not None and self.channels.is_up_and_down():
             return self.metadata.scanner_y_frequency * 2
@@ -64,11 +64,14 @@ class FastMovie:
         self, channels: Literal["udi", "udf", "udb", "uf", "ub", "df", "db", "ui", "di"]
     ):
         """"""
+        if self._num_images is None:
+            raise ValueError("FastMovie.num_images is None. Cannot reshape.")
+
         self.channels = Channels(channels.lower())
         data = reshape_data(
             self.data,
             self.channels,
-            self.num_images,
+            self._num_images,
             self.metadata.scanner_x_points,
             self.metadata.scanner_y_points,
         )
@@ -86,13 +89,37 @@ class FastMovie:
 
     def cut(self, cut_range: tuple[int, int]) -> None:
         """"""
+        if self.mode != DataMode.MOVIE or len(self.data.shape) != 3:
+            raise ValueError("FastMovie must be in movie mode.")
+
+        frame_start, frame_end = cut_range
+        if frame_end > self.data.shape[0]:
+            raise ValueError(f"Movie does not have {frame_end} frames.")
+
+        self.data = self.data[frame_start:frame_end, :, :]
+        self._num_frames = self.data.shape[0]
+        self._num_images = None
         self.cut_range = cut_range
-        # TODO
 
     def crop(self, x_range: tuple[int, int], y_range: tuple[int, int]) -> None:
         """"""
-        # TODO
-        ...
+        if self.mode != DataMode.MOVIE or len(self.data.shape) != 3:
+            raise ValueError("FastMovie must be in movie mode.")
+
+        x_start, x_end = x_range
+        y_start, y_end = y_range
+
+        if (
+            x_start < 0
+            or x_end > self.data.shape[2]
+            or y_start < 0
+            or y_end > self.data.shape[1]
+        ):
+            raise ValueError(
+                f"Cannot cut, dimensions of the movie are (frames, y, x): {self.data.shape}"
+            )
+
+        self.data = self.data[:, y_start:y_end, x_start:x_end]
 
     def correct_phase(
         self,
@@ -146,7 +173,6 @@ class FastMovie:
         filtered_data = fft_filtering.filter_movie()
         # Mutate data
         self.data = filtered_data
-        print(self.data[:3])
 
     def correct_creep_non_bezier(
         self,
@@ -185,6 +211,9 @@ class FastMovie:
         )
         # Mutates data
         apply_interpolation(self, interpolation_matrix_up, interpolation_matrix_down)
+
+        # Cut off unwanted padding with zeros
+        self.crop((4, self.data.shape[2] - 4), (4, self.data.shape[1] - 4))
 
     def correct_drift_correlation(
         self,

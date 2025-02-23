@@ -31,6 +31,8 @@ def reshape_data(
         3D numpy array of the shape (frame, y, x).
 
     """
+    if len(time_series_data.shape) != 1:
+        raise ValueError("FastMovie must be in timeseries mode")
 
     data: NDArray[np.float32] = np.reshape(
         time_series_data, (num_images, y_points * 4, x_points)
