@@ -28,9 +28,10 @@ class MovieExport:
 
         save_folder = fast_movie.path.resolve().parent
         basename = fast_movie.path.stem
+        cut_start, cut_end = fast_movie.cut_range()
         self.export_filepath = (
-            f"{save_folder / basename}_{fast_movie.cut_range[0]}-"
-            + f"{fast_movie.cut_range[1]}_{fast_movie.channels.value}"
+            f"{save_folder / basename}_{cut_start}-"
+            + f"{cut_end}_{fast_movie.channels.value}"
         )
 
     def export_mp4(self, fps_factor: int, color_map: str, label_frames: bool) -> None:
@@ -53,8 +54,9 @@ class MovieExport:
         fps = self.fast_movie.fps()
 
         if label_frames:
-            text_left = f"0{next(frame_channel_iterator)}"
-            right_text = f"{0 / fps:.3f}s"
+            frame_start_label, _ = self.fast_movie.cut_range()
+            text_left = f"{frame_start_label}{next(frame_channel_iterator)}"
+            right_text = f"{frame_start_label / fps:.3f}s"
 
             padding = 0.02
             fontsize = 0.05 * num_y_pixels
@@ -90,10 +92,10 @@ class MovieExport:
                     if self.fast_movie.channels.is_up_and_down()
                     else frame_index
                 )
-                frame_id += self.fast_movie.cut_range[0]
+                frame_id += frame_start_label
                 channel_id = next(frame_channel_iterator)
                 frame_text = f"{frame_id}{channel_id}"
-                time_text = f"{frame_index / fps:.3f}s"
+                time_text = f"{(frame_index + frame_start_label) / fps:.3f}s"
 
                 label_left.set_text(frame_text)
                 label_right.set_text(time_text)
@@ -140,10 +142,10 @@ class FrameExport:
             raise ValueError("Data must be reshaped into movie mode")
         if fast_movie.channels is None:
             raise ValueError("FastMovie.channels must be set")
-        if frame_range[1] > fast_movie.cut_range[1]:
+        if frame_range[1] > fast_movie.cut_range()[1]:
             raise ValueError(
                 f"Frame number {frame_range[1]} does not exist, "
-                + f"the movie ends at frame {fast_movie.cut_range[1]}"
+                + f"the movie ends at frame {fast_movie.cut_range()[1]}"
             )
 
         self.fast_movie = fast_movie
@@ -161,7 +163,7 @@ class FrameExport:
         for i in range(data.shape[0]):
             frame: NDArray[np.float32] = data[i]
             frame_id = i // 2 if self.fast_movie.channels.is_up_and_down() else i
-            frame_id += self.fast_movie.cut_range[0]
+            frame_id += self.fast_movie.cut_range()[0]
             channel_id = next(frame_channel_iterator)
             frame_name = f"{self.fast_movie.path.stem}_{frame_id}{channel_id}"
             header = f"Channel: {frame_name}\nWidth: 1 m\nHeight: 1 m\nValue units: m"
@@ -186,7 +188,7 @@ class FrameExport:
 
         for i in range(data.shape[0]):
             frame_id = i // 2 if self.fast_movie.channels.is_up_and_down() else i
-            frame_id += self.fast_movie.cut_range[0]
+            frame_id += self.fast_movie.cut_range()[0]
             channel_id = next(frame_channel_iterator)
             fig, ax = plt.subplots(  # pyright: ignore[reportUnknownMemberType]
                 figsize=(num_x_pixels * px, num_y_pixels * px),
@@ -251,7 +253,7 @@ def _gwy_writer_images(
 
     for i in range(data.shape[0]):
         frame_id = i // 2 if fast_movie.channels.is_up_and_down() else i
-        frame_id += fast_movie.cut_range[0]
+        frame_id += fast_movie.cut_range()[0]
         channel_id = next(frame_channel_iterator)
 
         channel_title = bytes(f"{frame_id}-{channel_id}\0", "utf-8")

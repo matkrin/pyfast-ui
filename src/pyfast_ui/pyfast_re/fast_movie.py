@@ -39,9 +39,10 @@ class FastMovie:
         self.channels: Channels | None = None
         self.mode: DataMode = DataMode.TIMESERIES
         self.grid = None
+        self.num_frames = self.metadata.num_frames
         self._num_images = self.metadata.num_images
-        self._num_frames = self.metadata.num_frames
-        self.cut_range = (0, self._num_images - 1)
+        # Ceep track of cutting that labels at export are correct.
+        self._cut_range = (0, self._num_images)
 
     def fps(self) -> float:
         """"""
@@ -49,6 +50,9 @@ class FastMovie:
             return self.metadata.scanner_y_frequency * 2
 
         return self.metadata.scanner_y_frequency
+
+    def cut_range(self) -> tuple[int, int]:
+        return (self._cut_range[0], self._cut_range[1] - 1)
 
     def clone(self) -> Self:
         """"""
@@ -96,10 +100,15 @@ class FastMovie:
         if frame_end > self.data.shape[0]:
             raise ValueError(f"Movie does not have {frame_end} frames.")
 
+        if self.channels is not None and self.channels.is_up_and_down():
+            frame_end = frame_end * 2 - frame_start
+
         self.data = self.data[frame_start:frame_end, :, :]
         self._num_frames = self.data.shape[0]
         self._num_images = None
-        self.cut_range = cut_range
+
+        # Adjust cut range
+        self._cut_range = (frame_start + self._cut_range[0], cut_range[1])
 
     def crop(self, x_range: tuple[int, int], y_range: tuple[int, int]) -> None:
         """"""
