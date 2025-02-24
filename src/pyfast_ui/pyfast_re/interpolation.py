@@ -18,15 +18,15 @@ log = logging.getLogger(__name__)
 
 
 def _output_y_grid(num_y_pixels: int, num_x_pixels: int):
-    """Returns the y grid of the data points; not corrected for probe creep
+    """Returns the y grid of the data points; not corrected for probe creep.
 
     Args:
-        num_y_pixels: Number of pixels in y direction
-        num_x_pixels: Number of pixels in x direction
+        num_y_pixels: Number of pixels in y direction.
+        num_x_pixels: Number of pixels in x direction.
 
     Returns:
-        y:  y meshgrid of measured datapoints
-        t1: equidistant 1D grid; contains the centers of each line in y
+        y_meshgrid:  y meshgrid of measured datapoints.
+        y_grid_1d: equidistant 1D grid; contains the centers of each line in y.
 
     """
 
@@ -46,15 +46,15 @@ def _output_y_grid(num_y_pixels: int, num_x_pixels: int):
 
 
 def _output_x_grid(num_y_pixels: int, num_x_pixels: int):
-    """Returns the x grid of the data points
+    """Returns the x grid of the data points.
 
     Args:
         num_y_pixels: Number of pixels in y direction.
         num_x_pixels: Number of pixels in x direction.
 
     Returns:
-        x:  x meshgrid of measured datapoints
-        t2: equidistant 1D grid
+        x_meshgrid:  x meshgrid of measured datapoints.
+        x_grid_1d: equidistant 1D grid.
 
     """
 
@@ -236,7 +236,7 @@ def apply_interpolation(
 ):
     num_x_pixels = fast_movie.data.shape[2]
     num_y_pixels = fast_movie.data.shape[1]
-    assert fast_movie.channels is not None
+    assert fast_movie.channels is not None  # type assertion
 
     for i in range(fast_movie.data.shape[0]):
         is_up_frame = False
@@ -246,13 +246,13 @@ def apply_interpolation(
         if fast_movie.channels.is_up_not_down():
             is_up_frame = True
 
-        frame_flattened: NDArray[np.float32] = fast_movie.data[i].flatten()
+        frame_flattened: NDArray[np.float32] = fast_movie.data[i].flatten()  # pyright: ignore[reportAny]
         if is_up_frame:
-            fast_movie.data[i] = interpolation_matrix_up.dot(frame_flattened).reshape(
+            fast_movie.data[i] = interpolation_matrix_up.dot(frame_flattened).reshape(  # pyright: ignore[reportAny, reportUnknownMemberType]
                 num_y_pixels, num_x_pixels
             )
         else:
-            fast_movie.data[i] = interpolation_matrix_down.dot(frame_flattened).reshape(
+            fast_movie.data[i] = interpolation_matrix_down.dot(frame_flattened).reshape(  # pyright: ignore[reportAny, reportUnknownMemberType]
                 num_y_pixels, num_x_pixels
             )
 

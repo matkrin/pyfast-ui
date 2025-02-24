@@ -69,7 +69,7 @@ for channel in [c.value for c in Channels]:
     print(fast_movie.data.shape)
     # fast_movie.crop((50, 120), (50, 120))
     print(fast_movie.data.shape)
-    fast_movie.cut((20, 50))
+    # fast_movie.cut((20, 50))
     print(fast_movie.data.shape)
 
     fast_movie.export_mp4(fps_factor=2)

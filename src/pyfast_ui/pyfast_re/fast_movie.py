@@ -7,6 +7,8 @@ from typing import Any, Hashable, Literal, Mapping, Self, final
 
 import h5py as h5
 import numpy as np
+from scipy.ndimage import gaussian_filter, median_filter
+from scipy.signal import convolve2d
 import skimage
 from numpy.typing import NDArray
 
@@ -40,9 +42,8 @@ class FastMovie:
         self.mode: DataMode = DataMode.TIMESERIES
         self.grid = None
         self.num_frames = self.metadata.num_frames
-        self._num_images = self.metadata.num_images
-        # Ceep track of cutting that labels at export are correct.
-        self._cut_range = (0, self._num_images)
+        # Ceep track of cutting so that labels at export are correct.
+        self._cut_range = (0, self.metadata.num_images)
 
     def fps(self) -> float:
         """"""
@@ -68,14 +69,14 @@ class FastMovie:
         self, channels: Literal["udi", "udf", "udb", "uf", "ub", "df", "db", "ui", "di"]
     ):
         """"""
-        if self._num_images is None:
-            raise ValueError("FastMovie.num_images is None. Cannot reshape.")
+        if self.mode != DataMode.TIMESERIES:
+            raise ValueError("FastMovie must be in timeseries mode.")
 
         self.channels = Channels(channels.lower())
         data = reshape_data(
             self.data,
             self.channels,
-            self._num_images,
+            self.metadata.num_images,
             self.metadata.scanner_x_points,
             self.metadata.scanner_y_points,
         )
@@ -104,8 +105,7 @@ class FastMovie:
             frame_end = frame_end * 2 - frame_start
 
         self.data = self.data[frame_start:frame_end, :, :]
-        self._num_frames = self.data.shape[0]
-        self._num_images = None
+        self.num_frames = self.data.shape[0]
 
         # Adjust cut range
         self._cut_range = (frame_start + self._cut_range[0], cut_range[1])
@@ -280,19 +280,12 @@ class FastMovie:
     #     correction_type: Literal["align", "plane", "fixzero"],
     #     align_type: Literal["median", "mean", "poly2", "poly3"],
     # ) -> None: ...
-    def align_rows(self):
-        """"""
+    def align_rows(self) -> None:
+        """Median"""
         if self.mode != DataMode.MOVIE:
             raise ValueError("Data must be reshaped into movie mode")
 
-        # def _median_bkg(line):
-        #     return np.full(line.shape[0], np.median(line))
-
         for i in range(self.data.shape[0]):
-            # fast_movie.data[i], _ = _align_img(frame, baseline=align_type, axis=1)
-            # # _align_img
-            # bkg = np.apply_along_axis(_median_bkg, axis=1, self.data[i])
-
             background = np.apply_along_axis(
                 lambda row: np.full(row.shape[0], np.median(row)),
                 axis=1,
@@ -307,8 +300,32 @@ class FastMovie:
         kernel_size: int,
     ) -> None:
         """"""
-        ...
-        # TODO
+        if self.mode != DataMode.MOVIE:
+            raise ValueError("Data must be reshaped into movie mode")
+
+        match filter_type:
+            case "gauss":
+                for i in range(self.data.shape[0]):
+                    self.data[i] = gaussian_filter(
+                        self.data[i],  # pyright: ignore[reportAny]
+                        kernel_size - 1,
+                        truncate=0.5,
+                    )
+            case "median":
+                for i in range(self.data.shape[0]):
+                    self.data[i] = median_filter(
+                        self.data[i],  # pyright: ignore[reportAny]
+                        size=(kernel_size, kernel_size),
+                    )
+            case "mean":
+                kernel_shape = (kernel_size, kernel_size)
+                kernel = np.ones(kernel_shape) / (kernel_size * kernel_size)
+                for i in range(self.data.shape[0]):
+                    self.data[i] = convolve2d(self.data[i], kernel, mode="same")  # pyright: ignore[reportAny]
+            case _:
+                raise ValueError(
+                    "Parameter 'filter_types' must be 'gauss', 'median' or 'mean'"
+                )
 
     def export_mp4(
         self, fps_factor: int = 1, color_map: str = "bone", label_frames: bool = True

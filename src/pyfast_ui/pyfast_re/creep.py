@@ -85,7 +85,7 @@ class Creep:
         Returns: number of pixels frames are shifted in the middle of the frame.
         """
         outer_cutoff = (1 - imrange) / 2
-        assert self.channels is not None
+        assert self.channels is not None  # type assertion
         if self.channels.is_interlaced():
             out_cut_ind = int(self.number_ypixels * outer_cutoff)
         else:

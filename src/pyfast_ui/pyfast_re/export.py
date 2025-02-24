@@ -28,14 +28,14 @@ class MovieExport:
 
         save_folder = fast_movie.path.resolve().parent
         basename = fast_movie.path.stem
-        cut_start, cut_end = fast_movie.cut_range()
+        frame_start, frame_end = fast_movie.cut_range()
         self.export_filepath = (
-            f"{save_folder / basename}_{cut_start}-"
-            + f"{cut_end}_{fast_movie.channels.value}"
+            f"{save_folder / basename}_{frame_start}-"
+            + f"{frame_end}_{fast_movie.channels.value}"
         )
 
     def export_mp4(self, fps_factor: int, color_map: str, label_frames: bool) -> None:
-        assert self.fast_movie.channels is not None
+        assert self.fast_movie.channels is not None  # type assertion
 
         num_frames, num_y_pixels, num_x_pixels = self.fast_movie.data.shape
 
@@ -52,11 +52,11 @@ class MovieExport:
 
         frame_channel_iterator = self.fast_movie.channels.frame_channel_iterator()
         fps = self.fast_movie.fps()
+        frame_offset, _ = self.fast_movie.cut_range()
 
         if label_frames:
-            frame_start_label, _ = self.fast_movie.cut_range()
-            text_left = f"{frame_start_label}{next(frame_channel_iterator)}"
-            right_text = f"{frame_start_label / fps:.3f}s"
+            text_left = f"{frame_offset}{next(frame_channel_iterator)}"
+            right_text = f"{frame_offset / fps:.3f}s"
 
             padding = 0.02
             fontsize = 0.05 * num_y_pixels
@@ -87,15 +87,16 @@ class MovieExport:
             img_plot.set_data(self.fast_movie.data[frame_index])  # pyright: ignore[reportAny]
 
             if label_frames:
+                assert self.fast_movie.channels is not None  # type assertion
                 frame_id = (
                     frame_index // 2
                     if self.fast_movie.channels.is_up_and_down()
                     else frame_index
                 )
-                frame_id += frame_start_label
+                frame_id += frame_offset
                 channel_id = next(frame_channel_iterator)
                 frame_text = f"{frame_id}{channel_id}"
-                time_text = f"{(frame_index + frame_start_label) / fps:.3f}s"
+                time_text = f"{(frame_index + frame_offset) / fps:.3f}s"
 
                 label_left.set_text(frame_text)
                 label_right.set_text(time_text)
@@ -150,11 +151,12 @@ class FrameExport:
 
         self.fast_movie = fast_movie
         self.frame_range = frame_range
+        self.frame_offset, _ = self.fast_movie.cut_range() 
         self.export_path = fast_movie.path.resolve().parent / fast_movie.path.stem
 
     def export_txt(self) -> None:
         """"""
-        assert self.fast_movie.channels is not None
+        assert self.fast_movie.channels is not None  # type assertion
         frame_channel_iterator = self.fast_movie.channels.frame_channel_iterator()
 
         frame_start, frame_end = self.frame_range
@@ -163,7 +165,7 @@ class FrameExport:
         for i in range(data.shape[0]):
             frame: NDArray[np.float32] = data[i]
             frame_id = i // 2 if self.fast_movie.channels.is_up_and_down() else i
-            frame_id += self.fast_movie.cut_range()[0]
+            frame_id += self.frame_offset
             channel_id = next(frame_channel_iterator)
             frame_name = f"{self.fast_movie.path.stem}_{frame_id}{channel_id}"
             header = f"Channel: {frame_name}\nWidth: 1 m\nHeight: 1 m\nValue units: m"
@@ -174,7 +176,7 @@ class FrameExport:
 
     def export_image(self, image_format: FrameExportFormat, color_map: str) -> None:
         """frame_range: from inclusive, end exclusive, (0, -1) for all frames"""
-        assert self.fast_movie.channels is not None
+        assert self.fast_movie.channels is not None  #  type assertion
         _, num_y_pixels, num_x_pixels = self.fast_movie.data.shape
         frame_channel_iterator = self.fast_movie.channels.frame_channel_iterator()
 
@@ -188,7 +190,7 @@ class FrameExport:
 
         for i in range(data.shape[0]):
             frame_id = i // 2 if self.fast_movie.channels.is_up_and_down() else i
-            frame_id += self.fast_movie.cut_range()[0]
+            frame_id += self.frame_offset
             channel_id = next(frame_channel_iterator)
             fig, ax = plt.subplots(  # pyright: ignore[reportUnknownMemberType]
                 figsize=(num_x_pixels * px, num_y_pixels * px),
@@ -205,6 +207,8 @@ class FrameExport:
 
     def export_gwy(self, gwy_type: Literal["images", "volume"]) -> None:
         """"""
+        assert self.fast_movie.channels is not None  # type assertion
+
         export_filename = (
             f"{self.export_path}_{self.frame_range[0]}-"
             + f"{self.frame_range[1]}_{self.fast_movie.channels.value}"
@@ -240,7 +244,7 @@ def _gwy_writer_images(
         scaling: Scaling to apply to each frame in xy dimensions
         metadata: Metadata that will be included in the .gwy file
     """
-    assert fast_movie.channels is not None
+    assert fast_movie.channels is not None  # type assertion
     GWY_HEADER = b"GWYP"
     top_level_container_content: bytes = b""
 
@@ -293,12 +297,14 @@ def _gwy_writer_volume(
         scaling: Scaling to apply to each frame in xy dimensions
         metadata: Metadata that will be included in the .gwy file
     """
+    assert fast_movie.channels is not None  # type assertion
+    
     frame_start, frame_end = frame_range
     if fast_movie.channels.is_up_and_down():
         frame_end *= 2
     data: NDArray[np.float32] = fast_movie.data[frame_start:frame_end, :, :]
 
-    preview = b"/brick/0/preview\0o" + _gwy_make_datafield(data[0])
+    preview = b"/brick/0/preview\0o" + _gwy_make_datafield(data[0])  # pyright: ignore[reportAny]
 
     GWY_HEADER = b"GWYP"
     top_level_container: bytes = b""
