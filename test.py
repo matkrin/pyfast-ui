@@ -3,11 +3,13 @@ from pyfast_ui.pyfast_re.channels import Channels
 import matplotlib.pyplot as plt
 
 # h5_file = "/home/matthias/Documents/fast_movies/FS_240715_035.h5"
-# h5_file = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
-h5_file = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
+h5_file = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
+# h5_file = "/home/matthias/github/pyfastspm/examples/20141003_24.h5"
+ 
+# h5_file = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
 
 for channel in [c.value for c in Channels]:
-    fast_movie = FastMovie(h5_file)
+    fast_movie = FastMovie(h5_file, y_phase=0)
     metadata = fast_movie.metadata
 
     fast_movie.correct_phase(
@@ -35,7 +37,11 @@ for channel in [c.value for c in Channels]:
     )
 
     # fast_movie.to_movie_mode("udi")
-    fast_movie.to_movie_mode("uf")
+    # fast_movie.to_movie_mode("uf")
+    # fast_movie.to_movie_mode("df")
+    # fast_movie.to_movie_mode("db")
+    # fast_movie.to_movie_mode("ub")
+    fast_movie.to_movie_mode(channel)
 
     fast_movie.correct_creep_non_bezier(
         creep_mode="sin",
@@ -51,7 +57,7 @@ for channel in [c.value for c in Channels]:
     #     boxcar=50,
     #     median_filter=True,
     # )
-
+    # fast_movie.plot_drift_path()
 
     # fast_movie.correct_drift_stackreg(
     #     drifttype="full",
@@ -65,18 +71,19 @@ for channel in [c.value for c in Channels]:
 
     if "i" in channel:
         fast_movie.rescale((1, 2))
+    else:
+        fast_movie.rescale((2,2))
 
-    print(fast_movie.data.shape)
     # fast_movie.crop((50, 120), (50, 120))
-    print(fast_movie.data.shape)
     # fast_movie.cut((20, 50))
-    print(fast_movie.data.shape)
+    # fast_movie.algin_rows("median")
 
     fast_movie.export_mp4(fps_factor=2)
+    # fast_movie.export_tiff()
+    # 
     # fast_movie.export_frames_image("png", (0, 3), color_map="bone")
     # fast_movie.export_frames_txt((0, 3))
-
-    fast_movie.export_tiff()
     # fast_movie.export_frames_gwy("images", (0, 5))
     # fast_movie.export_frames_gwy("volume", (0, 5))
+
     break

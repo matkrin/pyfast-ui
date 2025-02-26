@@ -1,5 +1,7 @@
 """Exact interpolation for interlacing"""
+
 from __future__ import annotations
+from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING
 
@@ -12,9 +14,19 @@ from tqdm import tqdm
 from pyfast_ui.pyfast_re.data_mode import DataMode
 
 if TYPE_CHECKING:
-    from pyfast_ui.pyfast_re.fast_movie import  FastMovie
+    from pyfast_ui.pyfast_re.fast_movie import FastMovie
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class InterpolationResult:
+    interpolation_matrix_up: csr_matrix
+    interpolation_matrix_down: csr_matrix
+    x_coords_measured: NDArray[np.float32]
+    y_coords_measured: NDArray[np.float32]
+    x_coords_target: NDArray[np.float32]
+    y_coords_target: NDArray[np.float32]
 
 
 def _output_y_grid(num_y_pixels: int, num_x_pixels: int):
@@ -37,7 +49,6 @@ def _output_y_grid(num_y_pixels: int, num_x_pixels: int):
     y_meshgrid = np.linspace(
         -(num_y_pixels / 2), num_y_pixels / 2, num_y_pixels * num_x_pixels
     ).reshape(num_y_pixels, num_x_pixels)
-
 
     for i in range(num_y_pixels):
         y_meshgrid[i, :] = y_meshgrid[i, :: (-1) ** i]
@@ -62,7 +73,11 @@ def _output_x_grid(num_y_pixels: int, num_x_pixels: int):
     x_grid_1d = np.linspace(-(num_x_pixels / 2), num_x_pixels / 2, num_x_pixels)
 
     # hysteresis in x direction
-    x_hysteresis = num_x_pixels / 2.0 * np.sin(x_grid_1d * np.pi / (num_x_pixels + abs(x_grid_1d[0] - x_grid_1d[1])))
+    x_hysteresis = (
+        num_x_pixels
+        / 2.0
+        * np.sin(x_grid_1d * np.pi / (num_x_pixels + abs(x_grid_1d[0] - x_grid_1d[1])))
+    )
 
     # meshgrid of measured datapoints
     x_meshgrid = np.array([x_hysteresis for _ in range(num_y_pixels)])
@@ -171,62 +186,61 @@ def determine_interpolation(
     # meshgrids
     if fast_movie.channels.is_interlaced():
         # Computing only the grids which are actually need might be more efficient, but this does not seem to be a bottleneck
-        y_meshgrid, y_grid_1d = _output_y_grid(num_y_pixels, num_x_pixels)
+        y_coords_measured, y_grid_1d = _output_y_grid(num_y_pixels, num_x_pixels)
 
         # Leaving the general structure this way to make it easier to adapt to other types of grids
-        x_meshgrid, x_grid_1d = _output_x_grid(num_y_pixels, num_x_pixels)
+        x_coords_measured, x_grid_1d = _output_x_grid(num_y_pixels, num_x_pixels)
     else:
         # Computing only the grids which are actually need might be more efficient, but this does not seem to be a bottleneck
-        y_meshgrid, y_grid_1d = _output_y_grid(2 * num_y_pixels, num_x_pixels)
-        x_meshgrid, x_grid_1d = _output_x_grid(2 * num_y_pixels, num_x_pixels)
+        y_coords_measured, y_grid_1d = _output_y_grid(2 * num_y_pixels, num_x_pixels)
+        x_coords_measured, x_grid_1d = _output_x_grid(2 * num_y_pixels, num_x_pixels)
 
     # correct creep in y direction
     if grid is None:
-        y_up = y_meshgrid
-        y_down = y_meshgrid[:, ::-1]
+        y_up = y_coords_measured
+        y_down = y_coords_measured[:, ::-1]
     else:
         y_up, y_down = grid
 
-    xnew, ynew = np.meshgrid(x_grid_1d, y_grid_1d)
+    x_coords_target, y_coords_target = np.meshgrid(x_grid_1d, y_grid_1d)
 
-    ynew += offset
+    y_coords_target += offset
 
     if fast_movie.channels.is_forward():
-        yup = ynew[0::2].copy()
-        ydown = ynew[0::2].copy()
-        xnew = xnew[0::2].copy()
+        y_coords_target = y_coords_target[0::2].copy()
+        # y_target_down = y_coords_target[0::2].copy()
+        x_coords_target = x_coords_target[0::2].copy()
         y_up = y_up[0::2].copy()
         y_down = y_down[1::2].copy()
-        x_meshgrid = x_meshgrid[0::2].copy()
-
-        points_up = list(zip(y_up.flatten(), x_meshgrid.flatten()))
-        points_down = list(zip(y_down.flatten(), x_meshgrid.flatten()))
-        grid_points = list(zip(yup.flatten(), xnew.flatten()))
-        grid_points_down = list(zip(ydown.flatten(), xnew.flatten()))
+        x_coords_measured = x_coords_measured[0::2].copy()
+        y_coords_measured = y_coords_measured[0::2].copy()
 
     elif fast_movie.channels.is_backward():
-        yup = ynew[1::2].copy()
-        ydown = ynew[1::2].copy()
-        xnew = xnew[1::2].copy()
+        y_coords_target = y_coords_target[1::2].copy()
+        # y_target_down = y_coords_target[1::2].copy()
+        x_coords_target = x_coords_target[1::2].copy()
         y_up = y_up[1::2].copy()
         y_down = y_down[0::2].copy()
-        x_meshgrid = x_meshgrid[1::2].copy()
+        x_coords_measured = x_coords_measured[1::2].copy()
+        y_coords_measured = y_coords_measured[1::2].copy()
 
-        points_up = list(zip(y_up.flatten(), x_meshgrid.flatten()))
-        points_down = list(zip(y_down.flatten(), x_meshgrid.flatten()))
-        grid_points = list(zip(yup.flatten(), xnew.flatten()))
-        grid_points_down = list(zip(ydown.flatten(), xnew.flatten()))
+    points_up = list(zip(y_up.flatten(), x_coords_measured.flatten()))
+    points_down = list(zip(y_down.flatten(), x_coords_measured.flatten()))
+    grid_points_up = list(zip(y_coords_target.flatten(), x_coords_target.flatten()))
+    grid_points_down = list(zip(y_coords_target.flatten(), x_coords_target.flatten()))
 
-    elif fast_movie.channels.is_interlaced():
-        points_up = list(zip(y_up.flatten(), x_meshgrid.flatten()))
-        grid_points = list(zip(ynew.flatten(), xnew.flatten()))
-        points_down = list(zip(y_down.flatten(), x_meshgrid.flatten()))
-        grid_points_down = list(zip(ynew.flatten(), xnew.flatten()))
-
-    interpolation_matrix_up = get_interpolation_matrix(points_up, grid_points)
+    interpolation_matrix_up = get_interpolation_matrix(points_up, grid_points_up)
     interpolation_matrix_down = get_interpolation_matrix(points_down, grid_points_down)
 
-    return interpolation_matrix_up, interpolation_matrix_down
+    # return interpolation_matrix_up, interpolation_matrix_down
+    return InterpolationResult(
+        interpolation_matrix_up=interpolation_matrix_up,
+        interpolation_matrix_down=interpolation_matrix_down,
+        x_coords_measured=x_coords_measured,
+        y_coords_measured=y_coords_measured,
+        x_coords_target=x_coords_target,
+        y_coords_target=y_coords_target,
+    )
 
 
 def apply_interpolation(
@@ -256,5 +270,4 @@ def apply_interpolation(
                 num_y_pixels, num_x_pixels
             )
 
-    # TODO: Crop frame with zeros
     fast_movie.data = np.nan_to_num(fast_movie.data)

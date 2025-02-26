@@ -746,7 +746,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0.2" },
     { name = "pillow", specifier = ">=11.1.0" },
     { name = "pydantic", specifier = ">=2.10.6" },
-    { name = "pyfastspm", git = "https://gitlab.com/fastspm/pyfastspm?branch=tum-latest" },
+    { name = "pyfastspm", editable = "../pyfastspm" },
     { name = "pyside6", specifier = ">=6.8.1,!=6.8.1.1" },
     { name = "pystackreg", specifier = ">=0.2.8" },
     { name = "scikit-image", specifier = ">=0.24.0" },
@@ -764,15 +764,28 @@ dev = [
 
 [[package]]
 name = "pyfastspm"
-version = "1.0.6.dev48"
-source = { git = "https://gitlab.com/fastspm/pyfastspm?branch=tum-latest#f3c7a0be121e02e32b315317d87e11d9b4783e97" }
+version = "1.0.6.dev25"
+source = { editable = "../pyfastspm" }
 dependencies = [
     { name = "h5py" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "packaging" },
     { name = "pillow" },
-    { name = "pystackreg" },
+    { name = "scikit-image" },
+    { name = "scipy" },
+    { name = "setuptools-scm" },
+    { name = "tqdm" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "h5py" },
+    { name = "matplotlib" },
+    { name = "mkl-fft", marker = "extra == 'mkl-fft'" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "pillow" },
     { name = "scikit-image" },
     { name = "scipy" },
     { name = "setuptools-scm" },
@@ -1107,15 +1120,15 @@ wheels = [
 
 [[package]]
 name = "setuptools-scm"
-version = "8.1.0"
+version = "8.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
     { name = "setuptools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4f/a4/00a9ac1b555294710d4a68d2ce8dfdf39d72aa4d769a7395d05218d88a42/setuptools_scm-8.1.0.tar.gz", hash = "sha256:42dea1b65771cba93b7a515d65a65d8246e560768a66b9106a592c8e7f26c8a7", size = 76465 }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/bd/c5d16dd95900567e09744af92119da7abc5f447320d53ec1d9415ec30263/setuptools_scm-8.2.0.tar.gz", hash = "sha256:a18396a1bc0219c974d1a74612b11f9dce0d5bd8b1dc55c65f6ac7fd609e8c28", size = 77572 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/b9/1906bfeb30f2fc13bb39bf7ddb8749784c05faadbd18a21cf141ba37bff2/setuptools_scm-8.1.0-py3-none-any.whl", hash = "sha256:897a3226a6fd4a6eb2f068745e49733261a21f70b1bb28fce0339feb978d9af3", size = 43666 },
+    { url = "https://files.pythonhosted.org/packages/10/7c/5a9799042320242c383c4485a2771a37d49e8ce2312ca647653d2fd1a7a4/setuptools_scm-8.2.0-py3-none-any.whl", hash = "sha256:136e2b1d393d709d2bcf26f275b8dec06c48b811154167b0fd6bb002aad17d6d", size = 43944 },
 ]
 
 [[package]]

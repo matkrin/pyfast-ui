@@ -3,15 +3,17 @@ from __future__ import annotations
 import copy
 from enum import Enum
 from pathlib import Path
-from typing import Any, Hashable, Literal, Mapping, Self, final
+from typing import Hashable, Literal, Self, final
 
 import h5py as h5
+import matplotlib.pyplot as plt
 import numpy as np
-from scipy.ndimage import gaussian_filter, median_filter
-from scipy.signal import convolve2d
 import skimage
 from numpy.typing import NDArray
+from scipy.ndimage import gaussian_filter, median_filter
+from scipy.signal import convolve2d
 
+from pyfast_ui.pyfast_re import frame_corrections
 from pyfast_ui.pyfast_re.channels import Channels
 from pyfast_ui.pyfast_re.creep import Creep, CreepMode
 from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
@@ -27,7 +29,9 @@ from pyfast_ui.pyfast_re.phase import PhaseCorrection
 
 @final
 class FastMovie:
-    def __init__(self, filename: str) -> None:
+    def __init__(
+        self, filename: str, x_phase: int | None = None, y_phase: int | None = None
+    ) -> None:
         self.filename = filename
         self.path = Path(filename)
         self.basename = str(self.path.stem)
@@ -44,6 +48,18 @@ class FastMovie:
         self.num_frames = self.metadata.num_frames
         # Ceep track of cutting so that labels at export are correct.
         self._cut_range = (0, self.metadata.num_images)
+
+        self._integrated_drift_path = None
+        self._sequential_drift_path = None
+
+        # Initial phase correction from either parameters or file metadata
+        if y_phase is None:
+            y_phase = self.metadata.acquisition_y_phase
+        if x_phase is None:
+            x_phase = self.metadata.acquisition_x_phase
+
+        y_phase_roll = y_phase * self.metadata.scanner_x_points * 2
+        self.data = np.roll(self.data, x_phase + y_phase_roll)
 
     def fps(self) -> float:
         """"""
@@ -139,13 +155,6 @@ class FastMovie:
         manual_y_phase: int | None = None,
     ) -> None:
         """"""
-        # Initial phase correction from file metadata
-        y_phase = self.metadata.acquisition_y_phase
-        if manual_y_phase is not None:
-            y_phase = manual_y_phase
-        y_phase_roll = y_phase * self.metadata.scanner_x_points * 2
-        self.data = np.roll(self.data, self.metadata.acquisition_x_phase + y_phase_roll)
-
         phase_correction = PhaseCorrection(
             fast_movie=self,
             auto_x_phase=auto_x_phase,
@@ -215,14 +224,19 @@ class FastMovie:
 
     def interpolate(self) -> None:
         """"""
-        interpolation_matrix_up, interpolation_matrix_down = determine_interpolation(
-            self, offset=0.0, grid=self.grid
-        )
+        interpolation_result = determine_interpolation(self, offset=0.0, grid=self.grid)
         # Mutates data
-        apply_interpolation(self, interpolation_matrix_up, interpolation_matrix_down)
-
+        apply_interpolation(
+            self,
+            interpolation_result.interpolation_matrix_up,
+            interpolation_result.interpolation_matrix_down,
+        )
         # Cut off unwanted padding with zeros
         self.crop((4, self.data.shape[2] - 4), (4, self.data.shape[1] - 4))
+
+        # plt.scatter(interpolation_result.x_coords_measured.flatten(), interpolation_result.y_coords_measured.flatten(), color="black", s=5)
+        # plt.scatter(interpolation_result.x_coords_target.flatten(), interpolation_result.y_coords_target.flatten(), color="red", s=5)
+        # plt.show()
 
     def correct_drift_correlation(
         self,
@@ -238,13 +252,36 @@ class FastMovie:
             self, stepsize=stepsize, boxcar=boxcar, median_filter=median_filter
         )
         # Mutate data
-        self.data, _drift_path = drift.correct_correlation(driftmode)
+        self.data, self._integrated_drift_path = drift.correct_correlation(driftmode)
+        self._sequential_drift_path = drift.transformations
 
         # if self.show_path is True:
         #     plt.plot(self.integrated_trans[0, :], self.integrated_trans[1, :])
         #     plt.plot(transformations_conv[0, :], transformations_conv[1, :])
         #     plt.title("Drift path both raw and smoothed")
         #     plt.show()
+
+    def plot_drift_path(self) -> None:
+        if self._integrated_drift_path is None or self._sequential_drift_path is None:
+            raise ValueError("Drift correction must be applied first")
+
+        _fig, axs = plt.subplots(nrows=1, ncols=2)  # pyright: ignore[reportAny, reportUnknownMemberType]
+        axs[0].plot(self._integrated_drift_path[0])  # pyright: ignore[reportAny]
+        axs[0].plot(self._integrated_drift_path[1])  # pyright: ignore[reportAny]
+        axs[0].set_title("Integrated drift path")  # pyright: ignore[reportAny]
+
+        axs[1].plot(self._sequential_drift_path[0])  # pyright: ignore[reportAny]
+        axs[1].plot(self._sequential_drift_path[1])  # pyright: ignore[reportAny]
+        axs[1].set_title("Sequential drift path")  # pyright: ignore[reportAny]
+
+        for ax in axs:  # pyright: ignore[reportAny]
+            ax.set_box_aspect(1)  # pyright: ignore[reportAny]
+            ax.legend(["x", "y"])  # pyright: ignore[reportAny]
+            ax.set_xlabel("Frames")  # pyright: ignore[reportAny]
+            ax.set_ylabel("Pixel")  # pyright: ignore[reportAny]
+
+        plt.tight_layout()
+        plt.show()  # pyright: ignore
 
     def correct_drift_stackreg(
         self,
@@ -259,7 +296,8 @@ class FastMovie:
         reference = StackRegReferenceType(stackreg_reference)
         drift = Drift(self, stepsize=1, boxcar=boxcar, median_filter=median_filter)
         # Mutate data
-        self.data, _drift_path = drift.correct_stackreg(mode, reference)
+        self.data, self._integrated_drift_path = drift.correct_stackreg(mode, reference)
+        self._sequential_drift_path = drift.transformations
 
     def correct_drift_known(
         self,
@@ -269,30 +307,48 @@ class FastMovie:
         mode = DriftMode(drifttype)
         drift = Drift(self)
         # Mutate data
-        self.data, _drift_path = drift.correct_known(mode)
+        self.data, self._integrated_drift_path = drift.correct_known(mode)
+        self._sequential_drift_path = drift.transformations
 
     def remove_streaks(self) -> None:
         """"""
-        # TODO
+        edge_removal = np.array(
+            [
+                [-1.0 / 12.0],
+                [3.0 / 12.0],
+                [8.0 / 12.0],
+                [3.0 / 12.0],
+                [-1 / 12.0],
+            ]
+        )
 
-    # def correct_frames(
-    #     self,
-    #     correction_type: Literal["align", "plane", "fixzero"],
-    #     align_type: Literal["median", "mean", "poly2", "poly3"],
-    # ) -> None: ...
-    def align_rows(self) -> None:
-        """Median"""
+        for i in range(self.data.shape[0]):
+            self.data[i] = frame_corrections.convolve_frame(self.data[i], edge_removal)  # pyright: ignore[reportAny]
+
+    def align_rows(
+        self, align_type: Literal["median", "mean", "poly2", "poly3"]
+    ) -> None:
+        """"""
         if self.mode != DataMode.MOVIE:
             raise ValueError("Data must be reshaped into movie mode")
 
         for i in range(self.data.shape[0]):
-            background = np.apply_along_axis(
-                lambda row: np.full(row.shape[0], np.median(row)),
-                axis=1,
-                arr=self.data[i],  # pyright: ignore[reportAny]
-            )
+            background = frame_corrections.align_rows(self.data[i], align_type)  # pyright: ignore[reportAny]
             # Mutate data
             self.data[i] -= background
+
+    def level_plane(self) -> None:
+        """"""
+        for i in range(self.data.shape[0]):
+            background = frame_corrections.level_plane(self.data[i])  # pyright: ignore[reportAny]
+            # Mutate data
+            self.data[i] -= background
+
+    def fix_zero(self) -> None:
+        """"""
+        for i in range(self.data.shape[0]):
+            # Mutate data
+            self.data[i] -= self.data[i].min()  # pyright: ignore[reportAny]
 
     def filter_frames(
         self,
