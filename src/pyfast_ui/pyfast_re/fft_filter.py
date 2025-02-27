@@ -9,7 +9,7 @@ import scipy
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:
-    from pyfast_ui.pyfast_re.fast_movie import FastMovie, FftFilterConfig
+    from pyfast_ui.pyfast_re.fast_movie import FastMovie, FftFilterParams
 
 
 class FftFilterType(Enum):
@@ -19,7 +19,7 @@ class FftFilterType(Enum):
 
 
 @dataclass
-class FftFilterConfig:
+class FftFilterParams:
     filter_x: bool
     filter_y: bool
     filter_x_overtones: bool
@@ -33,11 +33,11 @@ class FftFilter:
     def __init__(
         self,
         fast_movie: FastMovie,
-        filter_config: FftFilterConfig,
+        filter_config: FftFilterParams,
         filter_broadness: float | None,
         num_x_overtones: int,
         num_pump_overtones: int,
-        pump_freqs: list[int],
+        pump_freqs: list[float],
         high_pass_params: tuple[float, float],
     ):
         self.fast_movie = fast_movie

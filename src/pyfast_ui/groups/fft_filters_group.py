@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from pyfast_ui.config import FftFilterConfig
+from pyfast_ui.pyfast_re.fft_filter import FftFilterParams
 from pyfast_ui.custom_widgets import (
     LabeledDoubleSpinBoxes,
     LabeledSpinBox,
@@ -105,16 +106,15 @@ class FFTFiltersGroup(QGroupBox):
         layout.addWidget(self.new_btn, 8, 1)
 
     @property
-    def filterparams(self) -> list[bool]:
-        return [
-            self.filter_x,
-            self.filter_y,
-            self.filter_x_overtones,
-            self.filter_high_pass,
-            self.filter_pump,
-            self.filter_noise,
-            self.display_spectrum,
-        ]
+    def filterparams(self) -> FftFilterParams:
+        return FftFilterParams(
+            filter_x=self.filter_x,
+            filter_y=self.filter_y,
+            filter_x_overtones=self.filter_x_overtones,
+            filter_high_pass=self.filter_high_pass,
+            filter_pump=self.filter_pump,
+            filter_noise=self.filter_noise,
+        )
 
     @property
     def filter_x(self) -> bool:

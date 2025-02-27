@@ -6,6 +6,9 @@ import os
 from typing import final, override
 
 import numpy as np
+from pyfast_ui.pyfast_re.channels import Channels
+from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
+from pyfast_ui.pyfast_re.fast_movie import FastMovie
 import skimage as ski
 from matplotlib.widgets import RectangleSelector
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
@@ -14,7 +17,6 @@ from matplotlib.backends.backend_qtagg import FigureCanvas
 # from matplotlib.backends.qt_compat import QtWidgets
 from matplotlib.figure import Figure
 from numpy.typing import NDArray
-from pyfastspm import FastMovie
 from PySide6.QtCore import QSize, Signal, SignalInstance
 from PySide6.QtGui import QCloseEvent, QFocusEvent, QKeySequence, QShortcut, Qt
 from PySide6.QtWidgets import (
@@ -73,8 +75,8 @@ class MovieWindow(QWidget):
         super().__init__()
         self.ft = fast_movie
         print(f"New window with channel: {channel}")
-        self.channel = channel
-        self.ft.channel = channel
+        self.picked_channels = Channels(channel)
+        self.ft.channels = Channels(channel)
         self.colormap = colormap
         self.info = MovieInfo(
             id_=id(self),
@@ -82,7 +84,7 @@ class MovieWindow(QWidget):
             is_selection_active=False,
         )
 
-        self.setWindowTitle(f"{self.info.filename}({self.info.id_})-{self.channel}")
+        self.setWindowTitle(f"{self.info.filename}({self.info.id_})-{self.picked_channels}")
         self.setFocusPolicy(Qt.StrongFocus)
 
         layout = QVBoxLayout()
@@ -154,34 +156,35 @@ class MovieWindow(QWidget):
             new_movie_id: The new movie_id.
         """
         self.info.id_ = new_movie_id
-        self.setWindowTitle(f"{self.info.filename}({self.info.id_})-{self.channel}")
+        self.setWindowTitle(f"{self.info.filename}({self.info.id_})-{self.picked_channels}")
 
     def update_plot_data(self) -> None:
         """Updates [`self.plot_data`][pyfast_ui.movie_window.MovieWindow.plot_data].
         This function should be called after the `FastMovie`'s data changed.
         """
-        if self.ft.mode == "timeseries":
-            data: NDArray[np.float32] = self.ft.reshape_data(
+        if self.ft.mode == DataMode.TIMESERIES:
+            print("timesseries")
+            data: NDArray[np.float32] = reshape_data(
                 copy.deepcopy(self.ft.data),
-                self.channel,
-                self.ft.metadata["Scanner.X_Points"],
-                self.ft.metadata["Scanner.Y_Points"],
-                self.ft.num_images,
-                self.ft.num_frames,
+                self.picked_channels,
+                self.ft.metadata.num_images,
+                self.ft.metadata.scanner_x_points,
+                self.ft.metadata.scanner_y_points,
             )
             self.num_frames = data.shape[0]
-            self.ft.num_frames = self.num_frames
+            # self.ft.num_frames = self.num_frames
             self.movie_controls.set_num_frames(self.num_frames)
         else:
             data = copy.deepcopy(self.ft.data)
 
         self.plot_data = data
+        print(self.plot_data.shape)
 
     def create_plot(self) -> None:
         """Creates an image plot of the `FastMovie`'s data."""
         self.update_plot_data()
 
-        if "i" in self.channel:
+        if self.picked_channels.is_interlaced():
             print("=" * 80, "RESIZE")
             num_frames = self.plot_data.shape[0]
             y_shape = self.plot_data.shape[1]

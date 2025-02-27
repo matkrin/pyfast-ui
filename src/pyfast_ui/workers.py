@@ -1,6 +1,8 @@
 from typing import Callable, final, override
 from PySide6.QtCore import QObject, QRunnable, Signal
-import pyfastspm as pf
+from pyfast_ui.config import FftFilterConfig
+from pyfast_ui.pyfast_re.fast_movie import FastMovie
+from pyfast_ui.pyfast_re.fft_filter import FftFilterParams
 import numpy as np
 from numpy.typing import NDArray
 from pystackreg import StackReg
@@ -15,9 +17,9 @@ class WorkerSignals(QObject):
 class FftFilterWorker(QRunnable):
     def __init__(
         self,
-        fast_movie: pf.FastMovie,
-        filterparams: list[bool],
-        filter_broadness: int,
+        fast_movie: FastMovie,
+        filterparams: FftFilterParams,
+        filter_broadness: float,
         fft_display_range: tuple[int, int],
         pump_freqs: list[float],
         num_pump_overtones: int,
@@ -38,18 +40,14 @@ class FftFilterWorker(QRunnable):
 
     @override
     def run(self) -> None:
-        if any(self.filterparams):
-            pf.filter_movie(
-                ft=self.fast_movie,
-                filterparam=self.filterparams,
-                filter_broadness=self.filter_broadness,
-                fft_display_range=self.fft_display_range,
-                pump_freqs=self.pump_freqs,
-                num_pump_overtones=self.num_pump_overtones,
-                num_x_overtones=self.num_x_overtones,
-                high_pass_params=self.high_pass_params,
-            )
-
+        self.fast_movie.fft_filter(
+            filter_config=self.filterparams,
+            filter_broadness=self.filter_broadness,
+            num_x_overtones=self.num_x_overtones,
+            num_pump_overtones=self.num_pump_overtones,
+            pump_freqs=self.pump_freqs,
+            high_pass_params=self.high_pass_params,
+        )
         self.signals.finished.emit()
 
 
@@ -57,7 +55,7 @@ class FftFilterWorker(QRunnable):
 class CreepWorker(QRunnable):
     def __init__(
         self,
-        fast_movie: pf.FastMovie,
+        fast_movie: FastMovie,
         creep_mode: str,
         weight_boundary: float,
         creep_num_cols: int,
@@ -81,39 +79,22 @@ class CreepWorker(QRunnable):
     @override
     def run(self) -> None:
         if self.creep_mode == "bezier":
-            creep = pf.Creep(self.ft, index_to_linear=self.guess_ind)
-            opt, grid = creep.fit_creep_bez(
-                col_inds=np.linspace(
-                    self.ft.data.shape[2] * 0.25,
-                    self.ft.data.shape[2] * 0.75,
-                    self.creep_num_cols,
-                ).astype(int),
-                w=self.weight_boundary,
+            self.ft.correct_creep_bezier(
+                weight_boundary=self.weight_boundary,
+                creep_num_cols=self.creep_num_cols,
+                guess_ind=self.guess_ind,
                 known_input=self.known_input,
             )
 
         elif self.creep_mode != "bezier" and self.creep_mode != "None":
-            creep = pf.Creep(
-                self.ft, index_to_linear=self.guess_ind, creep_mode=self.creep_mode
+            self.ft.correct_creep_non_bezier(
+                creep_mode=self.creep_mode,
+                initial_guess=self.initial_guess,
+                guess_ind=self.guess_ind,
+                known_params=self.known_params,
             )
-            grid = creep.fit_creep(self.initial_guess, known_params=self.known_params)
-        else:
-            grid = None
 
-        interpolation_matrix_up, interpolation_matrix_down = pf.interpolate(
-            self.ft, grid=grid, give_grid=True
-        )
-
-        imrange = None
-
-        _ = pf.interpolate(
-            self.ft,
-            grid=grid,
-            image_range=imrange,
-            interpolation_matrix_up=interpolation_matrix_up,
-            interpolation_matrix_down=interpolation_matrix_down,
-        )
-
+        self.ft.interpolate()
         self.signals.finished.emit()
 
 
@@ -121,7 +102,7 @@ class CreepWorker(QRunnable):
 class DriftWorker(QRunnable):
     def __init__(
         self,
-        fast_movie: pf.FastMovie,
+        fast_movie: FastMovie,
         fft_drift: bool,
         drifttype: str,
         stepsize: int,
@@ -146,20 +127,37 @@ class DriftWorker(QRunnable):
 
     @override
     def run(self) -> None:
-        if self.fft_drift:
-            driftrem = pf.Drift(
-                self.ft,
-                stepsize=self.stepsize,
-                boxcar=self.boxcar,
-                median_filter=self.median_filter,
-            )
-            corrected_data, drift_path = driftrem.correct(
-                self.drifttype,
-                algorithm=self.drift_algorithm,
-                stackreg_reference=self.stackreg_reference,
-                known_drift=self.known_drift,
-            )
+        # if self.fft_drift:
+        #     driftrem = pf.Drift(
+        #         self.ft,
+        #         stepsize=self.stepsize,
+        #         boxcar=self.boxcar,
+        #         median_filter=self.median_filter,
+        #     )
+        #     corrected_data, drift_path = driftrem.correct(
+        #         self.drifttype,
+        #         algorithm=self.drift_algorithm,
+        #         stackreg_reference=self.stackreg_reference,
+        #         known_drift=self.known_drift,
+        #     )
 
-        self.ft.data = corrected_data
+        # self.ft.data = corrected_data
+        match self.drift_algorithm:
+            case "correlation":
+                self.ft.correct_drift_correlation(
+                    mode=self.drifttype,
+                    stepsize=self.stepsize,
+                    boxcar=self.boxcar,
+                    median_filter=self.median_filter,
+                )
+            case "stackreg":
+                self.ft.correct_drift_stackreg(
+                    drifttype=self.drifttype,
+                    stackreg_reference=self.stackreg_reference,
+                    boxcar=self.boxcar,
+                    median_filter=self.median_filter
+                )
+            case "known":
+                self.ft.correct_drift_known(drifttype=self.drifttype)
 
         self.signals.finished.emit()

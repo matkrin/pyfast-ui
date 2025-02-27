@@ -9,7 +9,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.widgets import RangeSlider
 from pyfast_ui.custom_widgets import LabeledDoubleSpinBoxes, LabeledSpinBoxes
-from pyfastspm import FastMovie
+from pyfast_ui.pyfast_re.fast_movie import FastMovie
 
 from pyfast_ui.movie_window import MovieInfo
 

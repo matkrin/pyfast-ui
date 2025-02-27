@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import final, override
 
 import matplotlib.pyplot as plt
-import pyfastspm as pf
+from pyfast_ui.pyfast_re.data_mode import DataMode
+from pyfast_ui.pyfast_re.fast_movie import FastMovie
 from PySide6.QtCore import QCoreApplication, QThreadPool
 from PySide6.QtGui import QCloseEvent, Qt
 from PySide6.QtWidgets import (
@@ -216,7 +217,7 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
-        channel = fast_movie_window.channel
+        channel = fast_movie_window.picked_channels
         new_ft = fast_movie_window.clone_fast_movie()
         new_movie_window = MovieWindow(new_ft, channel, self._colormap.value())
         new_movie_window.show()
@@ -232,7 +233,7 @@ class MainGui(QMainWindow):
 
     def on_open_btn_click(self) -> None:
         """Just for TEST button"""
-        ft = pf.FastMovie(FAST_FILE, y_phase=0)
+        ft = FastMovie(FAST_FILE, y_phase=0)
         movie_window = MovieWindow(ft, "udi", self._colormap.value())
         _ = movie_window.window_focused.connect(self.update_focused_window)
         _ = movie_window.window_closed.connect(self.on_movie_window_closed)
@@ -253,7 +254,7 @@ class MainGui(QMainWindow):
         )
 
         if file_path:
-            ft = pf.FastMovie(str(file_path), y_phase=0)
+            ft = FastMovie(str(file_path), y_phase=0)
             colormap = self._colormap.value()
             movie_window = MovieWindow(ft, "udi", colormap)
             _ = movie_window.window_focused.connect(self.update_focused_window)
@@ -327,7 +328,7 @@ class MainGui(QMainWindow):
         dirpath = Path(dirname)
         for filepath in dirpath.iterdir():
             if filepath.is_file() and filepath.suffix == ".h5":
-                ft = pf.FastMovie(str(filepath), y_phase=0)
+                ft = FastMovie(str(filepath), y_phase=0)
                 colormap = self._colormap.value()
                 movie_window = MovieWindow(ft, "udi", colormap)
                 _ = movie_window.window_focused.connect(self.update_focused_window)
@@ -371,8 +372,10 @@ class MainGui(QMainWindow):
 
         channel = self.channel_select_group.channel
 
-        new_ft = fast_movie_window.clone_fast_movie()
-        new_ft.reload_timeseries()
+        # new_ft = fast_movie_window.clone_fast_movie()
+        # new_ft.reload_timeseries()
+        filename = fast_movie_window.ft.filename
+        new_ft = FastMovie(filename, y_phase=0)
         new_movie_window = MovieWindow(new_ft, channel, self._colormap.value())
         new_movie_window.show()
         _ = new_movie_window.window_focused.connect(self.update_focused_window)
@@ -417,7 +420,7 @@ class MainGui(QMainWindow):
             x_start, y_start = ul
             y_end = ll[1]
             x_end = lr[0]
-            if "i" in ft.channels:
+            if ft.channels.is_interlaced():
                 x_start = round(x_start / 2)
                 x_end = round(x_end / 2)
             print(f"cropping with {y_start}, {y_end=}, {x_start=}, {x_end=}")
@@ -479,8 +482,8 @@ class MainGui(QMainWindow):
         manual_y_phase = self.phase_group.manual_y_phase
 
         _x_phase = ft.correct_phase(
-            apply_auto_xphase=apply_auto_xphase,
-            index_frame_to_correlate=index_frame_to_correlate,
+            auto_x_phase=apply_auto_xphase,
+            frame_index_to_correlate=index_frame_to_correlate,
             sigma_gauss=sigma_gauss,
             additional_x_phase=additional_x_phase,
             manual_y_phase=manual_y_phase,
@@ -552,8 +555,8 @@ class MainGui(QMainWindow):
         fast_movie_window.start_processing("Correcting creep...")
 
         ft = fast_movie_window.ft
-        if ft.mode == "timeseries":
-            ft.reshape_to_movie(fast_movie_window.channel)
+        if ft.mode == DataMode.TIMESERIES:
+            ft.to_movie_mode(fast_movie_window.picked_channels.value)
 
         creep_mode = self.creep_group.creep_mode
         image_range = None
@@ -600,7 +603,7 @@ class MainGui(QMainWindow):
 
         ft = fast_movie_window.ft
         if ft.mode == "timeseries":
-            ft.reshape_to_movie(fast_movie_window.channel)
+            ft.reshape_to_movie(fast_movie_window.picked_channels)
 
         drift_algorithm = self.drift_group.drift_algorithm
         fft_drift = self.drift_group.fft_drift
@@ -679,28 +682,30 @@ class MainGui(QMainWindow):
 
         image_range = None
 
+        if ft.channels.is_interlaced():
+            ft.rescale((1, 2))
+        else:
+            ft.rescale((scaling[1], scaling[0]))
+
         if export_movie:
-            ft.export_movie(
-                color_map=color_map,
-                contrast=contrast,
-                fps_factor=fps_factor,
-                image_range=image_range,
-                scaling=scaling,
-                auto_label=auto_label,
+            ft.export_mp4(
+                fps_factor=fps_factor, color_map=color_map, label_frames=auto_label
             )
 
         if export_frames:
-            ft.export_frame(
-                images=frame_export_images,
-                channel=frame_export_channel,
-                color_map=color_map,
-                file_format=frame_export_format,
-                contrast=contrast,
-                scaling=scaling,
-            )
+            if frame_export_format == "gwy":
+                ft.export_frames_gwy("images", frame_range=frame_export_images)
+            elif frame_export_format == "txt":
+                ft.export_frames_txt(frame_range=frame_export_images)
+            else:
+                ft.export_frames_image(
+                    image_format=frame_export_format,
+                    frame_range=frame_export_images,
+                    color_map=color_map,
+                )
 
         if export_tiff:
-            ft.export_tiff(image_range)
+            ft.export_tiff()
 
     def on_image_correction_apply(self) -> None:
         """Callback for 'Apply' button of the `ImageCorrectionGroup`. Applies
@@ -717,11 +722,7 @@ class MainGui(QMainWindow):
         correction_type = self.image_correction_group.correction_type
 
         if correction_type == "align":
-            pf.align_rows(ft, align_type)
-        elif correction_type == "plane":
-            pf.level_plane(ft)
-        elif correction_type == "fixzero":
-            pf.fix_zero(ft)
+            ft.align_rows(align_type=align_type)
 
         fast_movie_window.recreate_plot()
 
@@ -746,12 +747,7 @@ class MainGui(QMainWindow):
         filter_type = self.image_filter_group.filter_type
         pixel_width = self.image_filter_group.pixel_width
 
-        if filter_type == "mean2d":
-            pf.mean_2d(ft, pixel_width)
-        elif filter_type == "median2d":
-            pf.median_2d(ft, pixel_width)
-        elif filter_type == "gaussian2d":
-            pf.gaussian_2d(ft, pixel_width)
+        ft.filter_frames(filter_type=filter_type, kernel_size=pixel_width)
 
         fast_movie_window.recreate_plot()
 

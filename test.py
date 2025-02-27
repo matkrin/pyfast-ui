@@ -1,4 +1,4 @@
-from pyfast_ui.pyfast_re.fast_movie import FastMovie, FftFilterConfig
+from pyfast_ui.pyfast_re.fast_movie import FastMovie, FftFilterParams
 from pyfast_ui.pyfast_re.channels import Channels
 import matplotlib.pyplot as plt
 
@@ -19,7 +19,7 @@ for channel in [c.value for c in Channels]:
         manual_y_phase=0,
     )
 
-    fft_filter_config = FftFilterConfig(
+    fft_filter_config = FftFilterParams(
         filter_x=True,
         filter_y=True,
         filter_x_overtones=True,

@@ -19,7 +19,7 @@ from pyfast_ui.pyfast_re.creep import Creep, CreepMode
 from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
 from pyfast_ui.pyfast_re.drift import Drift, DriftMode, StackRegReferenceType
 from pyfast_ui.pyfast_re.export import FrameExport, FrameExportFormat, MovieExport
-from pyfast_ui.pyfast_re.fft_filter import FftFilter, FftFilterConfig
+from pyfast_ui.pyfast_re.fft_filter import FftFilter, FftFilterParams
 from pyfast_ui.pyfast_re.interpolation import (
     apply_interpolation,
     determine_interpolation,
@@ -53,10 +53,10 @@ class FastMovie:
         self._sequential_drift_path = None
 
         # Initial phase correction from either parameters or file metadata
-        if y_phase is None:
-            y_phase = self.metadata.acquisition_y_phase
         if x_phase is None:
             x_phase = self.metadata.acquisition_x_phase
+        if y_phase is None:
+            y_phase = self.metadata.acquisition_y_phase
 
         y_phase_roll = y_phase * self.metadata.scanner_x_points * 2
         self.data = np.roll(self.data, x_phase + y_phase_roll)
@@ -171,11 +171,11 @@ class FastMovie:
 
     def fft_filter(
         self,
-        filter_config: FftFilterConfig,
+        filter_config: FftFilterParams,
         filter_broadness: float,
         num_x_overtones: int,
         num_pump_overtones: int,
-        pump_freqs: list[int],
+        pump_freqs: list[float],
         high_pass_params: tuple[float, float],
     ) -> None:
         """"""

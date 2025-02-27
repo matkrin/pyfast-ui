@@ -14,7 +14,7 @@ class ImageFilterGroup(QGroupBox):
         self.setLayout(layout)
 
         self._filter_type = LabeledCombobox(
-            "Filter type", ["gaussian2d", "median2d", "mean2d"]
+            "Filter type", ["gauss", "median", "mean"]
         )
         self._pixel_width = LabeledSpinBox("Pixel width", pixel_width)
 
