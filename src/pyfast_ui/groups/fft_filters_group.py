@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from pyfast_ui.config import FftFilterConfig
 from pyfast_ui.pyfast_re.fft_filter import FftFilterParams
 from pyfast_ui.custom_widgets import (
+    LabeledDoubleSpinBox,
     LabeledDoubleSpinBoxes,
     LabeledSpinBox,
     LabeledSpinBoxes,
@@ -63,7 +64,7 @@ class FFTFiltersGroup(QGroupBox):
         self._display_spectrum.setChecked(display_spectrum)
 
         # Advanced settings
-        self._filter_broadness = LabeledSpinBox(
+        self._filter_broadness = LabeledDoubleSpinBox(
             "Filter broadness", filter_broadness or 0
         )
         self._num_x_overtones = LabeledSpinBox("Num x overtones", num_x_overtones)
@@ -173,13 +174,12 @@ class FFTFiltersGroup(QGroupBox):
         self._display_spectrum.setChecked(value)
 
     @property
-    def filter_broadness(self) -> int | None:
-        filter_broadness = self._filter_broadness.value()
-        return None if filter_broadness == 0 else filter_broadness
+    def filter_broadness(self) -> float:
+        return self._filter_broadness.value()
 
     @filter_broadness.setter
-    def filter_broadness(self, value: int | None) -> None:
-        self._filter_broadness.setValue(value or 0)
+    def filter_broadness(self, value: float) -> None:
+        self._filter_broadness.setValue(value)
 
     @property
     def num_x_overtones(self) -> int:
@@ -224,7 +224,7 @@ class FFTFiltersGroup(QGroupBox):
 
     @classmethod
     def from_config(cls, fft_filter_config: FftFilterConfig) -> Self:
-        return cls(**fft_filter_config.model_dump())
+        return cls(**fft_filter_config.model_dump())  # pyright: ignore[reportAny]
 
     def update_from_config(self, fft_filter_config: FftFilterConfig) -> None:
         self.filter_x = fft_filter_config.filter_x

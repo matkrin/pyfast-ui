@@ -59,8 +59,8 @@ class MainGui(QMainWindow):
         scroll_area = QScrollArea()
         self.central_layout = QHBoxLayout()
         self.central_widget.setLayout(self.central_layout)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownArgumentType]
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownArgumentType]
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(self.central_widget)
         self.setCentralWidget(scroll_area)
@@ -186,7 +186,7 @@ class MainGui(QMainWindow):
         """
         msg = QMessageBox()
         msg.setText(message)
-        msg.setIcon(QMessageBox.Information)
+        msg.setIcon(QMessageBox.Information)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownArgumentType]
         _ = msg.exec()
 
     def update_focused_window(self, movie_info: MovieInfo) -> None:
@@ -407,7 +407,7 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
-        if fast_movie_window.ft.mode == "timeseries":
+        if fast_movie_window.ft.mode == DataMode.TIMESERIES:
             self.show_info_message("Cropping is only possible after creep correction.")
             return
 
@@ -420,13 +420,13 @@ class MainGui(QMainWindow):
             x_start, y_start = ul
             y_end = ll[1]
             x_end = lr[0]
-            if ft.channels.is_interlaced():
+            if ft.channels is not None and ft.channels.is_interlaced():
                 x_start = round(x_start / 2)
                 x_end = round(x_end / 2)
             print(f"cropping with {y_start}, {y_end=}, {x_start=}, {x_end=}")
 
             fast_movie_window.stop_playing()
-            ft.data = ft.data[:, y_start:y_end, x_start:x_end]
+            ft.crop((x_start, x_end), (y_start, y_end))
             fast_movie_window.recreate_plot()
             fast_movie_window.start_playing()
 
@@ -452,14 +452,14 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
-        if fast_movie_window.ft.mode == "timeseries":
+        if fast_movie_window.ft.mode == DataMode.TIMESERIES:
             self.show_info_message("Cutting is only possible after creep correction.")
             return
 
         ft = fast_movie_window.ft
         fast_movie_window.stop_playing()
-        ft.data = ft.data[frame_start : frame_end + 1, :, :]
-        fast_movie_window.num_frames = ft.data.shape[0]
+        ft.cut((frame_start, frame_end))
+        fast_movie_window.num_frames = ft.num_frames
         fast_movie_window.recreate_plot()
         fast_movie_window.start_playing()
 

@@ -29,6 +29,25 @@ from pyfast_ui.pyfast_re.phase import PhaseCorrection
 
 @final
 class FastMovie:
+    """Class representing a FastSPM movie.
+
+    Args:
+        filename: Name of the .h5 file to be opened.
+        x_phase: Shift of x-phase to be applied. If `None` the value of the
+            .h5 file's metadata is used.
+        y_phase: Shift of y-phase to be applied. If `None` the value of the
+            .h5 file's metadata is used.
+
+    Attributes:
+        path: Path to the .h5 file.
+        basename: Basename of the .h5 file.
+        parent_dir: Folder where the .h5 file is located.
+        data: Numeric data of the FastSPM movie.
+        metadata: Metadata of the FastSPM movie.
+        mode: Mode of the FastSPM movie.
+        num_frames: Number of frames of the FastSPM movie.
+    """
+
     def __init__(
         self, filename: str, x_phase: int | None = None, y_phase: int | None = None
     ) -> None:
@@ -38,13 +57,13 @@ class FastMovie:
         self.parent_dir = str(self.path.resolve().parent)
 
         with h5.File(filename, mode="r") as f:
-            self.data: NDArray[np.float32] = f["data"][()].astype(np.float32)  # pyright: ignore
+            self.data: NDArray[np.float32] = f["data"][()].astype(np.float32)  # pyright: ignore[reportIndexIssue, reportAttributeAccessIssue, reportUnknownMemberType]
             num_pixels = len(self.data)
             self.metadata = Metadata(f["data"].attrs, num_pixels)
 
         self.channels: Channels | None = None
         self.mode: DataMode = DataMode.TIMESERIES
-        self.grid = None
+        self._grid = None
         self.num_frames = self.metadata.num_frames
         # Ceep track of cutting so that labels at export are correct.
         self._cut_range = (0, self.metadata.num_images)
@@ -62,29 +81,37 @@ class FastMovie:
         self.data = np.roll(self.data, x_phase + y_phase_roll)
 
     def fps(self) -> float:
-        """"""
+        """Getter for the frames per second of the FastSPM movie.
+
+        Returns:
+            The number of frames per second of the FastSPM movie.
+        """
         if self.channels is not None and self.channels.is_up_and_down():
             return self.metadata.scanner_y_frequency * 2
 
         return self.metadata.scanner_y_frequency
 
     def cut_range(self) -> tuple[int, int]:
+        """Getter for the range of cut frames.
+
+        Returns:
+            Start and end of the cut movie.
+        """
         return (self._cut_range[0], self._cut_range[1] - 1)
 
     def clone(self) -> Self:
-        """"""
+        """Get a deepcopy of the `FastMovie`"""
         return copy.deepcopy(self)
-
-    def set_channels(
-        self, channels: Literal["udi", "udf", "udb", "uf", "ub", "df", "db", "ui", "di"]
-    ):
-        """"""
-        self.channels = Channels(channels.lower())
 
     def to_movie_mode(
         self, channels: Literal["udi", "udf", "udb", "uf", "ub", "df", "db", "ui", "di"]
-    ):
-        """"""
+    ) -> None:
+        """Transform from `DataMode.TIMESERIES` to `DataMode.MOVIE`.
+        `FastMovie.data` gets converted to a 3D array, according to `channels`.
+
+        Args:
+            channels: Channels to select.
+        """
         if self.mode != DataMode.TIMESERIES:
             raise ValueError("FastMovie must be in timeseries mode.")
 
@@ -102,7 +129,14 @@ class FastMovie:
         self.mode = DataMode.MOVIE
 
     def rescale(self, scaling_factor: tuple[int, int]) -> None:
-        """"""
+        """Rescale the frames of the `FastMovie` is y and x dimensions.
+
+        Args:
+            scaling_factor: Values for rescaling in y and x dimension (y, x).
+        """
+        if self.mode != DataMode.MOVIE:
+            raise ValueError("FastMovie must be in movie mode.")
+
         scaled: list[NDArray[np.float32]] = []
         for i in range(self.data.shape[0]):
             scaled.append(skimage.transform.rescale(self.data[i], scaling_factor))  # pyright: ignore[reportAny, reportUnknownMemberType, reportUnknownArgumentType]
@@ -110,7 +144,12 @@ class FastMovie:
         self.data = np.array(scaled)
 
     def cut(self, cut_range: tuple[int, int]) -> None:
-        """"""
+        """Cut frames of the movie.
+
+        Args:
+            cut_range: Start (inclusive) and end frame (exclusive) for
+                cutting (start, end).
+        """
         if self.mode != DataMode.MOVIE or len(self.data.shape) != 3:
             raise ValueError("FastMovie must be in movie mode.")
 
@@ -204,7 +243,7 @@ class FastMovie:
         # must be movie mode now
         mode = CreepMode(creep_mode.lower())
         creep = Creep(self, index_to_linear=guess_ind, creep_mode=mode)
-        self.grid = creep.fit_creep((initial_guess,), known_params=known_params)
+        self._grid = creep.fit_creep((initial_guess,), known_params=known_params)
 
     def correct_creep_bezier(
         self,
@@ -219,13 +258,15 @@ class FastMovie:
         col_inds = np.linspace(
             self.data.shape[2] * 0.25, self.data.shape[2] * 0.75, creep_num_cols
         ).astype(int)
-        _opt, self.grid = creep.fit_creep_bez(
+        _opt, self._grid = creep.fit_creep_bez(
             col_inds=col_inds, w=weight_boundary, known_input=known_input
         )
 
     def interpolate(self) -> None:
         """"""
-        interpolation_result = determine_interpolation(self, offset=0.0, grid=self.grid)
+        interpolation_result = determine_interpolation(
+            self, offset=0.0, grid=self._grid
+        )
         # Mutates data
         apply_interpolation(
             self,
@@ -282,7 +323,7 @@ class FastMovie:
             ax.set_ylabel("Pixel")  # pyright: ignore[reportAny]
 
         plt.tight_layout()
-        plt.show()  # pyright: ignore
+        plt.show()  # pyright: ignore[reportUnknownMemberType]
 
     def correct_drift_stackreg(
         self,
@@ -442,9 +483,9 @@ class FrameFilterType(Enum):
 class Metadata:
     def __init__(self, meta_attrs: h5.AttributeManager, num_pixels: int) -> None:
         # If scalars are numpy types, convert to python types
-        self._meta_attrs: dict[Hashable, int | float | str] = {
+        self._meta_attrs: dict[Hashable, int | float | str] = {  # pyright: ignore[reportAttributeAccessIssue]
             k: (v.item() if isinstance(v, np.generic) else v)
-            for k, v in meta_attrs.items()
+            for k, v in meta_attrs.items()  # pyright: ignore[reportUnknownVariableType]
         }
         self._correct_missspelled_keys()
         self.acquisition_x_phase = int(self._meta_attrs["Acquisition.X_Phase"])

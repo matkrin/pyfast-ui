@@ -49,7 +49,7 @@ class FftFilterConfig(BaseModel):
     filter_pump: bool = True
     filter_noise: bool = False
     display_spectrum: bool = False
-    filter_broadness: int | None = None
+    filter_broadness: float = 0.0
     num_x_overtones: int = 10
     high_pass_params: tuple[float, float] = (1000.0, 600.0)
     num_pump_overtones: int = 3
