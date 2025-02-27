@@ -98,6 +98,7 @@ class FastMovie:
         )
         # Mutate data
         self.data = data
+        self.num_frames = data.shape[0]
         self.mode = DataMode.MOVIE
 
     def rescale(self, scaling_factor: tuple[int, int]) -> None:

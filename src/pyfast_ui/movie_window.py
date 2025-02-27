@@ -92,6 +92,7 @@ class MovieWindow(QWidget):
 
         self.num_frames: int = self.ft.num_frames
         self.current_frame_num: int = 0
+        print(f"{self.num_frames=}")
 
         self.canvas = FigureCanvas(Figure(figsize=(4, 4)))
         self.movie_controls = MovieControls(
@@ -178,7 +179,7 @@ class MovieWindow(QWidget):
             data = copy.deepcopy(self.ft.data)
 
         self.plot_data = data
-        print(self.plot_data.shape)
+        print(f"{self.plot_data.shape=}")
 
     def create_plot(self) -> None:
         """Creates an image plot of the `FastMovie`'s data."""

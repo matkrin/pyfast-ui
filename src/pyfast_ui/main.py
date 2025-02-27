@@ -219,7 +219,7 @@ class MainGui(QMainWindow):
 
         channel = fast_movie_window.picked_channels
         new_ft = fast_movie_window.clone_fast_movie()
-        new_movie_window = MovieWindow(new_ft, channel, self._colormap.value())
+        new_movie_window = MovieWindow(new_ft, channel.value, self._colormap.value())
         new_movie_window.show()
         _ = new_movie_window.window_focused.connect(self.update_focused_window)
         self.movie_windows.update({new_movie_window.info.id_: new_movie_window})
@@ -556,7 +556,7 @@ class MainGui(QMainWindow):
 
         ft = fast_movie_window.ft
         if ft.mode == DataMode.TIMESERIES:
-            ft.to_movie_mode(fast_movie_window.picked_channels.value)
+            ft.to_movie_mode(ft.channels.value)
 
         creep_mode = self.creep_group.creep_mode
         image_range = None
