@@ -17,7 +17,7 @@ from pyfast_ui.pyfast_re import frame_corrections
 from pyfast_ui.pyfast_re.channels import Channels
 from pyfast_ui.pyfast_re.creep import Creep, CreepMode
 from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
-from pyfast_ui.pyfast_re.drift import Drift, DriftMode, StackRegReferenceType
+from pyfast_ui.pyfast_re.drift import Drift, DriftMode, DriftNonscaling, StackRegReferenceType
 from pyfast_ui.pyfast_re.export import FrameExport, FrameExportFormat, MovieExport
 from pyfast_ui.pyfast_re.fft_filter import FftFilter, FftFilterParams
 from pyfast_ui.pyfast_re.interpolation import (
@@ -81,7 +81,7 @@ class FastMovie:
         self.data = np.roll(self.data, x_phase + y_phase_roll)
 
     def fps(self) -> float:
-        """Getter for the frames per second of the FastSPM movie.
+        """Get the frames per second of the FastSPM movie.
 
         Returns:
             The number of frames per second of the FastSPM movie.
@@ -92,7 +92,7 @@ class FastMovie:
         return self.metadata.scanner_y_frequency
 
     def cut_range(self) -> tuple[int, int]:
-        """Getter for the range of cut frames.
+        """Get the range of cut frames.
 
         Returns:
             Start and end of the cut movie.
@@ -144,7 +144,7 @@ class FastMovie:
         self.data = np.array(scaled)
 
     def cut(self, cut_range: tuple[int, int]) -> None:
-        """Cut frames of the movie.
+        """Cut out frames of the movie.
 
         Args:
             cut_range: Start (inclusive) and end frame (exclusive) for
@@ -167,7 +167,14 @@ class FastMovie:
         self._cut_range = (frame_start + self._cut_range[0], cut_range[1])
 
     def crop(self, x_range: tuple[int, int], y_range: tuple[int, int]) -> None:
-        """"""
+        """Crop movie frames.
+
+        Args:
+            x_range: Starting (inclusive) and ending pixel (exclusive) in
+                x-dimension.
+            y_range: Starting (inclusive) and ending pixel (exclusive) in
+                y-dimension.
+        """
         if self.mode != DataMode.MOVIE or len(self.data.shape) != 3:
             raise ValueError("FastMovie must be in movie mode.")
 
@@ -194,7 +201,15 @@ class FastMovie:
         additional_x_phase: int = 0,
         manual_y_phase: int | None = None,
     ) -> None:
-        """"""
+        """Correct the phase of the `FastMovie`.
+
+        Args:
+            auto_x_phase:
+            frame_index_to_correlate:
+            sigma_gauss:
+            additional_x_phase:
+            manual_y_phase:
+        """
         phase_correction = PhaseCorrection(
             fast_movie=self,
             auto_x_phase=auto_x_phase,
@@ -264,6 +279,9 @@ class FastMovie:
 
     def interpolate(self) -> None:
         """"""
+        # print(f"{self._grid=}")
+        # print(f"{self._grid[0].shape=}")
+        # print(f"{self._grid[0].dtype=}")
         interpolation_result = determine_interpolation(
             self, offset=0.0, grid=self._grid
         )
@@ -318,7 +336,7 @@ class FastMovie:
 
         for ax in axs:  # pyright: ignore[reportAny]
             ax.set_box_aspect(1)  # pyright: ignore[reportAny]
-            ax.legend(["x", "y"])  # pyright: ignore[reportAny]
+            ax.legend(["y", "x"])  # pyright: ignore[reportAny]
             ax.set_xlabel("Frames")  # pyright: ignore[reportAny]
             ax.set_ylabel("Pixel")  # pyright: ignore[reportAny]
 
