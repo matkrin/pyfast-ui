@@ -6,8 +6,8 @@ import numpy as np
 from numpy.typing import NDArray
 from pyfast_ui.pyfast_re.channels import Channels
 from pyfast_ui.pyfast_re.data_mode import reshape_data
-from scipy.ndimage import gaussian_filter
-from scipy.signal import correlate
+from scipy.ndimage import gaussian_filter  # pyright: ignore[reportMissingTypeStubs, reportUnknownVariableType]
+from scipy.signal import correlate  # pyright: ignore[reportMissingTypeStubs, reportUnknownVariableType]
 
 from pyfast_ui.pyfast_re.data_mode import DataMode
 
@@ -76,6 +76,7 @@ class PhaseCorrection:
 def get_x_phase_autocorrection(
     data: NDArray[np.float32], index_frame_to_correlate: int, sigma_gauss: int
 ) -> int:
+    """"""
     if len(data.shape) != 3:
         raise ValueError("`data` must be 3 dimensional numpy array")
 
@@ -100,15 +101,15 @@ def get_x_phase_autocorrection(
 
     for i in range(2, len(data[0, :, 0]) - 2, 2):
         # create foreward different mean - like finite difference approx in numerical differentiation
-        correlational_data_forewards: NDArray[np.float32] = correlate(
+        correlational_data_forewards: NDArray[np.float32] = correlate(  # pyright: ignore[reportUnknownVariableType]
             frame_to_correlate[i, :], frame_to_correlate[i + 1, :]
         )
-        correlational_data_backwards = correlate(
+        correlational_data_backwards = correlate(  # pyright: ignore[reportUnknownVariableType]
             frame_to_correlate[i, :], frame_to_correlate[i - 1, :]
         )
         max_val = (
-            np.argmax(correlational_data_forewards)
-            + np.argmax(correlational_data_backwards)
+            np.argmax(correlational_data_forewards)  # pyright: ignore[reportUnknownArgumentType]
+            + np.argmax(correlational_data_backwards)  # pyright: ignore[reportUnknownArgumentType]
         ) / 2
         correlation_peak_values[int(i / 2 - 1)] = max_val
 

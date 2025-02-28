@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING, final
 
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy
+import scipy  # pyright: ignore[reportMissingTypeStubs]
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:
-    from pyfast_ui.pyfast_re.fast_movie import FastMovie, FftFilterParams
+    from pyfast_ui.pyfast_re.fast_movie import FastMovie 
 
 
 class FftFilterType(Enum):
@@ -72,18 +72,18 @@ class FftFilter:
                     (frequencies - filter_freq) / np.sqrt(2 * par**2)
                 )
 
-            data_fft *= filter
+            data_fft *= filter  # pyright: ignore[reportPossiblyUnboundVariable]
 
         ## Filter noise
         if self.filter_config.filter_noise:
             noise_threshold = np.median(np.abs(data_fft))
             # filter_noise (must be spectrum)
             sigma = noise_threshold
-            filter = 0.5 + 0.5 * scipy.special.erf(
+            filter = 0.5 + 0.5 * scipy.special.erf(  # pyright: ignore[reportAny]
                 np.abs(data_fft) - noise_threshold / np.sqrt(2 * sigma**2)
             )
 
-            data_fft *= filter
+            data_fft *= filter  # pyright: ignore[reportAny]
 
         return np.fft.irfft(data_fft).astype(np.float32)
 
@@ -141,11 +141,11 @@ def show_fft(
     frequencies = np.fft.rfftfreq(len(data_fft) * 2 - 1, 1.0 / rate)
 
     if range_display is not None:
-        xmin = int(len(frequencies) * range_display[0] / frequencies[-1])
-        xmax = int(len(frequencies) * range_display[1] / frequencies[-1])
-        _ = plt.plot(frequencies[xmin:xmax], np.real(data_fft[xmin:xmax]))
+        xmin = int(len(frequencies) * range_display[0] / frequencies[-1])  # pyright: ignore[reportAny]
+        xmax = int(len(frequencies) * range_display[1] / frequencies[-1])  # pyright: ignore[reportAny]
+        _ = plt.plot(frequencies[xmin:xmax], np.real(data_fft[xmin:xmax]))  # pyright: ignore[reportUnknownMemberType]
     else:
-        _ = plt.plot(frequencies, np.real(data_fft), np.real(data_fft))
+        _ = plt.plot(frequencies, np.real(data_fft), np.real(data_fft))  # pyright: ignore[reportUnknownMemberType]
 
-    _ = plt.xlabel(r"$f\,\mathrm{\,in\,Hz}$")
+    _ = plt.xlabel(r"$f\,\mathrm{\,in\,Hz}$")  # pyright: ignore[reportUnknownMemberType]
     plt.tight_layout()

@@ -5,9 +5,10 @@ learnopencv.com/video-stabilisation-using-point-feature-matching-in-opencv
 """
 
 from __future__ import annotations
+
 from enum import Enum
-from typing import TYPE_CHECKING, final
-import matplotlib.pyplot as plt
+from typing import TYPE_CHECKING, Literal, final
+
 import numpy as np
 from pystackreg import StackReg
 from scipy.ndimage import convolve
@@ -144,7 +145,7 @@ class Drift:
             case DriftMode.COMMON:
                 return self._adjust_movie_common(), self.integrated_trans
 
-    def _get_drift_correlation(self):
+    def _get_drift_correlation(self) -> None:
         """Calculation of the drift by fft correlation."""
         movie = np.zeros((self.n_frames, self.im_size, self.im_size))
         hamm = np.sqrt(
@@ -178,16 +179,16 @@ class Drift:
                 pass
         # print("last found correlation indices are {}".format(indices))
 
-    def _get_drift_stackreg(self, reference):
+    def _get_drift_stackreg(self, reference: StackRegReferenceType) -> None:
         stackreg = StackReg(StackReg.TRANSLATION)
         transformation_matrices = stackreg.register_stack(
             self.data, reference=reference.value
         )
         x_path_integrated = []
         y_path_integrated = []
-        for mat in transformation_matrices:
-            x_path_integrated.append(-mat[0, 2])
-            y_path_integrated.append(-mat[1, 2])
+        for matrix in transformation_matrices:
+            x_path_integrated.append(-matrix[0, 2])
+            y_path_integrated.append(-matrix[1, 2])
 
         # self.integrated_trans = np.array([y_path_integrated, x_path_integrated])
         x_path = np.array(x_path_integrated)
@@ -280,18 +281,13 @@ class Drift:
                 shift2 = int(np.round(shift2) / 2)
             else:
                 shift2 = int(np.round(shift2))
+
+            y_start = int(abs(miny)) + 1 + shift1
+            y_end = int(abs(miny)) + 1 + self.im_size + shift1
+            x_start = int(abs(minx)) + 1 + shift2
+            x_end = int(abs(minx)) + 1 + self.rescale_width + shift2
             # possibly there is a +1 in the i for the frame to be taken.
-            corr_movie[
-                i,
-                int(abs(miny)) + 1 + shift1 : int(abs(miny))
-                + 1
-                + self.im_size
-                + shift1,
-                int(abs(minx)) + 1 + shift2 : int(abs(minx))
-                + 1
-                + self.rescale_width
-                + shift2,
-            ] = resize(
+            corr_movie[i, y_start:y_end, x_start:x_end] = resize(
                 self.data[i, :, :],
                 (self.im_size, self.rescale_width),
                 anti_aliasing=True,
@@ -324,32 +320,26 @@ class Drift:
             dtype=np.float32,
         )
         for i in range(self.n_frames):
-            shift1, shift2 = self.integrated_trans[:, -i + 1]
-            shift1 = int(np.round(shift1))
+            y_shift, x_shift = self.integrated_trans[:, -i + 1]
+            y_shift = int(np.round(y_shift))
 
             if self.channels.is_interlaced():
-                shift2 = int(np.round(shift2) / 2)
+                x_shift = int(np.round(x_shift) / 2)
             else:
-                shift2 = int(np.round(shift2))
-            # possibly there is a +1 in the i for the frame to be taken.
+                x_shift = int(np.round(x_shift))
 
+            y_start = int(abs(miny)) + 1 + y_shift
+            y_end = int(abs(miny)) + 1 + self.im_size - int(buffy) + y_shift
+            x_start = int(abs(minx)) + 1 + x_shift
+            x_end = int(abs(minx)) + 1 + self.rescale_width - int(buffx) + x_shift
+
+            # possibly there is a +1 in the i for the frame to be taken.
             corr_movie[i, :, :] = resize(
                 self.data[i, :, :],
                 (self.im_size, self.rescale_width),
                 anti_aliasing=True,
                 order=4,
-            )[
-                int(abs(miny)) + 1 + shift1 : int(abs(miny))
-                + 1
-                + self.im_size
-                - int(buffy)
-                + shift1,
-                int(abs(minx)) + 1 + shift2 : int(abs(minx))
-                + 1
-                + self.rescale_width
-                - int(buffx)
-                + shift2,
-            ]
+            )[y_start:y_end, x_start:x_end]
 
         print("drift correction finished")
         return corr_movie

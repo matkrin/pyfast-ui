@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.sparse import csr_matrix, lil_matrix
-from scipy.spatial import Delaunay
+from scipy.sparse import csr_matrix, lil_matrix  # pyright: ignore[reportMissingTypeStubs]
+from scipy.spatial import Delaunay  # pyright: ignore[reportMissingTypeStubs]
 from tqdm import tqdm
 
 from pyfast_ui.pyfast_re.data_mode import DataMode
@@ -64,30 +64,29 @@ def _output_x_grid(num_y_pixels: int, num_x_pixels: int):
         num_x_pixels: Number of pixels in x direction.
 
     Returns:
-        x_meshgrid:  x meshgrid of measured datapoints.
-        x_grid_1d: equidistant 1D grid.
-
+        x_meshgrid: x meshgrid of measured datapoints.
+        x_grid_1d: Equidistant 1D grid.
     """
 
-    # equidistant grid (1D array)
+    # Equidistant grid (1D array)
     x_grid_1d = np.linspace(-(num_x_pixels / 2), num_x_pixels / 2, num_x_pixels)
 
-    # hysteresis in x direction
-    x_hysteresis = (
+    # Hysteresis in x direction
+    x_hysteresis: NDArray[np.floating] = (
         num_x_pixels
         / 2.0
-        * np.sin(x_grid_1d * np.pi / (num_x_pixels + abs(x_grid_1d[0] - x_grid_1d[1])))
+        * np.sin(x_grid_1d * np.pi / (num_x_pixels + abs(x_grid_1d[0] - x_grid_1d[1])))  # pyright: ignore[reportAny]
     )
 
-    # meshgrid of measured datapoints
+    # Meshgrid of measured datapoints
     x_meshgrid = np.array([x_hysteresis for _ in range(num_y_pixels)])
 
     return x_meshgrid, x_grid_1d
 
 
 def get_interpolation_matrix(
-    points_to_triangulate: list[tuple[float, float]],
-    grid_points: list[tuple[float, float]],
+    points_to_triangulate: list[tuple[np.float32, np.float32]],
+    grid_points: list[tuple[np.float32, np.float32]],
 ):
     """
     Creates matrix containing all the relevant information for interpolating
@@ -129,11 +128,12 @@ def get_interpolation_matrix(
         barycentric_coords = triangulation.transform[
             triangles_containing_gridpoints[i], :2
         ].dot(
-            grid_points[i]
+            grid_points[i]  # pyright: ignore[reportAny]
             - triangulation.transform[triangles_containing_gridpoints[i], 2]
         )
         barycentric_coords = np.append(
-            barycentric_coords, 1 - np.sum(barycentric_coords)
+            barycentric_coords,
+            1 - np.sum(barycentric_coords),  # pyright: ignore[reportAny]
         )
 
         if triangles_containing_gridpoints[i] == -1:
@@ -150,7 +150,7 @@ def get_interpolation_matrix(
 def determine_interpolation(
     fast_movie: FastMovie,
     offset: float = 0.0,
-    grid=None,
+    grid: tuple[NDArray[np.floating], NDArray[np.floating]] | None = None,
     # image_range=None,
     # interpolation_matrix_up=None,
     # interpolation_matrix_down=None,

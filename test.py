@@ -1,12 +1,29 @@
+from pyfast_ui.pyfast_re.drift import Drift, DriftMode, DriftNonscaling
 from pyfast_ui.pyfast_re.fast_movie import FastMovie, FftFilterParams
 from pyfast_ui.pyfast_re.channels import Channels
 import matplotlib.pyplot as plt
+import timeit
 
-# h5_file = "/home/matthias/Documents/fast_movies/FS_240715_035.h5"
-h5_file = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
+h5_file = "/home/matthias/Documents/fast_movies/FS_240715_035.h5"
+# h5_file = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
 # h5_file = "/home/matthias/github/pyfastspm/examples/20141003_24.h5"
- 
+
 # h5_file = "/Users/matthias/github/pyfastspm/examples/F20190424_1.h5"
+
+def correct_drift_scaling(fast_movie):
+    driftmode = DriftMode("common")
+    drift = Drift(
+        fast_movie, stepsize=20, boxcar=5, median_filter=True
+    )
+    _, _ = drift.correct_correlation(driftmode)    
+
+def correct_drift_noscaling(fast_movie):
+    driftmode = DriftMode("common")
+    drift = DriftNonscaling(
+        fast_movie, stepsize=20, boxcar=5, median_filter=True
+    )
+    _, _ = drift.correct_correlation(driftmode)    
+
 
 for channel in [c.value for c in Channels]:
     fast_movie = FastMovie(h5_file, y_phase=0)
@@ -51,8 +68,23 @@ for channel in [c.value for c in Channels]:
     )
     fast_movie.interpolate()
 
+    # correct_drift_noscaling(fast_movie)
+    # break
+
+    # time_scaling = timeit.timeit(
+    #     lambda: correct_drift_scaling(fast_movie),
+    #     number=5,
+    # )
+    # time_nonscaling = timeit.timeit(
+    #     lambda: correct_drift_noscaling(fast_movie),
+    #     number=5,
+    # )
+
+    # print(f"{time_scaling=}")
+    # print(f"{time_nonscaling=}")
+
     # fast_movie.correct_drift_correlation(
-    #     mode="full",
+    #     mode="common",
     #     stepsize=20,
     #     boxcar=50,
     #     median_filter=True,
@@ -66,13 +98,19 @@ for channel in [c.value for c in Channels]:
     #     median_filter = True,
     # )
 
-    # fast_movie.align_rows()
+    
+    driftmode = DriftMode("common")
+    drift = DriftNonscaling(
+        fast_movie, stepsize=20, boxcar=5, median_filter=True
+    )
+    fast_movie.data, _ = drift.correct_correlation(driftmode)    
 
+    # fast_movie.align_rows()
 
     if "i" in channel:
         fast_movie.rescale((1, 2))
     else:
-        fast_movie.rescale((2,2))
+        fast_movie.rescale((2, 2))
 
     # fast_movie.crop((50, 120), (50, 120))
     # fast_movie.cut((20, 50))
@@ -80,7 +118,7 @@ for channel in [c.value for c in Channels]:
 
     fast_movie.export_mp4(fps_factor=2)
     # fast_movie.export_tiff()
-    # 
+    #
     # fast_movie.export_frames_image("png", (0, 3), color_map="bone")
     # fast_movie.export_frames_txt((0, 3))
     # fast_movie.export_frames_gwy("images", (0, 5))
