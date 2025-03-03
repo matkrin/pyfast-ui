@@ -20,7 +20,6 @@ from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
 from pyfast_ui.pyfast_re.drift import (
     Drift,
     DriftMode,
-    DriftNonscaling,
     StackRegReferenceType,
 )
 from pyfast_ui.pyfast_re.export import FrameExport, FrameExportFormat, MovieExport

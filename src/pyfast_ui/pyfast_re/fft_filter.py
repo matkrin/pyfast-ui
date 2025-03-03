@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, final
 
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy  # pyright: ignore[reportMissingTypeStubs]
+import scipy
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:
@@ -50,11 +50,11 @@ class FftFilter:
 
     def filter_movie(self) -> NDArray[np.float32]:
         ## Data in frequency domain
-        data_fft = np.fft.rfft(self.fast_movie.data.copy())
+        data_fft = scipy.fft.rfft(self.fast_movie.data.copy())
 
         ## Filter frequencies
         rate = self.fast_movie.metadata.acquisition_adc_samplingrate
-        frequencies = np.fft.rfftfreq(len(data_fft) * 2 - 1, 1.0 / rate)
+        frequencies = scipy.fft.rfftfreq(len(data_fft) * 2 - 1, 1.0 / rate)
 
         freqs, pars, types = self._determine_filter_frequencies()
 
@@ -63,12 +63,12 @@ class FftFilter:
                 filter = 1.0 - np.exp(-0.5 * ((frequencies - filter_freq) / par) ** 2)
 
             elif type_ == FftFilterType.HIGHPASS:
-                filter = 0.5 + 0.5 * scipy.special.erf(  # pyright: ignore[reportAny]
+                filter = 0.5 + 0.5 * scipy.special.erf(
                     (frequencies - filter_freq) / np.sqrt(2 * par**2)
                 )
 
             elif type_ == FftFilterType.LOWPASS:
-                filter = 0.5 - 0.5 * scipy.special.erf(  # pyright: ignore[reportAny]
+                filter = 0.5 - 0.5 * scipy.special.erf(
                     (frequencies - filter_freq) / np.sqrt(2 * par**2)
                 )
 
@@ -79,13 +79,13 @@ class FftFilter:
             noise_threshold = np.median(np.abs(data_fft))
             # filter_noise (must be spectrum)
             sigma = noise_threshold
-            filter = 0.5 + 0.5 * scipy.special.erf(  # pyright: ignore[reportAny]
+            filter = 0.5 + 0.5 * scipy.special.erf(
                 np.abs(data_fft) - noise_threshold / np.sqrt(2 * sigma**2)
             )
 
-            data_fft *= filter  # pyright: ignore[reportAny]
+            data_fft *= filter
 
-        return np.fft.irfft(data_fft).astype(np.float32)
+        return scipy.fft.irfft(data_fft).astype(np.float32)
 
     def _determine_filter_frequencies(
         self,
@@ -136,9 +136,9 @@ def show_fft(
     fast_movie: FastMovie, range_display: tuple[float, float] | None = None
 ) -> None:
     # data must be spectrum
-    data_fft = np.fft.rfft(fast_movie.data)
+    data_fft = scipy.fft.rfft(fast_movie.data)
     rate = fast_movie.metadata.acquisition_adc_samplingrate
-    frequencies = np.fft.rfftfreq(len(data_fft) * 2 - 1, 1.0 / rate)
+    frequencies = scipy.fft.rfftfreq(len(data_fft) * 2 - 1, 1.0 / rate)
 
     if range_display is not None:
         xmin = int(len(frequencies) * range_display[0] / frequencies[-1])  # pyright: ignore[reportAny]

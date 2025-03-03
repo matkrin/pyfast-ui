@@ -6,8 +6,8 @@ import numpy as np
 from numpy.typing import NDArray
 from pyfast_ui.pyfast_re.channels import Channels
 from pyfast_ui.pyfast_re.data_mode import reshape_data
-from scipy.ndimage import gaussian_filter  # pyright: ignore[reportMissingTypeStubs, reportUnknownVariableType]
-from scipy.signal import correlate  # pyright: ignore[reportMissingTypeStubs, reportUnknownVariableType]
+from scipy.ndimage import gaussian_filter
+from scipy.signal import correlate
 
 from pyfast_ui.pyfast_re.data_mode import DataMode
 
