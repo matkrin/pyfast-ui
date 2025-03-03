@@ -40,4 +40,5 @@ dev = [
     "mkdocs-material>=9.6.4",
     "mkdocstrings-python>=1.15.0",
     "pyinstaller>=6.11.1",
+    "scipy-stubs>=1.15.2.0",
 ]

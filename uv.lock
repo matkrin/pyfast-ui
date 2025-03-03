@@ -578,6 +578,18 @@ wheels = [
 ]
 
 [[package]]
+name = "optype"
+version = "0.9.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/b5/bc62c3de61b8ae97cf861c7402cecd9874937a8295089271714c16bcd245/optype-0.9.1.tar.gz", hash = "sha256:f3096963195b9f83e72e1be2f7e7140bbeb30ee5565a28fd207f3e552dd18411", size = 93575 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6d/2f/d66a2a485916f2c918409a0d4fdb80a84d22ee81d8073f1d7e8e402dc475/optype-0.9.1-py3-none-any.whl", hash = "sha256:4b843085a39a07a3d2ebe9b531eecfabcb523d22a334376488aa583601897caf", size = 81811 },
+]
+
+[[package]]
 name = "packaging"
 version = "24.2"
 source = { registry = "https://pypi.org/simple" }
@@ -736,6 +748,7 @@ dev = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings-python" },
     { name = "pyinstaller" },
+    { name = "scipy-stubs" },
 ]
 
 [package.metadata]
@@ -758,6 +771,7 @@ dev = [
     { name = "mkdocs-material", specifier = ">=9.6.4" },
     { name = "mkdocstrings-python", specifier = ">=1.15.0" },
     { name = "pyinstaller", specifier = ">=6.11.1" },
+    { name = "scipy-stubs", specifier = ">=1.15.2.0" },
 ]
 
 [[package]]
@@ -1075,6 +1089,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/84/9d/8f539002b5e203723af6a6f513a45e0a7671e9dabeedb08f417ac17e4edc/scipy-1.15.1-cp313-cp313t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f735bc41bd1c792c96bc426dece66c8723283695f02df61dcc4d0a707a42fc54", size = 39883261 },
     { url = "https://files.pythonhosted.org/packages/97/c0/62fd3bab828bcccc9b864c5997645a3b86372a35941cdaf677565c25c98d/scipy-1.15.1-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:2722a021a7929d21168830790202a75dbb20b468a8133c74a2c0230c72626b6c", size = 42093299 },
     { url = "https://files.pythonhosted.org/packages/e4/1f/5d46a8d94e9f6d2c913cbb109e57e7eed914de38ea99e2c4d69a9fc93140/scipy-1.15.1-cp313-cp313t-win_amd64.whl", hash = "sha256:bc7136626261ac1ed988dca56cfc4ab5180f75e0ee52e58f1e6aa74b5f3eacd5", size = 43181730 },
+]
+
+[[package]]
+name = "scipy-stubs"
+version = "1.15.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "optype" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/26/84/0e08774fe4339acf33305e34926663ef8993743df43a81e2097d3611b985/scipy_stubs-1.15.2.0.tar.gz", hash = "sha256:d93b9d3fac23d28f7dadbe46a666e59ba7d269a7ac75de1939e5e73cec848b7d", size = 273393 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9e/81/8fa612c984f96edc3beeb35ad61c0229a6b8c2d0b87c3c80a5b17974b310/scipy_stubs-1.15.2.0-py3-none-any.whl", hash = "sha256:fb6eddf98184711402a8d25744729823dc909667ccaa64b45db4b26e50451843", size = 457211 },
 ]
 
 [[package]]
