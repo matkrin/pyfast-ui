@@ -1,8 +1,12 @@
-from pyfast_ui.pyfast_re.drift import Drift, DriftMode, DriftNonscaling
+from pyfast_ui.pyfast_re.drift import Drift, DriftMode
 from pyfast_ui.pyfast_re.fast_movie import FastMovie, FftFilterParams
 from pyfast_ui.pyfast_re.channels import Channels
 import matplotlib.pyplot as plt
-import timeit
+import time
+
+import scipy
+import numpy as np
+import skimage
 
 h5_file = "/home/matthias/Documents/fast_movies/FS_240715_035.h5"
 # h5_file = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
@@ -68,6 +72,7 @@ for channel in [c.value for c in Channels]:
     )
     fast_movie.interpolate()
 
+
     # correct_drift_noscaling(fast_movie)
     # break
 
@@ -97,13 +102,110 @@ for channel in [c.value for c in Channels]:
     #     boxcar=50,
     #     median_filter = True,
     # )
+    #
+    frame1 = fast_movie.data[0]
+    frame2 = fast_movie.data[1]
+    print(f"{frame1.shape=}")
+    print("-" * 80)
+
+    start = time.perf_counter()
+    correlation = scipy.signal.correlate(
+        frame1,
+        frame2,
+        mode="same",  # keeps dimensions same
+        method="fft"
+    )
+    end = time.perf_counter()
+    indices_correlation = np.unravel_index(correlation.argmax(), correlation.shape)
+    print(f"{correlation.shape=}")
+    print(f"{indices_correlation}")
+    print("Corr Took: ", end - start)
+    print("-" * 80)
+
+    # start2d = time.perf_counter()
+    # correlation2d = scipy.signal.correlate2d(
+    #     frame1,
+    #     frame2,
+    #     mode="same",  # keeps dimensions same
+    #     boundary="fill"
+    # )
+    # end2d = time.perf_counter()
+    # indices_correlation2d = np.unravel_index(np.argmax(correlation2d), correlation2d.shape)
+    # print(f"{correlation2d.shape=}")
+    # print(f"{indices_correlation2d=}")
+    # print("Corr2d Took: ", end2d - start2d)
+    # print("-" * 80)
+    # print("diff", 1/((end - start)/ (end2d - start2d)))
+
+
+
+    # print("-" * 80)
+    # start_phase = time.perf_counter()
+    # print(f"{skimage.registration.phase_cross_correlation(frame1, frame2)}")
+    # end_phase = time.perf_counter()
+    # print("Took: ", end_phase- start_phase)
+    # print("-" * 80)
+
+    print("=" * 80)
+    print("=" * 80)
+    
+    frame_w = frame1.shape[1]
+    frame_h = frame1.shape[0]
+    if frame_w > frame_h:
+        frame_size = 2 ** (int(np.log2(frame_w)) + 1)
+    else:
+        frame_size = 2 ** (int(np.log2(frame_h)) + 1)
+
+    start_resizing = time.perf_counter()
+    frame1_sized = skimage.transform.resize(frame1, (frame_size, frame_size))
+    frame2_sized = skimage.transform.resize(frame1, (frame_size, frame_size))
+    end_resizing = time.perf_counter()
+    print("Resizing took: ", end_resizing - start_resizing)
+
+    start_sized = time.perf_counter()
+    correlation = scipy.signal.correlate(
+        frame1_sized,
+        frame2_sized,
+        mode="same",  # keeps dimensions same
+        method="fft"
+    )
+    end_sized = time.perf_counter()
+    indices_correlation = np.unravel_index(correlation.argmax(), correlation.shape)
+    print(f"{correlation.shape=}")
+    print(f"{indices_correlation}")
+    print("Corr Sized Took: ", end_sized - start_sized)
+    print("-" * 80)
+
+    # start2d = time.perf_counter()
+    # correlation2d = scipy.signal.correlate2d(
+    #     frame1_sized,
+    #     frame2_sized,
+    #     mode="same",  # keeps dimensions same
+    #     boundary="fill"
+    # )
+    # end2d = time.perf_counter()
+    # indices_correlation2d = np.unravel_index(np.argmax(correlation2d), correlation2d.shape)
+    # print(f"{correlation2d.shape=}")
+    # print(f"{indices_correlation2d=}")
+    # print("Corr Sized 2d Took: ", end2d - start2d)
+    # print("-" * 80)
+    # print("diff", 1/((end - start)/ (end2d - start2d)))
+
+
+    print("*" * 80)
+    print("diff", 1/((end - start)/ (end_sized - start_sized)))
+    print("*" * 80)
+    
+     
+    fig, axs = plt.subplots(1, 4)
+    axs[0].imshow(frame1)
+    axs[1].imshow(frame2)
+    axs[2].imshow(correlation)
+    # axs[3].imshow(correlation2d)
+    plt.show()
+
 
     
-    driftmode = DriftMode("common")
-    drift = DriftNonscaling(
-        fast_movie, stepsize=20, boxcar=5, median_filter=True
-    )
-    fast_movie.data, _ = drift.correct_correlation(driftmode)    
 
     # fast_movie.align_rows()
 
@@ -116,7 +218,7 @@ for channel in [c.value for c in Channels]:
     # fast_movie.cut((20, 50))
     # fast_movie.algin_rows("median")
 
-    fast_movie.export_mp4(fps_factor=2)
+    # fast_movie.export_mp4(fps_factor=2)
     # fast_movie.export_tiff()
     #
     # fast_movie.export_frames_image("png", (0, 3), color_map="bone")
@@ -124,4 +226,4 @@ for channel in [c.value for c in Channels]:
     # fast_movie.export_frames_gwy("images", (0, 5))
     # fast_movie.export_frames_gwy("volume", (0, 5))
 
-    break
+    # break
