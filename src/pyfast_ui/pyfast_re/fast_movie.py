@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Hashable, Literal, Self, final
 
-import h5py as h5
+import h5py as h5  # pyright: ignore[reportMissingTypeStubs]
 import matplotlib.pyplot as plt
 import numpy as np
 import skimage

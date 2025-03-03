@@ -7,7 +7,7 @@ learnopencv.com/video-stabilisation-using-point-feature-matching-in-opencv
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Literal, final
+from typing import TYPE_CHECKING, final
 
 import numpy as np
 from pystackreg import StackReg
