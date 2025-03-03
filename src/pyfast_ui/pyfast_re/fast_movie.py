@@ -17,7 +17,12 @@ from pyfast_ui.pyfast_re import frame_corrections
 from pyfast_ui.pyfast_re.channels import Channels
 from pyfast_ui.pyfast_re.creep import Creep, CreepMode
 from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
-from pyfast_ui.pyfast_re.drift import Drift, DriftMode, DriftNonscaling, StackRegReferenceType
+from pyfast_ui.pyfast_re.drift import (
+    Drift,
+    DriftMode,
+    DriftNonscaling,
+    StackRegReferenceType,
+)
 from pyfast_ui.pyfast_re.export import FrameExport, FrameExportFormat, MovieExport
 from pyfast_ui.pyfast_re.fft_filter import FftFilter, FftFilterParams
 from pyfast_ui.pyfast_re.interpolation import (
@@ -100,7 +105,11 @@ class FastMovie:
         return (self._cut_range[0], self._cut_range[1] - 1)
 
     def clone(self) -> Self:
-        """Get a deepcopy of the `FastMovie`"""
+        """Get a deepcopy of the `FastMovie`.
+
+        Returns:
+            FastMovie: Deepcopy of the FastMovie instance.
+        """
         return copy.deepcopy(self)
 
     def to_movie_mode(
@@ -111,6 +120,9 @@ class FastMovie:
 
         Args:
             channels: Channels to select.
+
+        Returns:
+            None: Updates the movie's data in-place.
         """
         if self.mode != DataMode.TIMESERIES:
             raise ValueError("FastMovie must be in timeseries mode.")
@@ -133,6 +145,9 @@ class FastMovie:
 
         Args:
             scaling_factor: Values for rescaling in y and x dimension (y, x).
+
+        Returns:
+            None: Updates the movie's data in-place.
         """
         if self.mode != DataMode.MOVIE:
             raise ValueError("FastMovie must be in movie mode.")
@@ -149,6 +164,9 @@ class FastMovie:
         Args:
             cut_range: Start (inclusive) and end frame (exclusive) for
                 cutting (start, end).
+
+        Returns:
+            None: Updates the movie's data in-place.
         """
         if self.mode != DataMode.MOVIE or len(self.data.shape) != 3:
             raise ValueError("FastMovie must be in movie mode.")
@@ -174,6 +192,9 @@ class FastMovie:
                 x-dimension.
             y_range: Starting (inclusive) and ending pixel (exclusive) in
                 y-dimension.
+
+        Returns:
+            None: Updates the movie's data in-place.
         """
         if self.mode != DataMode.MOVIE or len(self.data.shape) != 3:
             raise ValueError("FastMovie must be in movie mode.")
@@ -204,11 +225,14 @@ class FastMovie:
         """Correct the phase of the `FastMovie`.
 
         Args:
-            auto_x_phase:
-            frame_index_to_correlate:
+            auto_x_phase: Determine x-phase via correlation.
+            frame_index_to_correlate: Index of the frame used for correlation.
             sigma_gauss:
-            additional_x_phase:
-            manual_y_phase:
+            additional_x_phase: Value added to the x-phase.
+            manual_y_phase: Override y-phase value from metadata.
+
+        Returns:
+            None: Updates the movie's data in-place.
         """
         phase_correction = PhaseCorrection(
             fast_movie=self,
@@ -233,7 +257,24 @@ class FastMovie:
         pump_freqs: list[float],
         high_pass_params: tuple[float, float],
     ) -> None:
-        """"""
+        """Filtering of noise in the Fourier space.
+
+        Args:
+            filter_config: Configuration which filters to apply.
+            filter_broadness: Broadness of FFT filters which cut out single frequencies in Hz.
+                If None is given, takes the y scan frequency in the metadata.
+            num_x_overtones: Number of x-overtones to filter.
+                No effect if `filter_x_overtones` is `False`.
+            num_pump_overtones: Number of pump frequency overtones to filter.
+                No effect if `filter_pump` is `False`.
+            pump_freqs: List of pump frequencies to filter.
+                No effect if `filter_pump` is `False`
+            high_pass_params: Frequency and sigma for high pass filter.
+                No effect if `filter_high_pass` is `False`.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
         fft_filtering = FftFilter(
             fast_movie=self,
             filter_config=filter_config,
@@ -254,7 +295,19 @@ class FastMovie:
         guess_ind: float,
         known_params: float | None,
     ) -> None:
-        """"""
+        """Create a compressed grid to correct for STM creep by virtue of
+        interpolating measured values of successive up and down measurements
+        to minimize the difference.
+
+        Args:
+            creep_mode: Function to apply for creep fitting.
+            initial_guess: Initial guess of creep function parameters (phase for sin, controlls curvature).
+            guess_ind: How much of each frame is affected by creep (Only applicable for sin).
+                Values >= 1 are interpreted as lines of the frame, values between
+                0 and 1 will be interpreted as relative parts of the frames.
+            known_params: Known creep function parameters either from previous fit or manual determination.
+                If not `None`, no fit for the creep parameters will be perfomed.
+        """
         # must be movie mode now
         mode = CreepMode(creep_mode.lower())
         creep = Creep(self, index_to_linear=guess_ind, creep_mode=mode)
@@ -267,7 +320,19 @@ class FastMovie:
         guess_ind: float,
         known_input: tuple[float, float, float] | None,
     ) -> None:
-        """"""
+        """Create a compressed grid to correct for STM creep by virtue of
+        interpolating measured values of successive up and down measurements
+        to minimize the difference.
+
+        Args:
+            weight_boundary: Additional weighting of pixels at upper and lower
+                boundary of each frame in automated creep correction.
+            creep_num_cols: Number of columns for fitting of creep correction.
+            guess_ind:
+            known_input: `None` or tuple of (shape[0], shape[1], shape[2]).
+                Known creep parameters from either a previous run or manual fitting.
+                If `None` parameters are fitted.
+        """
         # must be movie mode now
         creep = Creep(self, index_to_linear=guess_ind)
         col_inds = np.linspace(
@@ -278,10 +343,12 @@ class FastMovie:
         )
 
     def interpolate(self) -> None:
-        """"""
-        # print(f"{self._grid=}")
-        # print(f"{self._grid[0].shape=}")
-        # print(f"{self._grid[0].dtype=}")
+        """Interpolates the pixels in a FAST movie using the analytic positions
+        of the probe.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
         interpolation_result = determine_interpolation(
             self, offset=0.0, grid=self._grid
         )
@@ -306,7 +373,18 @@ class FastMovie:
         boxcar: int,
         median_filter: bool,
     ) -> None:
-        """"""
+        """Drift correction via cross correlation.
+
+        Args:
+            mode: Cut out the largest common area (`"common"`) or apply padding
+                around frames (`"full"`).
+            stepsize: Width of the moving window of frames to correlate.
+            boxcar: Boxcar width with which drift path is smoothed.
+            median_filter: Whether drift path should be smoothed by median filter.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
         driftmode = DriftMode(mode.lower())
         drift = Drift(
             self, stepsize=stepsize, boxcar=boxcar, median_filter=median_filter
@@ -315,13 +393,55 @@ class FastMovie:
         self.data, self._integrated_drift_path = drift.correct_correlation(driftmode)
         self._sequential_drift_path = drift.transformations
 
-        # if self.show_path is True:
-        #     plt.plot(self.integrated_trans[0, :], self.integrated_trans[1, :])
-        #     plt.plot(transformations_conv[0, :], transformations_conv[1, :])
-        #     plt.title("Drift path both raw and smoothed")
-        #     plt.show()
+    def correct_drift_stackreg(
+        self,
+        mode: Literal["common", "full"],
+        # stepsize: int,
+        stackreg_reference: Literal["previous", "first", "mean"],
+        boxcar: int,
+        median_filter: bool,
+    ):
+        """Drift correction via stackreg image registration.
+
+        Args:
+            mode: Cut out the largest common area (`"common"`) or apply padding
+                around frames (`"full"`).
+            stackreg_reference: Reference frame for stackreg algorithm.
+            boxcar: Boxcar width with which drift path is smoothed.
+            median_filter: Whether drift path should be smoothed by median filter.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
+        driftmode = DriftMode(mode)
+        reference = StackRegReferenceType(stackreg_reference)
+        drift = Drift(self, stepsize=1, boxcar=boxcar, median_filter=median_filter)
+        # Mutate data
+        self.data, self._integrated_drift_path = drift.correct_stackreg(
+            driftmode, reference
+        )
+        self._sequential_drift_path = drift.transformations
+
+    def correct_drift_known(
+        self,
+        mode: Literal["common", "full"],
+    ):
+        """Drift correction from a known drift path from a '.drift.txt' file.
+
+        Args:
+            mode: Cut out the largest common area (`"common"`) or apply padding
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
+        driftmode = DriftMode(mode)
+        drift = Drift(self)
+        # Mutate data
+        self.data, self._integrated_drift_path = drift.correct_known(driftmode)
+        self._sequential_drift_path = drift.transformations
 
     def plot_drift_path(self) -> None:
+        """Plot the drift path."""
         if self._integrated_drift_path is None or self._sequential_drift_path is None:
             raise ValueError("Drift correction must be applied first")
 
@@ -343,35 +463,8 @@ class FastMovie:
         plt.tight_layout()
         plt.show()  # pyright: ignore[reportUnknownMemberType]
 
-    def correct_drift_stackreg(
-        self,
-        drifttype: Literal["common", "full"],
-        # stepsize: int,
-        stackreg_reference: Literal["previous", "first", "mean"],
-        boxcar: int,
-        median_filter: bool,
-    ):
-        """"""
-        mode = DriftMode(drifttype)
-        reference = StackRegReferenceType(stackreg_reference)
-        drift = Drift(self, stepsize=1, boxcar=boxcar, median_filter=median_filter)
-        # Mutate data
-        self.data, self._integrated_drift_path = drift.correct_stackreg(mode, reference)
-        self._sequential_drift_path = drift.transformations
-
-    def correct_drift_known(
-        self,
-        drifttype: Literal["common", "full"],
-    ):
-        """"""
-        mode = DriftMode(drifttype)
-        drift = Drift(self)
-        # Mutate data
-        self.data, self._integrated_drift_path = drift.correct_known(mode)
-        self._sequential_drift_path = drift.transformations
-
     def remove_streaks(self) -> None:
-        """"""
+        """Remove streaks by applying a convolutional filter in y-direction."""
         edge_removal = np.array(
             [
                 [-1.0 / 12.0],
@@ -388,7 +481,14 @@ class FastMovie:
     def align_rows(
         self, align_type: Literal["median", "mean", "poly2", "poly3"]
     ) -> None:
-        """"""
+        """Align the rows in each frame.
+
+        Args:
+            align_type: Correction algorithm for row alignment.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
         if self.mode != DataMode.MOVIE:
             raise ValueError("Data must be reshaped into movie mode")
 
@@ -398,14 +498,14 @@ class FastMovie:
             self.data[i] -= background
 
     def level_plane(self) -> None:
-        """"""
+        """Subtraction of a fitted background plane."""
         for i in range(self.data.shape[0]):
             background = frame_corrections.level_plane(self.data[i])  # pyright: ignore[reportAny]
             # Mutate data
             self.data[i] -= background
 
     def fix_zero(self) -> None:
-        """"""
+        """Correct data offset, so that the minimum data point is fixed to zero."""
         for i in range(self.data.shape[0]):
             # Mutate data
             self.data[i] -= self.data[i].min()  # pyright: ignore[reportAny]
@@ -415,7 +515,15 @@ class FastMovie:
         filter_type: Literal["gauss", "median", "mean"],
         kernel_size: int,
     ) -> None:
-        """"""
+        """Filter each frame using a convolutional filter.
+
+        Args:
+            filter_type: Type of convolutional filter to apply.
+            kernel_size: Size of convolving kernel.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
         if self.mode != DataMode.MOVIE:
             raise ValueError("Data must be reshaped into movie mode")
 
@@ -446,24 +554,39 @@ class FastMovie:
     def export_mp4(
         self, fps_factor: int = 1, color_map: str = "bone", label_frames: bool = True
     ) -> None:
-        """"""
+        """Export the movie as MP4 file.
+
+        Args:
+            fps_factor:
+            color_map:
+            label_frames:
+        """
         movie_export = MovieExport(self)
         movie_export.export_mp4(fps_factor, color_map, label_frames)
 
     def export_tiff(self) -> None:
-        """"""
+        """Export the movie as multipage TIFF file."""
         export = MovieExport(self)
         export.export_tiff()
 
     def export_frames_txt(self, frame_range: tuple[int, int]) -> None:
-        """"""
+        """Export frames as .txt file (ASCII matrix).
+
+        Args:
+            frame_range:
+        """
         export = FrameExport(self, frame_range)
         export.export_txt()
 
     def export_frames_gwy(
         self, gwy_type: Literal["images", "volume"], frame_range: tuple[int, int]
     ) -> None:
-        """"""
+        """Export frames as Gwyddion .gwy file.
+
+        Args:
+            gwy_type:
+            frame_range:
+        """
         export = FrameExport(self, frame_range)
         export.export_gwy(gwy_type)
 
@@ -473,7 +596,13 @@ class FastMovie:
         frame_range: tuple[int, int],
         color_map: str,
     ) -> None:
-        """"""
+        """Export frame as image file.
+
+        Args:
+            image_format:
+            frame_range:
+            color_map
+        """
         export = FrameExport(self, frame_range)
         export.export_image(image_format, color_map)
 

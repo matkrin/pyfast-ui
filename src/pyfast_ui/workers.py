@@ -152,12 +152,12 @@ class DriftWorker(QRunnable):
                 )
             case "stackreg":
                 self.ft.correct_drift_stackreg(
-                    drifttype=self.drifttype,
+                    mode=self.drifttype,
                     stackreg_reference=self.stackreg_reference,
                     boxcar=self.boxcar,
                     median_filter=self.median_filter
                 )
             case "known":
-                self.ft.correct_drift_known(drifttype=self.drifttype)
+                self.ft.correct_drift_known(mode=self.drifttype)
 
         self.signals.finished.emit()
