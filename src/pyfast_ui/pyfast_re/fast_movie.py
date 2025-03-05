@@ -440,7 +440,7 @@ class FastMovie:
         self._sequential_drift_path = drift.transformations
 
     def plot_drift_path(self) -> None:
-        """Plot the drift path."""
+        """Plot the drift path. Only possible after drift correction."""
         if self._integrated_drift_path is None or self._sequential_drift_path is None:
             raise ValueError("Drift correction must be applied first")
 
@@ -556,9 +556,9 @@ class FastMovie:
         """Export the movie as MP4 file.
 
         Args:
-            fps_factor:
-            color_map:
-            label_frames:
+            fps_factor: Multiplication factor applied on frames per second from meta data.
+            color_map: Matplotlib color map
+            label_frames: Render labels with information on each frame.
         """
         movie_export = MovieExport(self)
         movie_export.export_mp4(fps_factor, color_map, label_frames)
@@ -572,7 +572,7 @@ class FastMovie:
         """Export frames as .txt file (ASCII matrix).
 
         Args:
-            frame_range:
+            frame_range: Start (inclusive) and end (exclusive) frame to be exported.
         """
         export = FrameExport(self, frame_range)
         export.export_txt()
@@ -583,8 +583,9 @@ class FastMovie:
         """Export frames as Gwyddion .gwy file.
 
         Args:
-            gwy_type:
-            frame_range:
+            gwy_type: Decides if frames are saved as single images or a
+                volume brick in the .gwy file.
+            frame_range: Start (inclusive) and end (exclusive) frame to be exported.
         """
         export = FrameExport(self, frame_range)
         export.export_gwy(gwy_type)
@@ -598,9 +599,9 @@ class FastMovie:
         """Export frame as image file.
 
         Args:
-            image_format:
-            frame_range:
-            color_map
+            image_format: Image format of the exported frames.
+            frame_range: Start (inclusive) and end (exclusive) frame to be exported.
+            color_map: Matplotlib color map.
         """
         export = FrameExport(self, frame_range)
         export.export_image(image_format, color_map)

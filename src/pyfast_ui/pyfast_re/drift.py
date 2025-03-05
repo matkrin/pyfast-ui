@@ -10,11 +10,11 @@ from enum import Enum
 from typing import TYPE_CHECKING, final
 
 import numpy as np
-from pystackreg import StackReg
+from numpy.typing import NDArray
+import skimage
+from pystackreg import StackReg  # pyright: ignore[reportMissingTypeStubs]
 from scipy.ndimage import convolve
 from scipy.signal import correlate, medfilt
-from skimage.transform import resize
-import skimage
 
 from pyfast_ui.pyfast_re.data_mode import DataMode
 
@@ -39,315 +39,315 @@ class StackRegReferenceType(Enum):
 
 
 @final
-class Drift:
-    """
-    Initialise Drift class with Fast movie instance to then
-    drift correct the movie data.
+# class Drift:
+#     """
+#     Initialise Drift class with Fast movie instance to then
+#     drift correct the movie data.
 
-    Args:
-        FastmovieInstance: FastMovie object
-        stepsize: integer, the difference between frames that are correlated
-        corrspeed: int, the difference between two correlation windows
-        show_path: Parameter, if True rare and filter drift path are plotted.
-        boxcar: Parameter of the boxcar filter that applied to the
-            drift path. Set to 0 if no boxcar filter should be applied
-        median_filter: Paramter to decide if the drift path should be smoothed
-            via a median_filter of kernel size 3
-    """
+#     Args:
+#         FastmovieInstance: FastMovie object
+#         stepsize: integer, the difference between frames that are correlated
+#         corrspeed: int, the difference between two correlation windows
+#         show_path: Parameter, if True rare and filter drift path are plotted.
+#         boxcar: Parameter of the boxcar filter that applied to the
+#             drift path. Set to 0 if no boxcar filter should be applied
+#         median_filter: Paramter to decide if the drift path should be smoothed
+#             via a median_filter of kernel size 3
+#     """
 
-    def __init__(
-        self,
-        fast_movie: FastMovie,
-        stepsize: int = 40,
-        corrspeed: int = 1,
-        show_path: bool = False,
-        boxcar: int = 50,
-        median_filter: bool = True,
-    ):
-        if fast_movie.mode != DataMode.MOVIE:
-            raise ValueError(f"`FastMovie` instance must be in mode {DataMode.MOVIE}")
-        if fast_movie.channels is None:
-            raise ValueError("`FastMovie.channels must be set`")
+#     def __init__(
+#         self,
+#         fast_movie: FastMovie,
+#         stepsize: int = 40,
+#         corrspeed: int = 1,
+#         show_path: bool = False,
+#         boxcar: int = 50,
+#         median_filter: bool = True,
+#     ):
+#         if fast_movie.mode != DataMode.MOVIE:
+#             raise ValueError(f"`FastMovie` instance must be in mode {DataMode.MOVIE}")
+#         if fast_movie.channels is None:
+#             raise ValueError("`FastMovie.channels must be set`")
 
-        self.data = fast_movie.data
-        self.file = fast_movie.filename.replace(".h5", ".drift.txt")
-        # self.processing_log = fast_movie.processing_log
-        self.channels = fast_movie.channels
-        self.stepsize = stepsize
-        self.corrspeed = corrspeed
-        self.n_frames = np.shape(self.data)[0]
-        self.img_width = np.shape(self.data)[2]
-        self.img_height = np.shape(self.data)[1]
-        self.boxcar = boxcar
-        self.median_filter = median_filter
+#         self.data = fast_movie.data
+#         self.file = fast_movie.filename.replace(".h5", ".drift.txt")
+#         # self.processing_log = fast_movie.processing_log
+#         self.channels = fast_movie.channels
+#         self.stepsize = stepsize
+#         self.corrspeed = corrspeed
+#         self.n_frames = np.shape(self.data)[0]
+#         self.img_width = np.shape(self.data)[2]
+#         self.img_height = np.shape(self.data)[1]
+#         self.boxcar = boxcar
+#         self.median_filter = median_filter
 
-        if self.img_width > self.img_height:
-            self.im_size = 2 ** (int(np.log2(self.img_width)) + 1)
-        else:
-            self.im_size = 2 ** (int(np.log2(self.img_height)) + 1)
+#         if self.img_width > self.img_height:
+#             self.im_size = 2 ** (int(np.log2(self.img_width)) + 1)
+#         else:
+#             self.im_size = 2 ** (int(np.log2(self.img_height)) + 1)
 
-        self.convdims = (self.im_size * 2 - 1, self.im_size * 2 - 1)
-        self.transformations = np.zeros((2, self.n_frames))
-        self.integrated_trans = None
-        self.show_path = show_path
+#         self.convdims = (self.im_size * 2 - 1, self.im_size * 2 - 1)
+#         self.transformations = np.zeros((2, self.n_frames))
+#         self.integrated_trans = None
+#         self.show_path = show_path
 
-        # if self.stepsize is None:
-        #     self.stepsize = int(self.n_frames / 3)
+#         # if self.stepsize is None:
+#         #     self.stepsize = int(self.n_frames / 3)
 
-    def correct_correlation(
-        self,
-        mode: DriftMode = DriftMode.FULL,
-    ):
-        self._get_drift_correlation()
-        self._filter_drift()
-        self._write_drift()
+#     def correct_correlation(
+#         self,
+#         mode: DriftMode = DriftMode.FULL,
+#     ):
+#         self._get_drift_correlation()
+#         self._filter_drift()
+#         self._write_drift()
 
-        match mode:
-            case DriftMode.FULL:
-                return self._adjust_movie_buffered(), self.integrated_trans
-            case DriftMode.COMMON:
-                return self._adjust_movie_common(), self.integrated_trans
+#         match mode:
+#             case DriftMode.FULL:
+#                 return self._adjust_movie_buffered(), self.integrated_trans
+#             case DriftMode.COMMON:
+#                 return self._adjust_movie_common(), self.integrated_trans
 
-    def correct_stackreg(
-        self,
-        mode: DriftMode = DriftMode.FULL,
-        stackreg_reference: StackRegReferenceType = StackRegReferenceType.PREVIOUS,
-    ):
-        self._get_drift_stackreg(stackreg_reference)
-        self._filter_drift()
-        self._write_drift()
+#     def correct_stackreg(
+#         self,
+#         mode: DriftMode = DriftMode.FULL,
+#         stackreg_reference: StackRegReferenceType = StackRegReferenceType.PREVIOUS,
+#     ):
+#         self._get_drift_stackreg(stackreg_reference)
+#         self._filter_drift()
+#         self._write_drift()
 
-        match mode:
-            case DriftMode.FULL:
-                return self._adjust_movie_buffered(), self.integrated_trans
-            case DriftMode.COMMON:
-                return self._adjust_movie_common(), self.integrated_trans
+#         match mode:
+#             case DriftMode.FULL:
+#                 return self._adjust_movie_buffered(), self.integrated_trans
+#             case DriftMode.COMMON:
+#                 return self._adjust_movie_common(), self.integrated_trans
 
-    def correct_known(
-        self,
-        mode: DriftMode = DriftMode.FULL,
-        known_drift_type: KnownDriftType = KnownDriftType.INTEGRATED,
-    ):
-        driftfile = self.file.replace(".h5", ".drift.txt")
+#     def correct_known(
+#         self,
+#         mode: DriftMode = DriftMode.FULL,
+#         known_drift_type: KnownDriftType = KnownDriftType.INTEGRATED,
+#     ):
+#         driftfile = self.file.replace(".h5", ".drift.txt")
 
-        match known_drift_type:
-            case KnownDriftType.INTEGRATED:
-                self.integrated_trans = np.loadtxt(driftfile).T[0:2, :]
-                # self.processing_log.info("Known drift used: {}".format(known_drift_type))
-            case KnownDriftType.SEQUENTIAL:
-                self.transformations = np.loadtxt(driftfile).T[2:4, :]
-                self.integrated_trans = np.cumsum(self.transformations, axis=1)
-                self._write_drift()
-                # self.processing_log.info("Known drift used: {}".format(known_drift))
+#         match known_drift_type:
+#             case KnownDriftType.INTEGRATED:
+#                 self.integrated_trans = np.loadtxt(driftfile).T[0:2, :]
+#                 # self.processing_log.info("Known drift used: {}".format(known_drift_type))
+#             case KnownDriftType.SEQUENTIAL:
+#                 self.transformations = np.loadtxt(driftfile).T[2:4, :]
+#                 self.integrated_trans = np.cumsum(self.transformations, axis=1)
+#                 self._write_drift()
+#                 # self.processing_log.info("Known drift used: {}".format(known_drift))
 
-        match mode:
-            case DriftMode.FULL:
-                return self._adjust_movie_buffered(), self.integrated_trans
-            case DriftMode.COMMON:
-                return self._adjust_movie_common(), self.integrated_trans
+#         match mode:
+#             case DriftMode.FULL:
+#                 return self._adjust_movie_buffered(), self.integrated_trans
+#             case DriftMode.COMMON:
+#                 return self._adjust_movie_common(), self.integrated_trans
 
-    def _get_drift_correlation(self) -> None:
-        """Calculation of the drift by fft correlation."""
-        movie = np.zeros((self.n_frames, self.im_size, self.im_size))
-        hamm = np.sqrt(
-            np.outer(np.hamming(self.img_height), np.hamming(self.img_width))
-        )
-        for i in range(self.n_frames):
-            imag = self.data[i, :, :].copy()
-            imag /= imag.std()
-            imag -= imag.mean()
-            imag = hamm * imag
-            movie[i, :, :] = resize(
-                imag, (self.im_size, self.im_size), anti_aliasing=True, order=0
-            )
-        for i in range(self.n_frames):
-            try:
-                fftd = correlate(
-                    movie[self.corrspeed * i, :, :],
-                    movie[self.corrspeed * i + self.stepsize, :, :],
-                    method="fft",
-                )
-                maxind = np.argmax(fftd)
-                indices = np.unravel_index(maxind, self.convdims)
-                print("nocaling", indices)
-                effektive_shift = np.asarray(
-                    [
-                        [(-(self.im_size - 1) + indices[0]) / self.stepsize],
-                        [(indices[1] - (self.im_size - 1)) / self.stepsize],
-                    ]
-                )
-                self.transformations[:, i] = effektive_shift.T
-            except Exception:
-                pass
-        # print("last found correlation indices are {}".format(indices))
+#     def _get_drift_correlation(self) -> None:
+#         """Calculation of the drift by fft correlation."""
+#         movie = np.zeros((self.n_frames, self.im_size, self.im_size))
+#         hamm = np.sqrt(
+#             np.outer(np.hamming(self.img_height), np.hamming(self.img_width))
+#         )
+#         for i in range(self.n_frames):
+#             imag = self.data[i, :, :].copy()
+#             imag /= imag.std()
+#             imag -= imag.mean()
+#             imag = hamm * imag
+#             movie[i, :, :] = resize(
+#                 imag, (self.im_size, self.im_size), anti_aliasing=True, order=0
+#             )
+#         for i in range(self.n_frames):
+#             try:
+#                 fftd = correlate(
+#                     movie[self.corrspeed * i, :, :],
+#                     movie[self.corrspeed * i + self.stepsize, :, :],
+#                     method="fft",
+#                 )
+#                 maxind = np.argmax(fftd)
+#                 indices = np.unravel_index(maxind, self.convdims)
+#                 print("nocaling", indices)
+#                 effektive_shift = np.asarray(
+#                     [
+#                         [(-(self.im_size - 1) + indices[0]) / self.stepsize],
+#                         [(indices[1] - (self.im_size - 1)) / self.stepsize],
+#                     ]
+#                 )
+#                 self.transformations[:, i] = effektive_shift.T
+#             except Exception:
+#                 pass
+#         # print("last found correlation indices are {}".format(indices))
 
-    def _get_drift_stackreg(self, reference: StackRegReferenceType) -> None:
-        stackreg = StackReg(StackReg.TRANSLATION)
-        transformation_matrices = stackreg.register_stack(
-            self.data, reference=reference.value
-        )
-        x_path_integrated = []
-        y_path_integrated = []
-        for matrix in transformation_matrices:
-            x_path_integrated.append(-matrix[0, 2])
-            y_path_integrated.append(-matrix[1, 2])
+#     def _get_drift_stackreg(self, reference: StackRegReferenceType) -> None:
+#         stackreg = StackReg(StackReg.TRANSLATION)
+#         transformation_matrices = stackreg.register_stack(
+#             self.data, reference=reference.value
+#         )
+#         x_path_integrated = []
+#         y_path_integrated = []
+#         for matrix in transformation_matrices:
+#             x_path_integrated.append(-matrix[0, 2])
+#             y_path_integrated.append(-matrix[1, 2])
 
-        # self.integrated_trans = np.array([y_path_integrated, x_path_integrated])
-        x_path = np.array(x_path_integrated)
-        x_path = np.diff(x_path, prepend=0)
-        y_path = np.array(y_path_integrated)
-        y_path = np.diff(y_path, prepend=0)
+#         # self.integrated_trans = np.array([y_path_integrated, x_path_integrated])
+#         x_path = np.array(x_path_integrated)
+#         x_path = np.diff(x_path, prepend=0)
+#         y_path = np.array(y_path_integrated)
+#         y_path = np.diff(y_path, prepend=0)
 
-        self.transformations = np.stack((y_path, x_path))
+#         self.transformations = np.stack((y_path, x_path))
 
-    def _filter_drift(self):
-        """
-        smooth and filter drift path
-        """
-        boxwidth = self.boxcar
-        boxcar = np.ones((1, boxwidth)) / boxwidth
-        boxcar = boxcar[0, :]
+#     def _filter_drift(self):
+#         """
+#         smooth and filter drift path
+#         """
+#         boxwidth = self.boxcar boxcar = np.ones((1, boxwidth)) / boxwidth
+#         boxcar = boxcar[0, :]
 
-        if self.median_filter:
-            self.transformations[0, :] = medfilt(self.transformations[0, :], 3)
-            self.transformations[1, :] = medfilt(self.transformations[1, :], 3)
+#         if self.median_filter:
+#             self.transformations[0, :] = medfilt(self.transformations[0, :], 3)
+#             self.transformations[1, :] = medfilt(self.transformations[1, :], 3)
 
-        self.integrated_trans = np.cumsum(self.transformations, axis=1)
-        # linear extrapolation
-        pos = np.linspace(0, self.n_frames - 1, self.n_frames)
-        k1, d1 = np.polyfit(
-            pos[: -self.stepsize], self.integrated_trans[0, : -self.stepsize], 1
-        )
-        k2, d2 = np.polyfit(
-            pos[: -self.stepsize], self.integrated_trans[1, : -self.stepsize], 1
-        )
-        self.integrated_trans[0, -self.stepsize :] = d1 + k1 * pos[-self.stepsize :]
-        self.integrated_trans[1, -self.stepsize :] = d2 + k2 * pos[-self.stepsize :]
+#         self.integrated_trans = np.cumsum(self.transformations, axis=1)
+#         # linear extrapolation
+#         pos = np.linspace(0, self.n_frames - 1, self.n_frames)
+#         k1, d1 = np.polyfit(
+#             pos[: -self.stepsize], self.integrated_trans[0, : -self.stepsize], 1
+#         )
+#         k2, d2 = np.polyfit(
+#             pos[: -self.stepsize], self.integrated_trans[1, : -self.stepsize], 1
+#         )
+#         self.integrated_trans[0, -self.stepsize :] = d1 + k1 * pos[-self.stepsize :]
+#         self.integrated_trans[1, -self.stepsize :] = d2 + k2 * pos[-self.stepsize :]
 
-        if self.boxcar != 0:
-            # self.processing_log.info( "Boxcar filter used with boxsize: {}".format(boxwidth))
-            transformations_conv = np.zeros((2, self.n_frames))
-            transformations_conv[0, :] = convolve(self.integrated_trans[0], boxcar)
-            transformations_conv[1, :] = convolve(self.integrated_trans[1], boxcar)
-            self.integrated_trans = transformations_conv
+#         if self.boxcar != 0:
+#             # self.processing_log.info( "Boxcar filter used with boxsize: {}".format(boxwidth))
+#             transformations_conv = np.zeros((2, self.n_frames))
+#             transformations_conv[0, :] = convolve(self.integrated_trans[0], boxcar)
+#             transformations_conv[1, :] = convolve(self.integrated_trans[1], boxcar)
+#             self.integrated_trans = transformations_conv
 
-    def _write_drift(self):
-        """
-        Writes a drift.txt file
-        """
-        with open(self.file, "w") as fileobject:
-            fileobject.write(
-                "# {0:>10}   {1:>12}  {2:>12}  {3:>12} \n".format(
-                    "y integrated", "x integrated", "y sequential", "x sequential"
-                )
-            )
-            for i in range(np.shape(self.transformations)[1]):
-                fileobject.write(
-                    "{0:>14.5f}   {1:>12.5f}  {2:>12.5f}  {3:>12.5f} \n".format(
-                        self.integrated_trans[0, i],
-                        self.integrated_trans[1, i],
-                        self.transformations[0, i],
-                        self.transformations[1, i],
-                    )
-                )
+#     def _write_drift(self):
+#         """
+#         Writes a drift.txt file
+#         """
+#         with open(self.file, "w") as fileobject:
+#             fileobject.write(
+#                 "# {0:>10}   {1:>12}  {2:>12}  {3:>12} \n".format(
+#                     "y integrated", "x integrated", "y sequential", "x sequential"
+#                 )
+#             )
+#             for i in range(self.transformations.shape[1]):
+#                 fileobject.write(
+#                     "{0:>14.5f}   {1:>12.5f}  {2:>12.5f}  {3:>12.5f} \n".format(
+#                         self.integrated_trans[0, i],
+#                         self.integrated_trans[1, i],
+#                         self.transformations[0, i],
+#                         self.transformations[1, i],
+#                     )
+#                 )
 
-    def _adjust_movie_buffered(self):
-        """embed movie frames into buffered background to
-        move freely according to drift path. The image ration
-        is changed back for interlace movies (2:1) to fit the
-        overall system architecture"""
-        maxy, maxx = np.max(self.integrated_trans, 1)
-        miny, minx = np.min(self.integrated_trans, 1)
-        buffy = int(np.round(np.abs(maxy) + np.abs(miny))) + 1
-        # print("Buffer values are {} in x and {} in y.".format(buffx, buffy))
-        ## This is to see effect of scaling
+#     def _adjust_movie_buffered(self):
+#         """embed movie frames into buffered background to
+#         move freely according to drift path. The image ration
+#         is changed back for interlace movies (2:1) to fit the
+#         overall system architecture"""
+#         maxy, maxx = np.max(self.integrated_trans, 1)
+#         miny, minx = np.min(self.integrated_trans, 1)
+#         buffy = int(np.round(np.abs(maxy) + np.abs(miny))) + 1
+#         # print("Buffer values are {} in x and {} in y.".format(buffx, buffy))
+#         ## This is to see effect of scaling
 
-        if self.channels.is_interlaced():
-            self.rescale_width = int(self.im_size / 2)
-            maxx = maxx / 2
-            minx = minx / 2
-        else:
-            self.rescale_width = self.im_size
+#         if self.channels.is_interlaced():
+#             self.rescale_width = int(self.im_size / 2)
+#             maxx = maxx / 2
+#             minx = minx / 2
+#         else:
+#             self.rescale_width = self.im_size
 
-        buffx = int(np.round(np.abs(maxx) + np.abs(minx))) + 1
+#         buffx = int(np.round(np.abs(maxx) + np.abs(minx))) + 1
 
-        corr_movie = np.zeros(
-            (self.n_frames, self.im_size + int(buffy), self.rescale_width + int(buffx)),
-            dtype=np.float32,
-        )
-        for i in range(self.n_frames):
-            shift1, shift2 = self.integrated_trans[:, i]
-            shift1 = int(np.round(shift1))
+#         corr_movie = np.zeros(
+#             (self.n_frames, self.im_size + int(buffy), self.rescale_width + int(buffx)),
+#             dtype=np.float32,
+#         )
+#         for i in range(self.n_frames):
+#             shift1, shift2 = self.integrated_trans[:, i]
+#             shift1 = int(np.round(shift1))
 
-            if self.channels.is_interlaced():
-                shift2 = int(np.round(shift2) / 2)
-            else:
-                shift2 = int(np.round(shift2))
+#             if self.channels.is_interlaced():
+#                 shift2 = int(np.round(shift2) / 2)
+#             else:
+#                 shift2 = int(np.round(shift2))
 
-            y_start = int(abs(miny)) + 1 + shift1
-            y_end = int(abs(miny)) + 1 + self.im_size + shift1
-            x_start = int(abs(minx)) + 1 + shift2
-            x_end = int(abs(minx)) + 1 + self.rescale_width + shift2
-            # possibly there is a +1 in the i for the frame to be taken.
-            corr_movie[i, y_start:y_end, x_start:x_end] = resize(
-                self.data[i, :, :],
-                (self.im_size, self.rescale_width),
-                anti_aliasing=True,
-                order=3,
-            )
+#             y_start = int(abs(miny)) + 1 + shift1
+#             y_end = int(abs(miny)) + 1 + self.im_size + shift1
+#             x_start = int(abs(minx)) + 1 + shift2
+#             x_end = int(abs(minx)) + 1 + self.rescale_width + shift2
+#             # possibly there is a +1 in the i for the frame to be taken.
+#             corr_movie[i, y_start:y_end, x_start:x_end] = resize(
+#                 self.data[i, :, :],
+#                 (self.im_size, self.rescale_width),
+#                 anti_aliasing=True,
+#                 order=3,
+#             )
 
-        print("drift correction finished")
-        return corr_movie
+#         print("drift correction finished")
+#         return corr_movie
 
-    def _adjust_movie_common(self):
-        """cut out section from movie frames, which stays constant during
-        the entire movie."""
-        maxy, maxx = np.max(self.integrated_trans, 1)
-        miny, minx = np.min(self.integrated_trans, 1)
-        buffy = int(np.round(np.abs(maxy) + np.abs(miny))) + 1
-        # print(buffx, buffy)
-        ## This is to see effect of scaling
+#     def _adjust_movie_common(self):
+#         """cut out section from movie frames, which stays constant during
+#         the entire movie."""
+#         maxy, maxx = np.max(self.integrated_trans, 1)
+#         miny, minx = np.min(self.integrated_trans, 1)
+#         buffy = int(np.round(np.abs(maxy) + np.abs(miny))) + 1
+#         # print(buffx, buffy)
+#         ## This is to see effect of scaling
 
-        if self.channels.is_interlaced():
-            self.rescale_width = int(self.im_size / 2)
-            maxx = maxx / 2
-            minx = minx / 2
-        else:
-            self.rescale_width = self.im_size
+#         if self.channels.is_interlaced():
+#             self.rescale_width = int(self.im_size / 2)
+#             maxx = maxx / 2
+#             minx = minx / 2
+#         else:
+#             self.rescale_width = self.im_size
 
-        buffx = int(np.round(np.abs(maxx) + np.abs(minx))) + 1
+#         buffx = int(np.round(np.abs(maxx) + np.abs(minx))) + 1
 
-        corr_movie = np.zeros(
-            (self.n_frames, self.im_size - int(buffy), self.rescale_width - int(buffx)),
-            dtype=np.float32,
-        )
-        for i in range(self.n_frames):
-            y_shift, x_shift = self.integrated_trans[:, -i + 1]
-            y_shift = int(np.round(y_shift))
+#         corr_movie = np.zeros(
+#             (self.n_frames, self.im_size - int(buffy), self.rescale_width - int(buffx)),
+#             dtype=np.float32,
+#         )
+#         for i in range(self.n_frames):
+#             y_shift, x_shift = self.integrated_trans[:, -i + 1]
+#             y_shift = int(np.round(y_shift))
 
-            if self.channels.is_interlaced():
-                x_shift = int(np.round(x_shift) / 2)
-            else:
-                x_shift = int(np.round(x_shift))
+#             if self.channels.is_interlaced():
+#                 x_shift = int(np.round(x_shift) / 2)
+#             else:
+#                 x_shift = int(np.round(x_shift))
 
-            y_start = int(abs(miny)) + 1 + y_shift
-            y_end = int(abs(miny)) + 1 + self.im_size - int(buffy) + y_shift
-            x_start = int(abs(minx)) + 1 + x_shift
-            x_end = int(abs(minx)) + 1 + self.rescale_width - int(buffx) + x_shift
+#             y_start = int(abs(miny)) + 1 + y_shift
+#             y_end = int(abs(miny)) + 1 + self.im_size - int(buffy) + y_shift
+#             x_start = int(abs(minx)) + 1 + x_shift
+#             x_end = int(abs(minx)) + 1 + self.rescale_width - int(buffx) + x_shift
 
-            # possibly there is a +1 in the i for the frame to be taken.
-            corr_movie[i, :, :] = resize(
-                self.data[i, :, :],
-                (self.im_size, self.rescale_width),
-                anti_aliasing=True,
-                order=4,
-            )[y_start:y_end, x_start:x_end]
+#             # possibly there is a +1 in the i for the frame to be taken.
+#             corr_movie[i, :, :] = resize(
+#                 self.data[i, :, :],
+#                 (self.im_size, self.rescale_width),
+#                 anti_aliasing=True,
+#                 order=4,
+#             )[y_start:y_end, x_start:x_end]
 
-        print("drift correction finished")
-        return corr_movie
+#         print("drift correction finished")
+#         return corr_movie
 
 
 ##################################################################################################################
+
 
 class DriftNoScaling:
     """
@@ -355,14 +355,13 @@ class DriftNoScaling:
     drift correct the movie data.
 
     Args:
-        FastmovieInstance: FastMovie object
-        stepsize: integer, the difference between frames that are correlated
-        corrspeed: int, the difference between two correlation windows
-        show_path: Parameter, if True rare and filter drift path are plotted.
-        boxcar: Parameter of the boxcar filter that applied to the
-            drift path. Set to 0 if no boxcar filter should be applied
+        fast_movie: `FastMovie` instance.
+        stepsize: The difference between frames that are correlated.
+        corrspeed: The difference between two correlation windows.
+        boxcar: Width of the boxcar filter that applied to the
+            drift path. Set to 0 if no boxcar filter should be applied.
         median_filter: Paramter to decide if the drift path should be smoothed
-            via a median_filter of kernel size 3
+            via a median filter of kernel size 3.
     """
 
     def __init__(
@@ -370,14 +369,13 @@ class DriftNoScaling:
         fast_movie: FastMovie,
         stepsize: int = 40,
         corrspeed: int = 1,
-        show_path: bool = False,
         boxcar: int = 50,
         median_filter: bool = True,
     ):
         if fast_movie.mode != DataMode.MOVIE:
             raise ValueError(f"`FastMovie` instance must be in mode {DataMode.MOVIE}")
         if fast_movie.channels is None:
-            raise ValueError("`FastMovie.channels must be set`")
+            raise ValueError("`FastMovie.channels` must be set")
 
         self.data = fast_movie.data
         self.file = fast_movie.filename.replace(".h5", ".drift.txt")
@@ -385,21 +383,12 @@ class DriftNoScaling:
         self.channels = fast_movie.channels
         self.stepsize = stepsize
         self.corrspeed = corrspeed
-        self.n_frames = np.shape(self.data)[0]
-        self.img_width = np.shape(self.data)[2]
-        self.img_height = np.shape(self.data)[1]
         self.boxcar = boxcar
         self.median_filter = median_filter
 
-        if self.img_width > self.img_height:
-            self.im_size = 2 ** (int(np.log2(self.img_width)) + 1)
-        else:
-            self.im_size = 2 ** (int(np.log2(self.img_height)) + 1)
-
-        self.convdims = (self.im_size * 2 - 1, self.im_size * 2 - 1)
+        self.n_frames, self.img_height, self.img_width = self.data.shape
         self.transformations = np.zeros((2, self.n_frames))
         self.integrated_trans = None
-        self.show_path = show_path
 
         # if self.stepsize is None:
         #     self.stepsize = int(self.n_frames / 3)
@@ -418,20 +407,19 @@ class DriftNoScaling:
             case DriftMode.COMMON:
                 return self._adjust_movie_common(), self.integrated_trans
 
-            
     def correct_phase_cross_correlation(
-            self,
-            mode: DriftMode = DriftMode.FULL,
-        ):
-            self._get_drift_phase_cross_correlation()
-            self._filter_drift()
-            self._write_drift()
+        self,
+        mode: DriftMode = DriftMode.FULL,
+    ):
+        self._get_drift_phase_cross_correlation()
+        self._filter_drift()
+        self._write_drift()
 
-            match mode:
-                case DriftMode.FULL:
-                    return self._adjust_movie_buffered(), self.integrated_trans
-                case DriftMode.COMMON:
-                    return self._adjust_movie_common(), self.integrated_trans
+        match mode:
+            case DriftMode.FULL:
+                return self._adjust_movie_buffered(), self.integrated_trans
+            case DriftMode.COMMON:
+                return self._adjust_movie_common(), self.integrated_trans
 
     def correct_stackreg(
         self,
@@ -473,22 +461,24 @@ class DriftNoScaling:
 
     def _get_drift_correlation(self) -> None:
         """Calculation of the drift by fft correlation."""
-        movie = self.data.copy()
-        for i in range(self.n_frames):
+        data = self.data.copy()
+        num_frames, num_y_pixels, num_x_pixels = data.shape
+
+        for i in range(num_frames):
             try:
-                fftd = correlate(
-                    movie[self.corrspeed * i, :, :],
-                    movie[self.corrspeed * i + self.stepsize, :, :],
+                correlated = correlate(
+                    data[self.corrspeed * i, :, :],
+                    data[self.corrspeed * i + self.stepsize, :, :],
                     method="fft",
                 )
-                maxind = np.argmax(fftd)
-                indices = np.unravel_index(maxind, fftd.shape)
+                maxind = np.argmax(correlated)
+                indices = np.unravel_index(maxind, correlated.shape)  # pyright: ignore[reportAny]
                 print(indices)
 
                 effektive_shift = np.asarray(
                     [
-                        [(-(self.img_height- 1) + indices[0]) / self.stepsize],
-                        [(indices[1] - (self.img_width- 1)) / self.stepsize],
+                        [(-(num_y_pixels - 1) + indices[0]) / self.stepsize],
+                        [(indices[1] - (num_x_pixels - 1)) / self.stepsize],
                     ]
                 )
                 self.transformations[:, i] = effektive_shift.T
@@ -497,35 +487,37 @@ class DriftNoScaling:
         # print("last found correlation indices are {}".format(indices))
 
     def _get_drift_phase_cross_correlation(self) -> None:
-        movie = self.data.copy()
-        for i in range(self.n_frames):
+        data = self.data.copy()
+        num_frames, _, _ = data.shape
+
+        for i in range(num_frames):
             try:
-                shift, _, _ = skimage.registration.phase_cross_correlation(
-                    movie[self.corrspeed * i, :, :],
-                    movie[self.corrspeed * i + self.stepsize, :, :],
+                shift, _, _ = skimage.registration.phase_cross_correlation(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+                    data[self.corrspeed * i, :, :],
+                    data[self.corrspeed * i + self.stepsize, :, :],
                     upsample_factor=10,
                 )
 
-                effektive_shift = np.asarray(
-                    [
-                        [ shift[0] / self.stepsize],
+                effective_shift = np.asarray(  # pyright: ignore[reportUnknownVariableType]
+                    [  # pyright: ignore[reportUnknownArgumentType]
+                        [shift[0] / self.stepsize],
                         [shift[1] / self.stepsize],
                     ]
                 )
-                self.transformations[:, i] = effektive_shift.T
+                self.transformations[:, i] = effective_shift.T  # pyright: ignore[reportUnknownMemberType]
             except Exception:
                 pass
 
     def _get_drift_stackreg(self, reference: StackRegReferenceType) -> None:
         stackreg = StackReg(StackReg.TRANSLATION)
-        transformation_matrices = stackreg.register_stack(
+        transformation_matrices = stackreg.register_stack(  # pyright: ignore[reportUnknownMemberType]
             self.data, reference=reference.value
         )
-        x_path_integrated = []
-        y_path_integrated = []
-        for matrix in transformation_matrices:
-            x_path_integrated.append(-matrix[0, 2])
-            y_path_integrated.append(-matrix[1, 2])
+        x_path_integrated: list[NDArray[np.float32]] = []
+        y_path_integrated: list[NDArray[np.float32]] = []
+        for matrix in transformation_matrices:  # pyright: ignore[reportAny]
+            x_path_integrated.append(-matrix[0, 2])  # pyright: ignore[reportAny]
+            y_path_integrated.append(-matrix[1, 2])  # pyright: ignore[reportAny]
 
         # self.integrated_trans = np.array([y_path_integrated, x_path_integrated])
         x_path = np.array(x_path_integrated)
@@ -534,6 +526,7 @@ class DriftNoScaling:
         y_path = np.diff(y_path, prepend=0)
 
         self.transformations = np.stack((y_path, x_path))
+        self.stepsize = 1
 
     def _filter_drift(self):
         """
@@ -550,10 +543,10 @@ class DriftNoScaling:
         self.integrated_trans = np.cumsum(self.transformations, axis=1)
         # linear extrapolation
         pos = np.linspace(0, self.n_frames - 1, self.n_frames)
-        k1, d1 = np.polyfit(
+        k1, d1 = np.polyfit(  # pyright: ignore[reportAny]
             pos[: -self.stepsize], self.integrated_trans[0, : -self.stepsize], 1
         )
-        k2, d2 = np.polyfit(
+        k2, d2 = np.polyfit(  # pyright: ignore[reportAny]
             pos[: -self.stepsize], self.integrated_trans[1, : -self.stepsize], 1
         )
         self.integrated_trans[0, -self.stepsize :] = d1 + k1 * pos[-self.stepsize :]
@@ -562,27 +555,30 @@ class DriftNoScaling:
         if self.boxcar != 0:
             # self.processing_log.info( "Boxcar filter used with boxsize: {}".format(boxwidth))
             transformations_conv = np.zeros((2, self.n_frames))
-            transformations_conv[0, :] = convolve(self.integrated_trans[0], boxcar)
-            transformations_conv[1, :] = convolve(self.integrated_trans[1], boxcar)
+            transformations_conv[0, :] = convolve(self.integrated_trans[0], boxcar)  # pyright: ignore[reportAny]
+            transformations_conv[1, :] = convolve(self.integrated_trans[1], boxcar)  # pyright: ignore[reportAny]
             self.integrated_trans = transformations_conv
 
     def _write_drift(self):
         """
         Writes a drift.txt file
         """
+        if self.integrated_trans is None:
+            raise ValueError("Drift path not determined yet.")
+
         with open(self.file, "w") as fileobject:
-            fileobject.write(
+            _ = fileobject.write(
                 "# {0:>10}   {1:>12}  {2:>12}  {3:>12} \n".format(
                     "y integrated", "x integrated", "y sequential", "x sequential"
                 )
             )
-            for i in range(np.shape(self.transformations)[1]):
-                fileobject.write(
+            for i in range(self.transformations.shape[1]):
+                _ = fileobject.write(
                     "{0:>14.5f}   {1:>12.5f}  {2:>12.5f}  {3:>12.5f} \n".format(
-                        self.integrated_trans[0, i],
-                        self.integrated_trans[1, i],
-                        self.transformations[0, i],
-                        self.transformations[1, i],
+                        self.integrated_trans[0, i],  # pyright: ignore[reportAny]
+                        self.integrated_trans[1, i],  # pyright: ignore[reportAny]
+                        self.transformations[0, i],  # pyright: ignore[reportAny]
+                        self.transformations[1, i],  # pyright: ignore[reportAny]
                     )
                 )
 
@@ -591,29 +587,31 @@ class DriftNoScaling:
         move freely according to drift path. The image ration
         is changed back for interlace movies (2:1) to fit the
         overall system architecture"""
-        maxy, maxx = np.max(self.integrated_trans, 1)
-        miny, minx = np.min(self.integrated_trans, 1)
+        assert self.integrated_trans is not None  # type assertion
 
-        buffy = int(np.round(np.abs(maxy) + np.abs(miny))) + 1
-        buffx = int(np.round(np.abs(maxx) + np.abs(minx))) + 1
+        maxy, maxx = np.max(self.integrated_trans, 1)  # pyright: ignore[reportAny]
+        miny, minx = np.min(self.integrated_trans, 1)  # pyright: ignore[reportAny]
+
+        buffy = int(np.round(np.abs(maxy) + np.abs(miny))) + 1  # pyright: ignore[reportAny, reportUnknownArgumentType]
+        buffx = int(np.round(np.abs(maxx) + np.abs(minx))) + 1  # pyright: ignore[reportAny, reportUnknownArgumentType]
 
         corr_movie = np.zeros(
-            (self.n_frames, self.img_height+ int(buffy), self.img_width+ int(buffx)),
+            (self.n_frames, self.img_height + int(buffy), self.img_width + int(buffx)),
             dtype=np.float32,
         )
 
         for i in range(self.n_frames):
-            shift1, shift2 = self.integrated_trans[:, i]
-            shift1 = int(np.round(shift1))
-            shift2 = int(np.round(shift2))
+            shift1, shift2 = self.integrated_trans[:, i]  # pyright: ignore[reportAny]
+            shift1 = int(np.round(shift1))  # pyright: ignore[reportAny, reportUnknownArgumentType]
+            shift2 = int(np.round(shift2))  # pyright: ignore[reportAny, reportUnknownArgumentType]
 
-            y_start = int(abs(miny)) + 1 + shift1
-            y_end = int(abs(miny)) + 1 + self.img_height+ shift1
-            x_start = int(abs(minx)) + 1 + shift2
-            x_end = int(abs(minx)) + 1 + self.img_width + shift2
+            y_start = int(abs(miny)) + 1 + shift1  # pyright: ignore[reportAny]
+            y_end = int(abs(miny)) + 1 + self.img_height + shift1  # pyright: ignore[reportAny]
+            x_start = int(abs(minx)) + 1 + shift2  # pyright: ignore[reportAny]
+            x_end = int(abs(minx)) + 1 + self.img_width + shift2  # pyright: ignore[reportAny]
 
             # possibly there is a +1 in the i for the frame to be taken.
-            corr_movie[i, y_start:y_end, x_start:x_end] =  self.data[i, :, :]
+            corr_movie[i, y_start:y_end, x_start:x_end] = self.data[i, :, :]
 
         print("drift correction finished")
         return corr_movie
@@ -621,11 +619,13 @@ class DriftNoScaling:
     def _adjust_movie_common(self):
         """cut out section from movie frames, which stays constant during
         the entire movie."""
-        maxy, maxx = np.max(self.integrated_trans, 1)
-        miny, minx = np.min(self.integrated_trans, 1)
+        assert self.integrated_trans is not None  # type assertion
 
-        buffy = int(np.round(np.abs(maxy) + np.abs(miny))) + 1
-        buffx = int(np.round(np.abs(maxx) + np.abs(minx))) + 1
+        maxy, maxx = np.max(self.integrated_trans, 1)  # pyright: ignore[reportAny]
+        miny, minx = np.min(self.integrated_trans, 1)  # pyright: ignore[reportAny]
+
+        buffy = int(np.round(np.abs(maxy) + np.abs(miny))) + 1  # pyright: ignore[reportAny, reportUnknownArgumentType]
+        buffx = int(np.round(np.abs(maxx) + np.abs(minx))) + 1  # pyright: ignore[reportAny, reportUnknownArgumentType]
 
         corr_movie = np.zeros(
             (self.n_frames, self.img_height - int(buffy), self.img_width - int(buffx)),
@@ -633,18 +633,18 @@ class DriftNoScaling:
         )
 
         for i in range(self.n_frames):
-            y_shift, x_shift = self.integrated_trans[:, -i + 1]
-            y_shift = int(np.round(y_shift))
+            y_shift, x_shift = self.integrated_trans[:, -i + 1]  # pyright: ignore[reportAny]
+            y_shift = int(np.round(y_shift))  # pyright: ignore[reportAny, reportUnknownArgumentType]
 
             if self.channels.is_interlaced():
-                x_shift = int(np.round(x_shift) / 2)
+                x_shift = int(np.round(x_shift) / 2)  # pyright: ignore[reportAny, reportUnknownArgumentType]
             else:
-                x_shift = int(np.round(x_shift))
+                x_shift = int(np.round(x_shift))  # pyright: ignore[reportAny, reportUnknownArgumentType]
 
-            y_start = int(abs(miny)) + 1 + y_shift
-            y_end = int(abs(miny)) + 1 + self.img_height - int(buffy) + y_shift
-            x_start = int(abs(minx)) + 1 + x_shift
-            x_end = int(abs(minx)) + 1 + self.img_width - int(buffx) + x_shift
+            y_start = int(abs(miny)) + 1 + y_shift  # pyright: ignore[reportAny]
+            y_end = int(abs(miny)) + 1 + self.img_height - int(buffy) + y_shift  # pyright: ignore[reportAny]
+            x_start = int(abs(minx)) + 1 + x_shift  # pyright: ignore[reportAny]
+            x_end = int(abs(minx)) + 1 + self.img_width - int(buffx) + x_shift  # pyright: ignore[reportAny]
 
             # possibly there is a +1 in the i for the frame to be taken.
             corr_movie[i, :, :] = self.data[i, y_start:y_end, x_start:x_end]
@@ -653,26 +653,26 @@ class DriftNoScaling:
         return corr_movie
 
 
-def meanfilter(data, kernel=3):
-    """
-    possible meanfilter.
+# def meanfilter(data, kernel=3):
+#     """
+#     possible meanfilter.
 
-    Args:
-        data: 1D array
-        kernel: Size of values that are filtered
+#     Args:
+#         data: 1D array
+#         kernel: Size of values that are filtered
 
-    Returns:
-        filtered: adjusted array
-    """
-    filtered = np.zeros(len(data))
-    if kernel % 2 == 0:
-        kernel += 1
-    for i in range(len(data)):
-        down = i - int(kernel / 2)
-        up = i + int(kernel / 2) + 1
-        if down < 0:
-            down = 0
-        if up > len(data):
-            up = int(len(data))
-        filtered[i] = np.mean(data[down:up])
-    return filtered
+#     Returns:
+#         filtered: adjusted array
+#     """
+#     filtered = np.zeros(len(data))
+#     if kernel % 2 == 0:
+#         kernel += 1
+#     for i in range(len(data)):
+#         down = i - int(kernel / 2)
+#         up = i + int(kernel / 2) + 1
+#         if down < 0:
+#             down = 0
+#         if up > len(data):
+#             up = int(len(data))
+#         filtered[i] = np.mean(data[down:up])
+#     return filtered

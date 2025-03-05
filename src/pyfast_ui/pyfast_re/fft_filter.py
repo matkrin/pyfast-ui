@@ -140,12 +140,15 @@ def show_fft(
     rate = fast_movie.metadata.acquisition_adc_samplingrate
     frequencies = scipy.fft.rfftfreq(len(data_fft) * 2 - 1, 1.0 / rate)
 
+    fig, ax = plt.subplots()  # pyright: ignore[reportUnknownMemberType]
+
     if range_display is not None:
         xmin = int(len(frequencies) * range_display[0] / frequencies[-1])  # pyright: ignore[reportAny]
         xmax = int(len(frequencies) * range_display[1] / frequencies[-1])  # pyright: ignore[reportAny]
-        _ = plt.plot(frequencies[xmin:xmax], np.real(data_fft[xmin:xmax]))  # pyright: ignore[reportUnknownMemberType]
+        _ = ax.plot(frequencies[xmin:xmax], np.real(data_fft[xmin:xmax]))  # pyright: ignore[reportUnknownMemberType]
     else:
-        _ = plt.plot(frequencies, np.real(data_fft), np.real(data_fft))  # pyright: ignore[reportUnknownMemberType]
+        _ = ax.plot(frequencies, np.real(data_fft), np.real(data_fft))  # pyright: ignore[reportUnknownMemberType]
 
-    _ = plt.xlabel(r"$f\,\mathrm{\,in\,Hz}$")  # pyright: ignore[reportUnknownMemberType]
+    _ = ax.set_xlabel(r"$f\,\mathrm{\,in\,Hz}$")  # pyright: ignore[reportUnknownMemberType]
     plt.tight_layout()
+    fig.show()

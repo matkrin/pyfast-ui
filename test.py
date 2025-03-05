@@ -190,20 +190,28 @@ for channel in [c.value for c in Channels]:
     # # axs[3].imshow(correlation2d)
     # plt.show()
 
+    stepsize = 10
+    corrspeed = 1
+    boxcar = 50
+    median_filter = True
+
     start = time.perf_counter()
-    drift = Drift(fast_movie, 10, corrspeed=1, boxcar=50, median_filter=True)
+    drift = Drift(fast_movie, stepsize=stepsize, corrspeed=corrspeed, boxcar=boxcar, median_filter=median_filter)
     data, path = drift.correct_correlation(DriftMode.FULL, )
     end = time.perf_counter()
+    # fast_movie.data = data
     
     start_no_scaling = time.perf_counter()
-    drift_no_scaling = DriftNoScaling(fast_movie, 10, corrspeed=1, boxcar=50, median_filter=True)
+    drift_no_scaling = DriftNoScaling(fast_movie, stepsize=stepsize, corrspeed=corrspeed, boxcar=boxcar, median_filter=median_filter)
     data_no_scaling, path_no_scaling = drift_no_scaling.correct_correlation(DriftMode.FULL, )
     end_no_scaling = time.perf_counter()
+    # fast_movie.data = data_no_scaling
 
     start_phase_cc = time.perf_counter()
-    drift_phase_cc = DriftNoScaling(fast_movie, 10, corrspeed=1, boxcar=50, median_filter=True)
+    drift_phase_cc = DriftNoScaling(fast_movie, stepsize=stepsize, corrspeed=corrspeed, boxcar=boxcar, median_filter=median_filter)
     data_phase_cc, path_phase_cc = drift_phase_cc.correct_phase_cross_correlation(DriftMode.FULL, )
     end_phase_cc = time.perf_counter()
+    fast_movie.data = data_phase_cc
     ###
     
     print("=" * 80)
@@ -214,28 +222,28 @@ for channel in [c.value for c in Channels]:
     # print("Data same with and without scaling: ", np.all(data== data_no_scaling))
     print("=" * 80)
 
-    _fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(10, 10))  # pyright: ignore[reportAny, reportUnknownMemberType]
-    axs = axs.flatten()
-    axs[0].plot(path[0])  # pyright: ignore[reportAny]
-    axs[0].plot(path[1])  # pyright: ignore[reportAny]
+    # _fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(10, 10))  # pyright: ignore[reportAny, reportUnknownMemberType]
+    # axs = axs.flatten()
+    # axs[0].plot(path[0])  # pyright: ignore[reportAny]
+    # axs[0].plot(path[1])  # pyright: ignore[reportAny]
 
-    axs[1].plot(path_no_scaling[0])  # pyright: ignore[reportAny]
-    axs[1].plot(path_no_scaling[1])  # pyright: ignore[reportAny]
+    # axs[1].plot(path_no_scaling[0])  # pyright: ignore[reportAny]
+    # axs[1].plot(path_no_scaling[1])  # pyright: ignore[reportAny]
 
-    axs[2].plot(path_phase_cc[0])  # pyright: ignore[reportAny]
-    axs[2].plot(path_phase_cc[1])  # pyright: ignore[reportAny]
+    # axs[2].plot(path_phase_cc[0])  # pyright: ignore[reportAny]
+    # axs[2].plot(path_phase_cc[1])  # pyright: ignore[reportAny]
 
-    axs[3].imshow(data[0])
-    axs[4].imshow(data_no_scaling[0])
-    axs[5].imshow(data_phase_cc[0])
+    # axs[3].imshow(data[0])
+    # axs[4].imshow(data_no_scaling[0])
+    # axs[5].imshow(data_phase_cc[0])
     
 
-    for ax in axs:  # pyright: ignore[reportAny]
-        ax.set_box_aspect(1)  # pyright: ignore[reportAny]
+    # for ax in axs:  # pyright: ignore[reportAny]
+    #     ax.set_box_aspect(1)  # pyright: ignore[reportAny]
 
 
-    plt.tight_layout()
-    plt.show()  # pyright: ignore[reportUnknownMemberType]
+    # plt.tight_layout()
+    # plt.show()  # pyright: ignore[reportUnknownMemberType]
 
     # fast_movie.align_rows()
 
@@ -248,8 +256,8 @@ for channel in [c.value for c in Channels]:
     # fast_movie.cut((20, 50))
     # fast_movie.algin_rows("median")
 
-    fast_movie.export_mp4(fps_factor=2)
-    # fast_movie.export_tiff()
+    # fast_movie.export_mp4(fps_factor=2)
+    fast_movie.export_tiff()
     #
     # fast_movie.export_frames_image("png", (0, 3), color_map="bone")
     # fast_movie.export_frames_txt((0, 3))

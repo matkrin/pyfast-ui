@@ -101,15 +101,15 @@ def get_x_phase_autocorrection(
 
     for i in range(2, len(data[0, :, 0]) - 2, 2):
         # create foreward different mean - like finite difference approx in numerical differentiation
-        correlational_data_forewards: NDArray[np.float32] = correlate(  # pyright: ignore[reportUnknownVariableType]
+        correlational_data_forewards = correlate(
             frame_to_correlate[i, :], frame_to_correlate[i + 1, :]
         )
-        correlational_data_backwards = correlate(  # pyright: ignore[reportUnknownVariableType]
+        correlational_data_backwards = correlate(
             frame_to_correlate[i, :], frame_to_correlate[i - 1, :]
         )
         max_val = (
-            np.argmax(correlational_data_forewards)  # pyright: ignore[reportUnknownArgumentType]
-            + np.argmax(correlational_data_backwards)  # pyright: ignore[reportUnknownArgumentType]
+            np.argmax(correlational_data_forewards)
+            + np.argmax(correlational_data_backwards)
         ) / 2
         correlation_peak_values[int(i / 2 - 1)] = max_val
 
