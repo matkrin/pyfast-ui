@@ -1,18 +1,22 @@
 from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, final
 
 import numpy as np
 from numpy.typing import NDArray
-from pyfast_ui.pyfast_re.channels import Channels
-from pyfast_ui.pyfast_re.data_mode import reshape_data
 from scipy.ndimage import gaussian_filter
 from scipy.signal import correlate
 
-from pyfast_ui.pyfast_re.data_mode import DataMode
+from pyfast_ui.pyfast_re.channels import Channels
+from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
 
 if TYPE_CHECKING:
     from pyfast_ui.pyfast_re.fast_movie import FastMovie
+
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -100,7 +104,7 @@ def get_x_phase_autocorrection(
         )
 
     for i in range(2, len(data[0, :, 0]) - 2, 2):
-        # create foreward different mean - like finite difference approx in numerical differentiation
+        # Create foreward different mean - like finite difference approx in numerical differentiation
         correlational_data_forewards = correlate(
             frame_to_correlate[i, :], frame_to_correlate[i + 1, :]
         )
@@ -119,7 +123,7 @@ def get_x_phase_autocorrection(
     ) / 2  # -1 to get correct index
     xphase_autocorrection = int(np.round(raw_xphase_correction))
 
-    print(
+    log.info(
         "Automatic xphase detection yielded a raw value of {} which was rounded to {}".format(
             round(raw_xphase_correction, 3), xphase_autocorrection
         )

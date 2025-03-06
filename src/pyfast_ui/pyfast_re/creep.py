@@ -102,11 +102,9 @@ class Creep:
         mean_shift = np.mean(l2)
         diff_in_pixels = len(dat1) - (mean_shift + 1)
 
-        # self.processing_log.info(
-        #     "Correlation of image rows retunred a shift of {} pixels in the middle of the frame.".format(
-        #         abs(diff_in_pixels)
-        #     )
-        # )
+        log.info(
+            f"Correlation of image rows retunred a shift of {abs(diff_in_pixels)} pixels in the middle of the frame."
+        )
 
         return abs(diff_in_pixels)
 
@@ -364,32 +362,27 @@ class Creep:
                         count += 1
                     except Exception as e:
                         print(traceback.format_exc())
-                        # print('Something went wrong.')
-                        print('Caught Exception was "{}"'.format(e))
-                        print("fit attempt failed, trying next...")
+                        log.warning(f"Caught Exception was '{e}'".format(e))
+                        log.info("Fit attempt failed, trying next...")
                         pass
+
             if count == 0:  ## Only happens if all curve_fit attempts fail.
                 avg_result = np.array(params)
-                # self.processing_log.info(
-                #     "Creep fitting failed on all iterations (all frames and rows). Using input parameter values {}:".format(
-                #         avg_result
-                #     )
-                # )
+
+                log.info(
+                    f"Creep fitting failed on all iterations (all frames and rows). Using input parameter values {avg_result}:"
+                )
             else:
                 avg_result = np.asarray(fitresult) / float(count)
-                print("creep fit succeeded, result: {}".format(avg_result))
-                # self.processing_log.info(
-                #     "Creep fitting returned {} as optimal parameter values.".format(
-                #         avg_result
-                #     )
-                # )
+
+                log.info(
+                    f"Creep fitting returned {avg_result} as optimal parameter values."
+                )
         else:
             avg_result = known_params
-            # self.processing_log.info(
-            #     "Creep parameters known. Using as {} as parameter values.".format(
-            #         avg_result
-            #     )
-            # )
+            log.info(
+                f"Creep parameters known. Using as {avg_result} as parameter values."
+            )
         ycreep = self.creep_function(*avg_result)
         y_up, y_down, rest = self._shape_to_grid(ycreep)
 
@@ -602,18 +595,13 @@ class Creep:
         """
 
         if known_input == None:
-            print("start bezier creep correction")
-
-            # self.processing_log.info(
-            #     "Fitting creep correction at columns {} in images {}. Initial guess: shape = ({:05.4f}, {:05.4f}, {:05.4f}).".format(
-            #         col_inds, frames, shape[0], shape[1], shape[2]
-            #     )
-            # )
-            # self.processing_log.info(
-            #     "Additional weight to top and bottom image boundary: {}. Number of evaluation points for numeric creep function: {}.".format(
-            #         w, Bezier_points
-            #     )
-            # )
+            log.info("Start bezier creep correction")
+            log.info(
+                f"Fitting creep correction at columns {col_inds} in images {frames}. Initial guess: shape = ({shape[0]:05.4f}, {shape[1]:05.4f}, {shape[2]:05.4f})."
+            )
+            log.info(
+                f"Additional weight to top and bottom image boundary: {w}. Number of evaluation points for numeric creep function: {Bezier_points}."
+            )
 
             opt_list = []
 
@@ -649,24 +637,15 @@ class Creep:
 
             opt = np.mean(np.array(opt_list), 0)
 
-            # self.processing_log.info(
-            #     "Optimized creep parameters for later use: shape = ({:05.4f}, {:05.4f}, {:05.4f})".format(
-            #         opt[0], opt[1], opt[2]
-            #     )
-            # )
-            print(
-                "creep fit succeeded, result: ({:05.4f}, {:05.4f}, {:05.4f})".format(
-                    opt[0], opt[1], opt[2]
-                )
+            log.info(
+                f"Optimized creep parameters for later use: shape = ({opt[0]:05.4f}, {opt[1]:05.4f}, {opt[2]:05.4f})"
             )
         else:
             opt = known_input
             pixels = [self.pixel_shift]
             Bezier_points = [Bezier_points]
 
-            # self.processing_log.info(
-            #     "known parameters used = ({}, {}, {})".format(opt[0], opt[1], opt[2])
-            # )
+            log.info(f"Known parameters used = ({opt[0]}, {opt[1]}, {opt[2]})")
 
         if self.channels.is_interlaced():
             grid_up, grid_down = self._Bezier(

@@ -6,11 +6,14 @@ learnopencv.com/video-stabilisation-using-point-feature-matching-in-opencv
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, final
+import logging
 
 import numpy as np
 from numpy.typing import NDArray
+from pyfast_ui.pyfast_re.tqdm_logging import TqdmLogger
 import skimage
 from pystackreg import StackReg  # pyright: ignore[reportMissingTypeStubs]
 from scipy.ndimage import convolve
@@ -20,6 +23,9 @@ from pyfast_ui.pyfast_re.data_mode import DataMode
 
 if TYPE_CHECKING:
     from pyfast_ui.pyfast_re.fast_movie import FastMovie
+
+
+log = logging.getLogger(__name__)
 
 
 class DriftMode(Enum):
@@ -38,7 +44,7 @@ class StackRegReferenceType(Enum):
     MEAN = "mean"
 
 
-@final
+# @final
 # class Drift:
 #     """
 #     Initialise Drift class with Fast movie instance to then
@@ -349,15 +355,23 @@ class StackRegReferenceType(Enum):
 ##################################################################################################################
 
 
-class DriftNoScaling:
+@dataclass
+class DriftCorrectionResult:
+    data: NDArray[np.float32]
+    drift_path_sequential: NDArray[np.float32]
+    drift_path_integrated: NDArray[np.float32]
+
+
+@final
+class Drift:
     """
     Initialise Drift class with Fast movie instance to then
     drift correct the movie data.
 
     Args:
         fast_movie: `FastMovie` instance.
-        stepsize: The difference between frames that are correlated.
-        corrspeed: The difference between two correlation windows.
+        stepsize: Difference between frames that are correlated.
+        corrspeed: Difference between two correlation windows.
         boxcar: Width of the boxcar filter that applied to the
             drift path. Set to 0 if no boxcar filter should be applied.
         median_filter: Paramter to decide if the drift path should be smoothed
@@ -387,8 +401,8 @@ class DriftNoScaling:
         self.median_filter = median_filter
 
         self.n_frames, self.img_height, self.img_width = self.data.shape
-        self.transformations = np.zeros((2, self.n_frames))
-        self.integrated_trans = None
+        self.transformations = np.zeros((2, self.n_frames), dtype=np.float32)
+        self.integrated_trans: NDArray[np.float32] | None = None
 
         # if self.stepsize is None:
         #     self.stepsize = int(self.n_frames / 3)
@@ -396,75 +410,144 @@ class DriftNoScaling:
     def correct_correlation(
         self,
         mode: DriftMode = DriftMode.FULL,
-    ):
+    ) -> DriftCorrectionResult:
+        """Drift correction via cross correlation of two frames.
+
+        Args:
+            mode: Cut out the largest common area (`"common"`) or apply padding
+                around frames (`"full"`).
+        """
         self._get_drift_correlation()
         self._filter_drift()
         self._write_drift()
 
+        assert self.integrated_trans is not None  # type assertion
+
         match mode:
             case DriftMode.FULL:
-                return self._adjust_movie_buffered(), self.integrated_trans
+                return DriftCorrectionResult(
+                    self._adjust_movie_buffered(),
+                    self.transformations,
+                    self.integrated_trans,
+                )
             case DriftMode.COMMON:
-                return self._adjust_movie_common(), self.integrated_trans
+                return DriftCorrectionResult(
+                    self._adjust_movie_common(),
+                    self.transformations,
+                    self.integrated_trans,
+                )
 
     def correct_phase_cross_correlation(
         self,
         mode: DriftMode = DriftMode.FULL,
-    ):
+    ) -> DriftCorrectionResult:
+        """Drift correction via `scikit-image`'s
+            [`phase_cross_correlation`][https://scikit-image.org/docs/0.23.x/api/skimage.registration.html#skimage.registration.phase_cross_correlation].
+
+        Args:
+            mode: Cut out the largest common area (`"common"`) or apply padding
+                around frames (`"full"`).
+        """
         self._get_drift_phase_cross_correlation()
         self._filter_drift()
         self._write_drift()
 
+        assert self.integrated_trans is not None  # type assertion
+
         match mode:
             case DriftMode.FULL:
-                return self._adjust_movie_buffered(), self.integrated_trans
+                return DriftCorrectionResult(
+                    self._adjust_movie_buffered(),
+                    self.transformations,
+                    self.integrated_trans,
+                )
             case DriftMode.COMMON:
-                return self._adjust_movie_common(), self.integrated_trans
+                return DriftCorrectionResult(
+                    self._adjust_movie_common(),
+                    self.transformations,
+                    self.integrated_trans,
+                )
 
     def correct_stackreg(
         self,
         mode: DriftMode = DriftMode.FULL,
         stackreg_reference: StackRegReferenceType = StackRegReferenceType.PREVIOUS,
-    ):
+    ) -> DriftCorrectionResult:
+        """Drfit correction via [`pystackreg`][https://pystackreg.readthedocs.io/en/latest/].
+
+        Args:
+            mode: Cut out the largest common area (`"common"`) or apply padding
+                around frames (`"full"`).
+        """
         self._get_drift_stackreg(stackreg_reference)
         self._filter_drift()
         self._write_drift()
 
+        assert self.integrated_trans is not None  # type assertion
+
         match mode:
             case DriftMode.FULL:
-                return self._adjust_movie_buffered(), self.integrated_trans
+                return DriftCorrectionResult(
+                    self._adjust_movie_buffered(),
+                    self.transformations,
+                    self.integrated_trans,
+                )
             case DriftMode.COMMON:
-                return self._adjust_movie_common(), self.integrated_trans
+                return DriftCorrectionResult(
+                    self._adjust_movie_common(),
+                    self.transformations,
+                    self.integrated_trans,
+                )
 
     def correct_known(
         self,
         mode: DriftMode = DriftMode.FULL,
         known_drift_type: KnownDriftType = KnownDriftType.INTEGRATED,
-    ):
+    ) -> DriftCorrectionResult:
+        """Drift correction from a known '.drift.txt' file.
+
+        Args:
+            mode: Cut out the largest common area (`"common"`) or apply padding
+                around frames (`"full"`).
+            known_drift_type: Whether to use values of integrated or sequential
+                drift path.
+        """
         driftfile = self.file.replace(".h5", ".drift.txt")
 
         match known_drift_type:
             case KnownDriftType.INTEGRATED:
-                self.integrated_trans = np.loadtxt(driftfile).T[0:2, :]
-                # self.processing_log.info("Known drift used: {}".format(known_drift_type))
+                self.integrated_trans = np.loadtxt(driftfile, dtype=np.float32).T[
+                    0:2, :
+                ]
             case KnownDriftType.SEQUENTIAL:
-                self.transformations = np.loadtxt(driftfile).T[2:4, :]
-                self.integrated_trans = np.cumsum(self.transformations, axis=1)
+                self.transformations = np.loadtxt(driftfile, dtype=np.float32).T[2:4, :]
+                self.integrated_trans = np.cumsum(
+                    self.transformations, axis=1, dtype=np.float32
+                )
                 self._write_drift()
-                # self.processing_log.info("Known drift used: {}".format(known_drift))
+
+        log.info(f"Known drift used: {known_drift_type}")
 
         match mode:
             case DriftMode.FULL:
-                return self._adjust_movie_buffered(), self.integrated_trans
+                return DriftCorrectionResult(
+                    self._adjust_movie_buffered(),
+                    self.transformations,
+                    self.integrated_trans,
+                )
             case DriftMode.COMMON:
-                return self._adjust_movie_common(), self.integrated_trans
+                return DriftCorrectionResult(
+                    self._adjust_movie_common(),
+                    self.transformations,
+                    self.integrated_trans,
+                )
 
     def _get_drift_correlation(self) -> None:
-        """Calculation of the drift by fft correlation."""
+        """Calculation of the drift path by FFT cross correlation of two frames."""
         data = self.data.copy()
         num_frames, num_y_pixels, num_x_pixels = data.shape
 
-        for i in range(num_frames):
+        for i in TqdmLogger(range(num_frames), desc="Calculating drift path"):
             try:
                 correlated = correlate(
                     data[self.corrspeed * i, :, :],
@@ -473,8 +556,6 @@ class DriftNoScaling:
                 )
                 maxind = np.argmax(correlated)
                 indices = np.unravel_index(maxind, correlated.shape)  # pyright: ignore[reportAny]
-                print(indices)
-
                 effektive_shift = np.asarray(
                     [
                         [(-(num_y_pixels - 1) + indices[0]) / self.stepsize],
@@ -484,13 +565,14 @@ class DriftNoScaling:
                 self.transformations[:, i] = effektive_shift.T
             except Exception:
                 pass
-        # print("last found correlation indices are {}".format(indices))
+        log.info("last found correlation indices are {indices}")
 
     def _get_drift_phase_cross_correlation(self) -> None:
+        """Calculation of the drift by phase cross correlation of two frames."""
         data = self.data.copy()
         num_frames, _, _ = data.shape
 
-        for i in range(num_frames):
+        for i in TqdmLogger(range(num_frames), desc="Calculating drift path"):
             try:
                 shift, _, _ = skimage.registration.phase_cross_correlation(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
                     data[self.corrspeed * i, :, :],
@@ -509,6 +591,7 @@ class DriftNoScaling:
                 pass
 
     def _get_drift_stackreg(self, reference: StackRegReferenceType) -> None:
+        """Calculation of the drift by pystackreg."""
         stackreg = StackReg(StackReg.TRANSLATION)
         transformation_matrices = stackreg.register_stack(  # pyright: ignore[reportUnknownMemberType]
             self.data, reference=reference.value
@@ -528,10 +611,8 @@ class DriftNoScaling:
         self.transformations = np.stack((y_path, x_path))
         self.stepsize = 1
 
-    def _filter_drift(self):
-        """
-        smooth and filter drift path
-        """
+    def _filter_drift(self) -> None:
+        """Smoothing of drift path by median filter and/or boxcar filter."""
         boxwidth = self.boxcar
         boxcar = np.ones((1, boxwidth)) / boxwidth
         boxcar = boxcar[0, :]
@@ -540,7 +621,9 @@ class DriftNoScaling:
             self.transformations[0, :] = medfilt(self.transformations[0, :], 3)
             self.transformations[1, :] = medfilt(self.transformations[1, :], 3)
 
-        self.integrated_trans = np.cumsum(self.transformations, axis=1)
+        self.integrated_trans = np.cumsum(
+            self.transformations, axis=1, dtype=np.float32
+        )
         # linear extrapolation
         pos = np.linspace(0, self.n_frames - 1, self.n_frames)
         k1, d1 = np.polyfit(  # pyright: ignore[reportAny]
@@ -553,16 +636,15 @@ class DriftNoScaling:
         self.integrated_trans[1, -self.stepsize :] = d2 + k2 * pos[-self.stepsize :]
 
         if self.boxcar != 0:
-            # self.processing_log.info( "Boxcar filter used with boxsize: {}".format(boxwidth))
-            transformations_conv = np.zeros((2, self.n_frames))
+            transformations_conv = np.zeros((2, self.n_frames), dtype=np.float32)
             transformations_conv[0, :] = convolve(self.integrated_trans[0], boxcar)  # pyright: ignore[reportAny]
             transformations_conv[1, :] = convolve(self.integrated_trans[1], boxcar)  # pyright: ignore[reportAny]
             self.integrated_trans = transformations_conv
 
+            log.info(f"Boxcar filter used with boxsize: {boxwidth}")
+
     def _write_drift(self):
-        """
-        Writes a drift.txt file
-        """
+        """Write a drift.txt file to disc."""
         if self.integrated_trans is None:
             raise ValueError("Drift path not determined yet.")
 
@@ -583,10 +665,7 @@ class DriftNoScaling:
                 )
 
     def _adjust_movie_buffered(self):
-        """embed movie frames into buffered background to
-        move freely according to drift path. The image ration
-        is changed back for interlace movies (2:1) to fit the
-        overall system architecture"""
+        """Embed movie frames into buffered background to move freely according to drift path."""
         assert self.integrated_trans is not None  # type assertion
 
         maxy, maxx = np.max(self.integrated_trans, 1)  # pyright: ignore[reportAny]
@@ -613,12 +692,11 @@ class DriftNoScaling:
             # possibly there is a +1 in the i for the frame to be taken.
             corr_movie[i, y_start:y_end, x_start:x_end] = self.data[i, :, :]
 
-        print("drift correction finished")
+        log.info("Drift correction finished")
         return corr_movie
 
     def _adjust_movie_common(self):
-        """cut out section from movie frames, which stays constant during
-        the entire movie."""
+        """Cut out section from movie frames, which stays constant during the entire movie."""
         assert self.integrated_trans is not None  # type assertion
 
         maxy, maxx = np.max(self.integrated_trans, 1)  # pyright: ignore[reportAny]
@@ -649,7 +727,7 @@ class DriftNoScaling:
             # possibly there is a +1 in the i for the frame to be taken.
             corr_movie[i, :, :] = self.data[i, y_start:y_end, x_start:x_end]
 
-        print("drift correction finished")
+        log.info("Drift correction finished")
         return corr_movie
 
 

@@ -1,20 +1,20 @@
-"""Exact interpolation for interlacing"""
-
 from __future__ import annotations
-from dataclasses import dataclass
+
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.sparse import csr_matrix, lil_matrix  # pyright: ignore[reportMissingTypeStubs]
-from scipy.spatial import Delaunay  # pyright: ignore[reportMissingTypeStubs]
-from tqdm import tqdm
+from scipy.sparse import csr_matrix, lil_matrix
+from scipy.spatial import Delaunay
 
 from pyfast_ui.pyfast_re.data_mode import DataMode
+from pyfast_ui.pyfast_re.tqdm_logging import TqdmLogger
 
 if TYPE_CHECKING:
     from pyfast_ui.pyfast_re.fast_movie import FastMovie
+
 
 log = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ def get_interpolation_matrix(
     triangles_containing_gridpoints = triangulation.find_simplex(grid_points)
     interpolation_matrix = lil_matrix((len(grid_points), len(points_to_triangulate)))
 
-    for i in tqdm(
+    for i in TqdmLogger(
         range(len(grid_points)), desc="Building interpolation matrix", unit="lines"
     ):
         triangle_corners = triangulation.simplices[triangles_containing_gridpoints[i]]
@@ -262,11 +262,11 @@ def apply_interpolation(
 
         frame_flattened: NDArray[np.float32] = fast_movie.data[i].flatten()  # pyright: ignore[reportAny]
         if is_up_frame:
-            fast_movie.data[i] = interpolation_matrix_up.dot(frame_flattened).reshape(  # pyright: ignore[reportAny, reportUnknownMemberType]
+            fast_movie.data[i] = interpolation_matrix_up.dot(frame_flattened).reshape(
                 num_y_pixels, num_x_pixels
             )
         else:
-            fast_movie.data[i] = interpolation_matrix_down.dot(frame_flattened).reshape(  # pyright: ignore[reportAny, reportUnknownMemberType]
+            fast_movie.data[i] = interpolation_matrix_down.dot(frame_flattened).reshape(
                 num_y_pixels, num_x_pixels
             )
 

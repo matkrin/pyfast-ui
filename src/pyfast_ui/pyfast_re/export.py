@@ -11,6 +11,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pyfast_ui.pyfast_re.channels import FrameChannelType
 from pyfast_ui.pyfast_re.data_mode import DataMode
+from pyfast_ui.pyfast_re.tqdm_logging import TqdmLogger
 
 if TYPE_CHECKING:
     from pyfast_ui.pyfast_re.fast_movie import FastMovie
@@ -61,7 +62,7 @@ class MovieExport:
             padding = 0.02
             fontsize = 0.05 * num_y_pixels
 
-            label_left = ax.text(
+            label_left = ax.text(  # pyright: ignore[reportUnknownMemberType]
                 num_x_pixels * padding,
                 num_x_pixels * padding,
                 text_left,
@@ -71,7 +72,7 @@ class MovieExport:
                 horizontalalignment="left",
                 verticalalignment="top",
             )
-            label_right = ax.text(
+            label_right = ax.text(  # pyright: ignore[reportUnknownMemberType]
                 num_x_pixels - (num_x_pixels * padding),
                 num_x_pixels * padding,
                 right_text,
@@ -162,7 +163,7 @@ class FrameExport:
         frame_start, frame_end = self.frame_range
         data = self.fast_movie.data[frame_start:frame_end, :, :]
 
-        for i in range(data.shape[0]):
+        for i in TqdmLogger(range(data.shape[0]), desc="Exporting frames"):
             frame: NDArray[np.float32] = data[i]
             frame_id = i // 2 if self.fast_movie.channels.is_up_and_down() else i
             frame_id += self.frame_offset
@@ -188,7 +189,7 @@ class FrameExport:
 
         px: float = 1 / plt.rcParams["figure.dpi"]  # pixel in inches
 
-        for i in range(data.shape[0]):
+        for i in TqdmLogger(range(data.shape[0]), desc="Exporting frames"):
             frame_id = i // 2 if self.fast_movie.channels.is_up_and_down() else i
             frame_id += self.frame_offset
             channel_id = next(frame_channel_iterator)

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import copy
-from enum import Enum
 from pathlib import Path
 from typing import Hashable, Literal, Self, final
 
 import h5py as h5  # pyright: ignore[reportMissingTypeStubs]
 import matplotlib.pyplot as plt
 import numpy as np
+from pyfast_ui.pyfast_re.tqdm_logging import TqdmLogger
+import scipy
 import skimage
 from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter, median_filter
@@ -72,8 +73,8 @@ class FastMovie:
         # Ceep track of cutting so that labels at export are correct.
         self._cut_range = (0, self.metadata.num_images)
 
-        self._integrated_drift_path = None
-        self._sequential_drift_path = None
+        self._drift_path_integrated = None
+        self._drift_path_sequential = None
 
         # Initial phase correction from either parameters or file metadata
         if x_phase is None:
@@ -287,6 +288,21 @@ class FastMovie:
         # Mutate data
         self.data = filtered_data
 
+    def plot_fft(self, plot_range: tuple[float, float] = (0, 40_000)) -> None:
+        data = self.data.flatten()
+        # data must be spectrum
+        data_fft = scipy.fft.rfft(data)
+        rate = self.metadata.acquisition_adc_samplingrate
+        frequencies = scipy.fft.rfftfreq(len(data_fft) * 2 - 1, 1.0 / rate)
+
+        xmin = int(len(frequencies) * plot_range[0] / frequencies[-1])  # pyright: ignore[reportAny]
+        xmax = int(len(frequencies) * plot_range[1] / frequencies[-1])  # pyright: ignore[reportAny]
+        fig, ax = plt.subplots()  # pyright: ignore[reportUnknownMemberType]
+        _ = ax.plot(frequencies[xmin:xmax], np.real(data_fft[xmin:xmax]))  # pyright: ignore[reportUnknownMemberType]
+        _ = ax.set_xlabel(r"$f\,\mathrm{\,in\,Hz}$")  # pyright: ignore[reportUnknownMemberType]
+        fig.tight_layout()
+        plt.show()  # pyright: ignore[reportUnknownMemberType]
+
     def correct_creep_non_bezier(
         self,
         creep_mode: Literal["sin", "root"],
@@ -388,9 +404,11 @@ class FastMovie:
         drift = Drift(
             self, stepsize=stepsize, boxcar=boxcar, median_filter=median_filter
         )
+        result = drift.correct_correlation(driftmode)
         # Mutate data
-        self.data, self._integrated_drift_path = drift.correct_correlation(driftmode)
-        self._sequential_drift_path = drift.transformations
+        self.data = result.data
+        self._drift_path_sequential = result.drift_path_sequential
+        self._drift_path_integrated = result.drift_path_integrated
 
     def correct_drift_stackreg(
         self,
@@ -415,11 +433,11 @@ class FastMovie:
         driftmode = DriftMode(mode)
         reference = StackRegReferenceType(stackreg_reference)
         drift = Drift(self, stepsize=1, boxcar=boxcar, median_filter=median_filter)
+        result = drift.correct_stackreg(driftmode, reference)
         # Mutate data
-        self.data, self._integrated_drift_path = drift.correct_stackreg(
-            driftmode, reference
-        )
-        self._sequential_drift_path = drift.transformations
+        self.data = result.data
+        self._drift_path_sequential = result.drift_path_sequential
+        self._drift_path_integrated = result.drift_path_integrated
 
     def correct_drift_known(
         self,
@@ -436,21 +454,24 @@ class FastMovie:
         driftmode = DriftMode(mode)
         drift = Drift(self)
         # Mutate data
-        self.data, self._integrated_drift_path = drift.correct_known(driftmode)
-        self._sequential_drift_path = drift.transformations
+        result = drift.correct_known(driftmode)
+        # Mutate data
+        self.data = result.data
+        self._drift_path_sequential = result.drift_path_sequential
+        self._drift_path_integrated = result.drift_path_integrated
 
     def plot_drift_path(self) -> None:
         """Plot the drift path. Only possible after drift correction."""
-        if self._integrated_drift_path is None or self._sequential_drift_path is None:
+        if self._drift_path_integrated is None or self._drift_path_sequential is None:
             raise ValueError("Drift correction must be applied first")
 
-        _fig, axs = plt.subplots(nrows=1, ncols=2)  # pyright: ignore[reportAny, reportUnknownMemberType]
-        axs[0].plot(self._integrated_drift_path[0])  # pyright: ignore[reportAny]
-        axs[0].plot(self._integrated_drift_path[1])  # pyright: ignore[reportAny]
+        fig, axs = plt.subplots(nrows=1, ncols=2)  # pyright: ignore[reportAny, reportUnknownMemberType]
+        axs[0].plot(self._drift_path_integrated[0])  # pyright: ignore[reportAny]
+        axs[0].plot(self._drift_path_integrated[1])  # pyright: ignore[reportAny]
         axs[0].set_title("Integrated drift path")  # pyright: ignore[reportAny]
 
-        axs[1].plot(self._sequential_drift_path[0])  # pyright: ignore[reportAny]
-        axs[1].plot(self._sequential_drift_path[1])  # pyright: ignore[reportAny]
+        axs[1].plot(self._drift_path_sequential[0])  # pyright: ignore[reportAny]
+        axs[1].plot(self._drift_path_sequential[1])  # pyright: ignore[reportAny]
         axs[1].set_title("Sequential drift path")  # pyright: ignore[reportAny]
 
         for ax in axs:  # pyright: ignore[reportAny]
@@ -459,7 +480,7 @@ class FastMovie:
             ax.set_xlabel("Frames")  # pyright: ignore[reportAny]
             ax.set_ylabel("Pixel")  # pyright: ignore[reportAny]
 
-        plt.tight_layout()
+        fig.tight_layout()
         plt.show()  # pyright: ignore[reportUnknownMemberType]
 
     def remove_streaks(self) -> None:
@@ -480,7 +501,7 @@ class FastMovie:
     def align_rows(
         self, align_type: Literal["median", "mean", "poly2", "poly3"]
     ) -> None:
-        """Align the rows in each frame.
+        """Frame background correction by row alignment.
 
         Args:
             align_type: Correction algorithm for row alignment.
@@ -491,14 +512,14 @@ class FastMovie:
         if self.mode != DataMode.MOVIE:
             raise ValueError("Data must be reshaped into movie mode")
 
-        for i in range(self.data.shape[0]):
+        for i in TqdmLogger(range(self.data.shape[0]), desc="Aligning rows"):
             background = frame_corrections.align_rows(self.data[i], align_type)  # pyright: ignore[reportAny]
             # Mutate data
             self.data[i] -= background
 
     def level_plane(self) -> None:
-        """Subtraction of a fitted background plane."""
-        for i in range(self.data.shape[0]):
+        """Frame background correction by subtraction of a fitted background plane."""
+        for i in TqdmLogger(range(self.data.shape[0]), desc="Leveling planes"):
             background = frame_corrections.level_plane(self.data[i])  # pyright: ignore[reportAny]
             # Mutate data
             self.data[i] -= background
@@ -545,8 +566,8 @@ class FastMovie:
                 kernel = np.ones(kernel_shape) / (kernel_size * kernel_size)
                 for i in range(self.data.shape[0]):
                     self.data[i] = convolve2d(self.data[i], kernel, mode="same")  # pyright: ignore[reportAny]
-            case _:
-                raise ValueError(
+            case _:  # pyright: ignore[reportUnnecessaryComparison]
+                raise ValueError(  # pyright: ignore[reportUnreachable]
                     "Parameter 'filter_types' must be 'gauss', 'median' or 'mean'"
                 )
 
@@ -605,25 +626,6 @@ class FastMovie:
         """
         export = FrameExport(self, frame_range)
         export.export_image(image_format, color_map)
-
-
-class FrameCorrectionType(Enum):
-    ALIGN = "align"
-    PLANE = "plane"
-    FIXZERO = "fixzero"
-
-
-class AlignType(Enum):
-    MEDIAN = "median"
-    MEAN = "mean"
-    POLY2 = "poly2"
-    POLY3 = "poly3"
-
-
-class FrameFilterType(Enum):
-    GAUSS = "gauss"
-    MEDIAN = "median"
-    MEAN = "mean"
 
 
 @final
