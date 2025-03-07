@@ -7,6 +7,12 @@ from pyfast_ui.pyfast_re.channels import Channels
 
 
 class DataMode(Enum):
+    """Indicator in which mode `FastMovie.data` is.
+
+    TIMESERIES: Data as 1d numpy array.
+    MOVIE: Data as 3d numpy array of shape (frames, y, x).
+    """
+
     TIMESERIES = 0
     MOVIE = auto()
 
@@ -30,6 +36,8 @@ def reshape_data(
     Returns:
         3D numpy array of the shape (frame, y, x).
 
+    Raises:
+        ValueError: If the movie is not in timeseries (1D array) mode.
     """
     if len(time_series_data.shape) != 1:
         raise ValueError("FastMovie must be in timeseries mode")

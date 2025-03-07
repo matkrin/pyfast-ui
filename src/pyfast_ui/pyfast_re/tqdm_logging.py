@@ -10,6 +10,15 @@ T = TypeVar("T")
 
 @final
 class TqdmLogger(Iterable[T]):
+    """Wrapper around [`tqdm`][https://tqdm.github.io/] that only logs if the
+    logging severtiy is `logging.INFO` or higher.
+
+    Args:
+        iterable: Iterable to be iterated over.
+        desc: Description message to be displayed.
+        total: Amount of iteration items.
+    """
+
     def __init__(
         self,
         iterable: Iterable[T] | None = None,
