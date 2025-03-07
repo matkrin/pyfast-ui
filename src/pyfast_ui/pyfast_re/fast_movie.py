@@ -572,17 +572,22 @@ class FastMovie:
                 )
 
     def export_mp4(
-        self, fps_factor: int = 1, color_map: str = "bone", label_frames: bool = True
+        self,
+        fps_factor: int = 1,
+        contrast: tuple[float, float] = (0.0, 1.0),
+        color_map: str = "bone",
+        label_frames: bool = True,
     ) -> None:
         """Export the movie as MP4 file.
 
         Args:
             fps_factor: Multiplication factor applied on frames per second from meta data.
+            contrast: The lower and upper percentile bound of the color map.
             color_map: Matplotlib color map
             label_frames: Render labels with information on each frame.
         """
         movie_export = MovieExport(self)
-        movie_export.export_mp4(fps_factor, color_map, label_frames)
+        movie_export.export_mp4(fps_factor, contrast, color_map, label_frames)
 
     def export_tiff(self) -> None:
         """Export the movie as multipage TIFF file."""
@@ -615,6 +620,7 @@ class FastMovie:
         self,
         image_format: FrameExportFormat,
         frame_range: tuple[int, int],
+        contrast: tuple[float, float],
         color_map: str,
     ) -> None:
         """Export frame as image file.
@@ -622,10 +628,11 @@ class FastMovie:
         Args:
             image_format: Image format of the exported frames.
             frame_range: Start (inclusive) and end (exclusive) frame to be exported.
+            contrast: The lower and upper percentile bound of the color map.
             color_map: Matplotlib color map.
         """
         export = FrameExport(self, frame_range)
-        export.export_image(image_format, color_map)
+        export.export_image(image_format, contrast, color_map)
 
 
 @final

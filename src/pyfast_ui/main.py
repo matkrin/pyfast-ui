@@ -1,10 +1,9 @@
+import logging
 import sys
 from pathlib import Path
 from typing import final, override
 
 import matplotlib.pyplot as plt
-from pyfast_ui.pyfast_re.data_mode import DataMode
-from pyfast_ui.pyfast_re.fast_movie import FastMovie
 from PySide6.QtCore import QCoreApplication, QThreadPool
 from PySide6.QtGui import QCloseEvent, Qt
 from PySide6.QtWidgets import (
@@ -33,6 +32,8 @@ from pyfast_ui.groups.modify_group import ModifyGroup
 from pyfast_ui.groups.phase_group import PhaseGroup
 from pyfast_ui.histogram_window import HistogramWindow
 from pyfast_ui.movie_window import MovieInfo, MovieWindow
+from pyfast_ui.pyfast_re.data_mode import DataMode
+from pyfast_ui.pyfast_re.fast_movie import FastMovie
 from pyfast_ui.workers import CreepWorker, DriftWorker, FftFilterWorker
 
 FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
@@ -689,7 +690,10 @@ class MainGui(QMainWindow):
 
         if export_movie:
             ft.export_mp4(
-                fps_factor=fps_factor, color_map=color_map, label_frames=auto_label
+                fps_factor=fps_factor,
+                contrast=contrast,
+                color_map=color_map,
+                label_frames=auto_label,
             )
 
         if export_frames:
@@ -701,6 +705,7 @@ class MainGui(QMainWindow):
                 ft.export_frames_image(
                     image_format=frame_export_format,
                     frame_range=frame_export_images,
+                    contrast=contrast,
                     color_map=color_map,
                 )
 
@@ -784,6 +789,7 @@ class MainGui(QMainWindow):
 
 
 def main():
+    logging.basicConfig(level=logging.INFO)
     app = QApplication(sys.argv)
     window = MainGui()
     window.show()
