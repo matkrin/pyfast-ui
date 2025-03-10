@@ -565,7 +565,7 @@ class Drift:
                 self.transformations[:, i] = effektive_shift.T
             except Exception:
                 pass
-        log.info("last found correlation indices are {indices}")
+        log.info(f"Last found correlation indices are {indices}")
 
     def _get_drift_phase_cross_correlation(self) -> None:
         """Calculation of the drift by phase cross correlation of two frames."""
