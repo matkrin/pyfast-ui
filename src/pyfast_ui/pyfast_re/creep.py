@@ -340,7 +340,7 @@ class Creep:
             2-Tuple of creep corrected up and down grids.
         """
         if known_params == None:
-            print("starting creep correction")
+            log.info("Starting creep correction")
             for frame_number_index in range(len(frames)):
                 if frames[frame_number_index] % 2 != 0:
                     frames[frame_number_index] += 1
@@ -361,7 +361,7 @@ class Creep:
                         fitresult += popt
                         count += 1
                     except Exception as e:
-                        print(traceback.format_exc())
+                        log.warning(traceback.format_exc())
                         log.warning(f"Caught Exception was '{e}'".format(e))
                         log.info("Fit attempt failed, trying next...")
                         pass
