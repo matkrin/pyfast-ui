@@ -566,7 +566,8 @@ class MainGui(QMainWindow):
         guess_ind = self.creep_group.guess_ind
         weight_boundary = self.creep_group.weight_boundry
         creep_num_cols = self.creep_group.creep_num_cols
-        initial_guess = (self.creep_group.initial_guess,)
+        # initial_guess = (self.creep_group.initial_guess,)
+        initial_guess = self.creep_group.initial_guess
         known_input = None
         known_params = None
 
