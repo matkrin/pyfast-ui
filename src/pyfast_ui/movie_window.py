@@ -1,21 +1,17 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from typing import final, override
 
 import numpy as np
-from pyfast_ui.pyfast_re.channels import Channels
-from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
-from pyfast_ui.pyfast_re.fast_movie import FastMovie
-import skimage as ski
-from matplotlib.widgets import RectangleSelector
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.backends.backend_qtagg import FigureCanvas
 
 # from matplotlib.backends.qt_compat import QtWidgets
 from matplotlib.figure import Figure
+from matplotlib.widgets import RectangleSelector
 from numpy.typing import NDArray
 from PySide6.QtCore import QSize, Signal, SignalInstance
 from PySide6.QtGui import QCloseEvent, QFocusEvent, QKeySequence, QShortcut, Qt
@@ -31,6 +27,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from skimage.transform import resize
+
+from pyfast_ui.pyfast_re.channels import Channels
+from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
+from pyfast_ui.pyfast_re.fast_movie import FastMovie
 
 
 @dataclass
@@ -193,7 +194,7 @@ class MovieWindow(QWidget):
             print(num_frames, y_shape, x_shape)
             data_scaled = np.zeros((num_frames, y_shape, x_shape))
             for i in range(num_frames):
-                data_scaled[i] = ski.transform.resize(
+                data_scaled[i] = resize(
                     self.plot_data[i], (y_shape, x_shape)
                 )
             self.plot_data = data_scaled

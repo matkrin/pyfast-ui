@@ -679,17 +679,15 @@ class MainGui(QMainWindow):
         auto_label = self.export_group.auto_label
 
         frame_export_images = self.export_group.frame_export_images
-        frame_export_channel = self.export_group.frame_export_channel
         frame_export_format = self.export_group.frame_export_format
 
-        image_range = None
-
-        if ft.channels.is_interlaced():
-            ft.rescale((1, 2))
-        else:
-            ft.rescale((scaling[1], scaling[0]))
+        data_copy = ft.data.copy()
 
         if export_movie:
+            if ft.channels.is_interlaced():
+                ft.rescale((1, 2))
+
+            ft.rescale((scaling, scaling))
             ft.export_mp4(
                 fps_factor=fps_factor,
                 contrast=contrast,
@@ -697,12 +695,26 @@ class MainGui(QMainWindow):
                 label_frames=auto_label,
             )
 
+            ft.data = data_copy
+
         if export_frames:
             if frame_export_format == "gwy":
+                if ft.channels.is_interlaced():
+                    ft.rescale((1, 2))
+
                 ft.export_frames_gwy("images", frame_range=frame_export_images)
+                ft.data = data_copy
             elif frame_export_format == "txt":
+                if ft.channels.is_interlaced():
+                    ft.rescale((1, 2))
+
                 ft.export_frames_txt(frame_range=frame_export_images)
+                ft.data = data_copy
             else:
+                if ft.channels.is_interlaced():
+                    ft.rescale((1, 2))
+
+                ft.rescale((scaling, scaling))
                 ft.export_frames_image(
                     image_format=frame_export_format,
                     frame_range=frame_export_images,
@@ -710,8 +722,14 @@ class MainGui(QMainWindow):
                     color_map=color_map,
                 )
 
+                ft.data = data_copy
+
         if export_tiff:
+            if ft.channels.is_interlaced():
+                ft.rescale((1, 2))
             ft.export_tiff()
+            ft.data = data_copy
+
 
     def on_image_correction_apply(self) -> None:
         """Callback for 'Apply' button of the `ImageCorrectionGroup`. Applies

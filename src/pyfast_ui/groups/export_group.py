@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from pyfast_ui.config import ExportConfig
+from pyfast_ui.custom_widgets import LabeledDoubleSpinBox, LabeledSpinBox
 
 
 class ExportGroup(QGroupBox):
@@ -22,8 +23,8 @@ class ExportGroup(QGroupBox):
         export_tiff: bool,
         export_frames: bool,
         frame_export_images: tuple[int, int],
-        frame_export_channel: str,
-        scaling: tuple[float, float],
+        # frame_export_channel: str,
+        scaling: int,
         fps_factor: int,
         frame_export_format: str,
         auto_label: bool,
@@ -51,23 +52,25 @@ class ExportGroup(QGroupBox):
         frame_export_images_layout.addWidget(self._frame_export_images_start)
         frame_export_images_layout.addWidget(self._frame_export_images_end)
 
-        frame_export_channel_lbl = QLabel("Frame export channel")
-        self._frame_export_channel = QComboBox()
-        self._frame_export_channel.addItems(["ui", "di", "uf", "df", "ub", "db"])
-        self._frame_export_channel.setCurrentText(frame_export_channel)
-        frame_export_channel_layout = QHBoxLayout()
-        frame_export_channel_layout.addWidget(frame_export_channel_lbl)
-        frame_export_channel_layout.addWidget(self._frame_export_channel)
+        # frame_export_channel_lbl = QLabel("Frame export channel")
+        # self._frame_export_channel = QComboBox()
+        # self._frame_export_channel.addItems(["ui", "di", "uf", "df", "ub", "db"])
+        # self._frame_export_channel.setCurrentText(frame_export_channel)
+        # frame_export_channel_layout = QHBoxLayout()
+        # frame_export_channel_layout.addWidget(frame_export_channel_lbl)
+        # frame_export_channel_layout.addWidget(self._frame_export_channel)
 
-        scaling_lbl = QLabel("Scaling")
-        self._scaling_start = QDoubleSpinBox(self)
-        self._scaling_start.setValue(scaling[0])
-        self._scaling_end = QDoubleSpinBox(self)
-        self._scaling_end.setValue(scaling[1])
-        scaling_layout = QHBoxLayout()
-        scaling_layout.addWidget(scaling_lbl)
-        scaling_layout.addWidget(self._scaling_start)
-        scaling_layout.addWidget(self._scaling_end)
+        # scaling_lbl = QLabel("Scaling")
+        # self._scaling_start = QDoubleSpinBox(self)
+        # self._scaling_start.setValue(scaling[0])
+        # self._scaling_end = QDoubleSpinBox(self)
+        # self._scaling_end.setValue(scaling[1])
+        # scaling_layout = QHBoxLayout()
+        # scaling_layout.addWidget(scaling_lbl)
+        # scaling_layout.addWidget(self._scaling_start)
+        # scaling_layout.addWidget(self._scaling_end)
+
+        self._scaling = LabeledSpinBox("Scaling", scaling)
 
         fps_factor_lbl = QLabel("FPS factor")
         self._fps_factor = QSpinBox(self)
@@ -94,13 +97,14 @@ class ExportGroup(QGroupBox):
         layout.addWidget(self._export_movie, 0, 0)
         layout.addWidget(self._export_tiff, 0, 1)
         layout.addWidget(self._export_frames, 0, 2)
-        layout.addLayout(scaling_layout, 2, 0, 1, 3)
+        # layout.addLayout(scaling_layout, 2, 0, 1, 3)
+        layout.addWidget(self._scaling, 2, 0, 1, 3)
         layout.addLayout(fps_factor_layout, 3, 0, 1, 3)
         layout.addLayout(frame_export_images_layout, 4, 0, 1, 3)
-        layout.addLayout(frame_export_channel_layout, 5, 0, 1, 3)
-        layout.addLayout(frame_export_format_layout, 6, 0, 1, 3)
-        layout.addWidget(self._auto_label, 7, 0)
-        layout.addWidget(self.apply_btn, 8, 0, 1, 3)
+        # layout.addLayout(frame_export_channel_layout, 5, 0, 1, 3)
+        layout.addLayout(frame_export_format_layout, 5, 0, 1, 3)
+        layout.addWidget(self._auto_label, 6, 0)
+        layout.addWidget(self.apply_btn, 7, 0, 1, 3)
 
     @property
     def export_movie(self) -> bool:
@@ -138,22 +142,21 @@ class ExportGroup(QGroupBox):
         self._frame_export_images_start.setValue(value[0])
         self._frame_export_images_end.setValue(value[1])
 
-    @property
-    def frame_export_channel(self) -> str:
-        return self._frame_export_channel.currentText()
+    # @property
+    # def frame_export_channel(self) -> str:
+    #     return self._frame_export_channel.currentText()
 
-    @frame_export_channel.setter
-    def frame_export_channel(self, value: str) -> None:
-        self._frame_export_channel.setCurrentText(value)
+    # @frame_export_channel.setter
+    # def frame_export_channel(self, value: str) -> None:
+    #     self._frame_export_channel.setCurrentText(value)
 
     @property
-    def scaling(self) -> tuple[float, float]:
-        return (self._scaling_start.value(), self._scaling_end.value())
+    def scaling(self) -> int:
+        return self._scaling.value()
 
     @scaling.setter
-    def scaling(self, value: tuple[float, float]) -> None:
-        self._scaling_start.setValue(value[0])
-        self._scaling_end.setValue(value[1])
+    def scaling(self, value: int) -> None:
+        self._scaling.setValue(value)
 
     @property
     def fps_factor(self) -> int:
@@ -191,7 +194,7 @@ class ExportGroup(QGroupBox):
         self.fps_factor = export_config.fps_factor
         self.auto_label = export_config.auto_label
         self.frame_export_images = export_config.frame_export_images
-        self.frame_export_channel = export_config.frame_export_channel
+        # self.frame_export_channel = export_config.frame_export_channel
         self.frame_export_format = export_config.frame_export_format
 
     def to_config(self) -> ExportConfig:
@@ -203,6 +206,6 @@ class ExportGroup(QGroupBox):
             fps_factor=self.fps_factor,
             auto_label=self.auto_label,
             frame_export_images=self.frame_export_images,
-            frame_export_channel=self.frame_export_channel,
+            # frame_export_channel=self.frame_export_channel,
             frame_export_format=self.frame_export_format,
         )

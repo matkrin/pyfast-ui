@@ -95,11 +95,10 @@ class ExportConfig(BaseModel):
     export_movie: bool = True
     export_tiff: bool = True
     export_frames: bool = False
-    scaling: tuple[float, float] = (2.0, 2.0)
+    scaling: int = 2
     fps_factor: int = 5
     auto_label: bool = True
     frame_export_images: tuple[int, int] = (0, 1)
-    frame_export_channel: FrameExportChannel = "ui"
     frame_export_format: Literal["gwy", "png", "jpg", "bmp"] = "gwy"
 
 
@@ -144,7 +143,7 @@ class Config(BaseModel):
             fft_filter["fft_display_range"][0],
             fft_filter["fft_display_range"][1],
         )
-        export["scaling"] = (export["scaling"][0], export["scaling"][1])
+        export["scaling"] = export["scaling"]
         export["frame_export_images"] = (
             export["frame_export_images"][0],
             export["frame_export_images"][1],
