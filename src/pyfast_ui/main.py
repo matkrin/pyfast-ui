@@ -684,7 +684,7 @@ class MainGui(QMainWindow):
         data_copy = ft.data.copy()
 
         if export_movie:
-            if ft.channels.is_interlaced():
+            if ft.channels is not None and ft.channels.is_interlaced():
                 ft.rescale((1, 2))
 
             ft.rescale((scaling, scaling))
@@ -699,19 +699,19 @@ class MainGui(QMainWindow):
 
         if export_frames:
             if frame_export_format == "gwy":
-                if ft.channels.is_interlaced():
+                if ft.channels is not None and ft.channels.is_interlaced():
                     ft.rescale((1, 2))
 
                 ft.export_frames_gwy("images", frame_range=frame_export_images)
                 ft.data = data_copy
             elif frame_export_format == "txt":
-                if ft.channels.is_interlaced():
+                if ft.channels is not None and ft.channels.is_interlaced():
                     ft.rescale((1, 2))
 
                 ft.export_frames_txt(frame_range=frame_export_images)
                 ft.data = data_copy
             else:
-                if ft.channels.is_interlaced():
+                if ft.channels is not None and ft.channels.is_interlaced():
                     ft.rescale((1, 2))
 
                 ft.rescale((scaling, scaling))
@@ -725,7 +725,7 @@ class MainGui(QMainWindow):
                 ft.data = data_copy
 
         if export_tiff:
-            if ft.channels.is_interlaced():
+            if ft.channels is not None and ft.channels.is_interlaced():
                 ft.rescale((1, 2))
             ft.export_tiff()
             ft.data = data_copy
