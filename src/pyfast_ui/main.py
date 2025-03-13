@@ -730,7 +730,6 @@ class MainGui(QMainWindow):
             ft.export_tiff()
             ft.data = data_copy
 
-
     def on_image_correction_apply(self) -> None:
         """Callback for 'Apply' button of the `ImageCorrectionGroup`. Applies
         a image correction with the set parameters.

@@ -182,11 +182,9 @@ class FrameExport:
             raise ValueError("Data must be reshaped into movie mode")
         if fast_movie.channels is None:
             raise ValueError("FastMovie.channels must be set")
+
         if frame_range[1] > fast_movie.cut_range()[1]:
-            raise ValueError(
-                f"Frame number {frame_range[1]} does not exist, "
-                + f"the movie ends at frame {fast_movie.cut_range()[1]}"
-            )
+            frame_range = (frame_range[0], fast_movie.cut_range()[1] + 1)
 
         self.fast_movie = fast_movie
         self.frame_range = frame_range
@@ -199,7 +197,11 @@ class FrameExport:
         frame_channel_iterator = self.fast_movie.channels.frame_channel_iterator()
 
         frame_start, frame_end = self.frame_range
-        data = self.fast_movie.data[frame_start:frame_end, :, :]
+        frame_end += 1
+        if self.fast_movie.channels.is_up_and_down():
+            frame_end *= 2
+
+        data = self.fast_movie.data[frame_start : frame_end, :, :]
 
         for i in TqdmLogger(range(data.shape[0]), desc="Exporting frames"):
             frame: NDArray[np.float32] = data[i]
@@ -231,6 +233,7 @@ class FrameExport:
         frame_channel_iterator = self.fast_movie.channels.frame_channel_iterator()
 
         frame_start, frame_end = self.frame_range
+        frame_end += 1
         if self.fast_movie.channels.is_up_and_down():
             frame_end *= 2
 

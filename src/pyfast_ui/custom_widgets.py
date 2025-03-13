@@ -1,13 +1,12 @@
 from typing import final
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
-    QProgressBar,
     QSpinBox,
-    QVBoxLayout,
     QWidget,
 )
 
