@@ -69,10 +69,10 @@ class MainGui(QMainWindow):
         self.threadpool = QThreadPool()
 
         ### TEST BUTTON
-        self.open_btn = QPushButton("Open test file")
-        _ = self.open_btn.clicked.connect(self.on_open_btn_click)
+        # self.open_btn = QPushButton("Open test file")
+        # _ = self.open_btn.clicked.connect(self.on_open_btn_click)
 
-        self.central_layout.addWidget(self.open_btn)
+        # self.central_layout.addWidget(self.open_btn)
         ###
 
         self.movie_windows: dict[int, MovieWindow] = dict()
