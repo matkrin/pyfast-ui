@@ -103,10 +103,6 @@ chosen by:
 
 ### Drift
 
-
-            mode: Cut out the largest common area (`"common"`) or apply padding
-                around frames (`"full"`).
-
 - common: Cut out the largest common area for the drift corrected frames.
 - full: Apply padding around drift corrected frames.
 - Mode:
