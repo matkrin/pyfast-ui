@@ -1,9 +1,9 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING, final
 
-import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 from numpy.typing import NDArray
@@ -20,6 +20,17 @@ class FftFilterType(Enum):
 
 @dataclass
 class FftFilterParams:
+    """Boolean parameters for FFT filtering.
+
+    Args:
+        filter_x:
+        filter_y:
+        filter_x_overtones:
+        filter_high_pass:
+        filter_pump:
+        filter_noise:
+    """
+
     filter_x: bool
     filter_y: bool
     filter_x_overtones: bool
@@ -30,6 +41,18 @@ class FftFilterParams:
 
 @final
 class FftFilter:
+    """Class handling FFT filtering of timeseries (1D array) data.
+
+    Args:
+        fast_movie: `FastMovie` instance.
+        filter_config: Boolean parameters for FFT filtering.
+        filter_broadness:
+        num_x_overtones:
+        num_pump_overtones:
+        pump_freqs:
+        high_pass_params:
+    """
+
     def __init__(
         self,
         fast_movie: FastMovie,
@@ -49,6 +72,11 @@ class FftFilter:
         self.high_pass_params = high_pass_params
 
     def filter_movie(self) -> NDArray[np.float32]:
+        """Apply the FFT filtering (does not modify `FastMovie.data`).
+
+        Returns:
+            Filtered movie data.
+        """
         ## Data in frequency domain
         data_fft = scipy.fft.rfft(self.fast_movie.data.copy())
 
@@ -90,6 +118,7 @@ class FftFilter:
     def _determine_filter_frequencies(
         self,
     ) -> tuple[list[float], list[float], list[FftFilterType]]:
+        """Determination the frequencies for FFT filtering."""
         x_frequency = self.fast_movie.metadata.scanner_x_frequency
         y_frequency = self.fast_movie.metadata.scanner_y_frequency
         filter_broadness = self.filter_broadness or y_frequency
@@ -130,5 +159,3 @@ class FftFilter:
             types.append(FftFilterType.HIGHPASS)
 
         return freqs, pars, types
-
-
