@@ -235,7 +235,8 @@ class MainGui(QMainWindow):
     def on_open_btn_click(self) -> None:
         """Just for TEST button"""
         ft = FastMovie(FAST_FILE, y_phase=0)
-        movie_window = MovieWindow(ft, "udi", self._colormap.value())
+        channel = self.channel_select_group.channel
+        movie_window = MovieWindow(ft, channel, self._colormap.value())
         _ = movie_window.window_focused.connect(self.update_focused_window)
         _ = movie_window.window_closed.connect(self.on_movie_window_closed)
         self.movie_windows.update({movie_window.info.id_: movie_window})
