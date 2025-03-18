@@ -4,37 +4,23 @@
 
 ### General Elements
 
-#### Operate on
-
-Shows the currently selected movie window. On this movie the operations take
+__Operate on:__ Shows the currently selected movie window. On this movie the operations take
 place.
 
-#### Import movie
+__Import movie:__ The <kbd>Import movie</kbd> button lets yout import a FastSPM .h5 file.
 
-The <kbd>Import movie</kbd> button lets yout import a FastSPM .h5 file.
+__Load config:__ The <kbd>Load config</kbd> loads a config file in the TOML format.
 
-#### Load config
-
-The <kbd>Load config</kbd> loads a config file in the TOML format.
-
-#### Save config
-
-The <kbd>Save Config</kbd> saves the currently set parameters as a config file
+__Save config:__ The <kbd>Save Config</kbd> saves the currently set parameters as a config file
 in TOML format.
 
-#### Channel
-
-You can choose another channel of the currently selected movie via the dropdown.
+__Channel:__ You can choose another channel of the currently selected movie via the dropdown.
 Create a new movie window with the <kbd>New</kbd> button.
 
-#### Colormap
-
-Lets you choose another colormap which gets applied for all open movie windows
+__Colormap:__ Lets you choose another colormap which gets applied for all open movie windows
 via the dropdown.
 
-#### Histogram
-
-Clicking the <kbd>Histogram</kbd> button shows another window with a histogram
+__Histogram:__ Clicking the <kbd>Histogram</kbd> button shows another window with a histogram
 of the image intensities. In this window the cutoff of the colormap can be
 chosen by:
 
@@ -79,10 +65,10 @@ chosen by:
 
 ### Creep Correction
 
-- None
-- sin
-- bezier
-- root
+- None: Do not apply a creep correction but just perform an interpolation.
+- sin: Creep correction by fitting a sin function.
+- bezier: Creep correction by fitting a bezier curve.
+- root: Creep correction by fitting a root function.
 - Bezier parameters:
   - Weight boundry
   - Creep num cols
@@ -96,10 +82,13 @@ chosen by:
 
 ### Modify
 
-- <kbd>Toggle crop selection</kbd>
-- <kbd>Crop</kbd>
-- Cut frames
-- <kbd>Cut</kbd>
+- <kbd>Toggle crop selection</kbd> : Toggle the ability to select the crop area by
+    dragging the mouse in a movie file. 
+- <kbd>Crop</kbd> : Crop the frames of the movie according to the crop selection
+    area.
+- Cut frames: Input for start and end frame for movie cutting.
+- <kbd>Cut</kbd> : Apply cutting of the currently selected movie for the frames
+    specified by 'Cut frames'.
 
 ### Drift
 
