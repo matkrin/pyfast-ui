@@ -4,25 +4,26 @@
 
 ### General Elements
 
-__Operate on:__ Shows the currently selected movie window. On this movie the operations take
-place.
+__Operate on:__ Shows the currently selected movie window. On this movie the
+operations take place.
 
-__Import movie:__ The <kbd>Import movie</kbd> button lets yout import a FastSPM .h5 file.
+__Import movie:__ The <kbd>Import movie</kbd> button lets yout import a FastSPM
+.h5 file.
 
-__Load config:__ The <kbd>Load config</kbd> loads a config file in the TOML format.
+__Load config:__ The <kbd>Load config</kbd> loads a config file in the TOML
+format.
 
-__Save config:__ The <kbd>Save Config</kbd> saves the currently set parameters as a config file
-in TOML format.
+__Save config:__ The <kbd>Save Config</kbd> saves the currently set parameters
+as a config file in TOML format.
+ __Channel:__ You can choose another channel of the currently selected movie via
+the dropdown. Create a new movie window with the <kbd>New</kbd> button.
 
-__Channel:__ You can choose another channel of the currently selected movie via the dropdown.
-Create a new movie window with the <kbd>New</kbd> button.
+__Colormap:__ Lets you choose another colormap which gets applied for all open
+movie windows via the dropdown.
 
-__Colormap:__ Lets you choose another colormap which gets applied for all open movie windows
-via the dropdown.
-
-__Histogram:__ Clicking the <kbd>Histogram</kbd> button shows another window with a histogram
-of the image intensities. In this window the cutoff of the colormap can be
-chosen by:
+__Histogram:__ Clicking the <kbd>Histogram</kbd> button shows another window
+with a histogram of the image intensities. In this window the cutoff of the
+colormap can be chosen by:
 
 1. The range slider
 2. Absolute minimum and maximum values
@@ -39,8 +40,8 @@ chosen by:
 - Manual y-phase: Override y-phase value from metadata.
 - Index frame to correlate: Index of the frame used for correlation.
 - Sigma Gauss
-- <kbd>Apply</kbd> : Perform the phase correction for the currently selected movie
-    and update it.
+- <kbd>Apply</kbd> : Perform the phase correction for the currently selected
+   movie and update it.
 - <kbd>New</kbd> : Perform the phase correction for the currently selected movie
     and create a new one.
 
@@ -70,11 +71,11 @@ chosen by:
 - bezier: Creep correction by fitting a bezier curve.
 - root: Creep correction by fitting a root function.
 - Bezier parameters:
-  - Weight boundry
-  - Creep num cols
+    - Weight boundry
+    - Creep num cols
 - Non-bezier parameters:
-  - Initial guess
-  - Guess Ind
+    - Initial guess
+    - Guess Ind
 - <kbd>Apply</kbd> : Perform the creep correction for the currently selected movie
     and update it.
 - <kbd>New</kbd> : Perform the creep correction for the currently selected movie

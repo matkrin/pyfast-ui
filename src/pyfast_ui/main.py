@@ -666,7 +666,7 @@ class MainGui(QMainWindow):
         if histogram_window is None:
             contrast = (0.0, 1.0)
         else:
-            contrast = histogram_window.contrast_percent()
+            contrast = histogram_window.contrast_percentile()
 
         print(contrast)
         ft = fast_movie_window.ft
