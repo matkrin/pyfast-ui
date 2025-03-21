@@ -35,11 +35,11 @@ colormap can be chosen by:
 
 ### Phase Correction
 
-- Apply auto x-phase: Determine x-phase via correlation.
-- Additional x-phase: Value added to the x-phase.
-- Manual y-phase: Override y-phase value from metadata.
-- Index frame to correlate: Index of the frame used for correlation.
-- Sigma Gauss
+- __Apply auto x-phase:__ Determine x-phase via correlation.
+- __Additional x-phase:__ Value added to the x-phase.
+- __Manual y-phase:__ Override y-phase value from metadata.
+- __Index frame to correlate:__ Index of the frame used for correlation.
+- __Sigma Gauss:__
 - <kbd>Apply</kbd> : Perform the phase correction for the currently selected
    movie and update it.
 - <kbd>New</kbd> : Perform the phase correction for the currently selected movie
@@ -47,33 +47,33 @@ colormap can be chosen by:
 
 ### FFT Filters
 
-- Filter x
-- Filter y
-- Filter x overtones
-- Filter high pass
-- Filter pump
-- Filter noise
-- Display spectrum
-- Filter broadness
-- Num x overtones
-- High pass params
-- FFt display range
-- Pump freqs
-- <kbd>Apply</kbd> : Perform FFT filtering for the currently selected movie
+- __Filter x:__
+- __Filter y:__
+- __Filter x overtones:__
+- __Filter high pass:__
+- __Filter pump:__
+- __Filter noise:__
+- __Display spectrum:__
+- __Filter broadness:__
+- __Num x overtones:__
+- __High pass params:__
+- __FFT display range:__
+- __Pump freqs:__
+- <kbd>Apply</kbd> :_ Perform FFT filtering for the currently selected movie
     and update it.
 - <kbd>New</kbd> : Perform FFT filtering for the currently selected movie
     and create a new one.
 
 ### Creep Correction
 
-- None: Do not apply a creep correction but just perform an interpolation.
-- sin: Creep correction by fitting a sin function.
-- bezier: Creep correction by fitting a bezier curve.
-- root: Creep correction by fitting a root function.
-- Bezier parameters:
+- __None:__ Do not apply a creep correction but just perform an interpolation.
+- __sin:__ Creep correction by fitting a sin function.
+- __bezier:__ Creep correction by fitting a bezier curve.
+- __root:__ Creep correction by fitting a root function.
+- __Bezier parameters:__
     - Weight boundry
     - Creep num cols
-- Non-bezier parameters:
+- __Non-bezier parameters:__
     - Initial guess
     - Guess Ind
 - <kbd>Apply</kbd> : Perform the creep correction for the currently selected movie
@@ -87,26 +87,26 @@ colormap can be chosen by:
     dragging the mouse in a movie file. 
 - <kbd>Crop</kbd> : Crop the frames of the movie according to the crop selection
     area.
-- Cut frames: Input for start and end frame for movie cutting.
+- __Cut frames:__ Input for start and end frame for movie cutting.
 - <kbd>Cut</kbd> : Apply cutting of the currently selected movie for the frames
     specified by 'Cut frames'.
 
 ### Drift
 
-- common: Cut out the largest common area for the drift corrected frames.
-- full: Apply padding around drift corrected frames.
-- Mode:
+- __common:__ Cut out the largest common area for the drift corrected frames.
+- __full:__ Apply padding around drift corrected frames.
+- __Mode:__
     - correlation: Drift correction via cross correlation of two frames.
     - stackreg: Drift correction via [pystackref][https://pystackreg.readthedocs.io/en/latest/]
     - known: Drift correction via a previously saved '.drift.txt' file.
-- Correlation paramters (apply only if 'Mode' is set to correlation):
+- __Correlation paramters:__ (apply only if 'Mode' is set to correlation)
     - Stepsize: The moving window size of frames to correlate to each other.
       Applies on if 'Mode' is set to correlation.
-- StackReg parameters (apply only if 'Mode' is set to stackreg):
+- __StackReg parameters:__ (apply only if 'Mode' is set to stackreg):
     - previous: Perform image registration with respect to the previous frame.
     - first: Perform image registration with respect to the first frame.
     - mean: Perform image registration with respect to the average over all frames.
-- Filter:
+- __Filter:__
     - Boxcar width: Width of the boxcar filter that is used for smoothing the drift path.
     - Median filter: Tick for smoothing the drift path with a median filter of size 3.
 - <kbd>Apply</kbd> : Perform the drift correction for the currently selected movie
@@ -116,8 +116,8 @@ colormap can be chosen by:
 
 ### Image Correction
 
-- Corretion type
-- Align type
+- __Corretion type:__
+- __Align type:__
 - <kbd>Apply</kbd> : Perform the image correction for the currently selected movie
     and update it.
 - <kbd>New</kbd> : Perform the image correction for the currently selected movie
@@ -125,8 +125,8 @@ colormap can be chosen by:
 
 ### Image Filter
 
-- Filter type
-- Pixel width
+- __Filter type:__
+- __Pixel width:__
 - <kbd>Apply</kbd> : Perform the image filter for the currently selected movie
     and update it.
 - <kbd>New</kbd> : Perform the image filter for the currently selected movie
@@ -134,12 +134,12 @@ colormap can be chosen by:
 
 ### Export
 
-- MP4: Tick for exporting the movie as an .mp4 file.
-- TIFF: Tick for exporting the movie as a multipage .tiff file.
-- Frames: Tick for exporting one or multiple frames of the movie.
-- Scaling: Scaling multiplication factor that gets applied in x and y dimensions.
-- FPS factor: Factor that gets multplied to frames per second from movie acquistion.
-- Frame export images: Sets the range of frames to export
-- Frame export format: Sets the file format for saving frames.
-- Auto label: Tick for labeling frames in the .mp4 file or .png file.
+- __MP4:__ Tick for exporting the movie as an .mp4 file.
+- __TIFF:__ Tick for exporting the movie as a multipage .tiff file.
+- __Frames:__ Tick for exporting one or multiple frames of the movie.
+- __Scaling:__ Scaling multiplication factor that gets applied in x and y dimensions.
+- __FPS factor:__ Factor that gets multplied to frames per second from movie acquistion.
+- __Frame export images:__ Sets the range of frames to export
+- __Frame export format:__ Sets the file format for saving frames.
+- __Auto label:__ Tick for labeling frames in the .mp4 file or .png file.
 - <kbd>Export</kbd>: Perform the movie and frame export.
