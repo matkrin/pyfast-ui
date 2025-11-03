@@ -36,7 +36,7 @@ from pyfast_ui.pyfast_re.data_mode import DataMode
 from pyfast_ui.pyfast_re.fast_movie import FastMovie
 from pyfast_ui.workers import CreepWorker, DriftWorker, FftFilterWorker
 
-FAST_FILE = "/home/matthias/github/pyfastspm/examples/F20190424_1.h5"
+FAST_FILE = "/Users/matthias/Documents/work/pyfast/FS_250520_001.h5"
 
 
 @final
@@ -69,10 +69,10 @@ class MainGui(QMainWindow):
         self.threadpool = QThreadPool()
 
         ### TEST BUTTON
-        # self.open_btn = QPushButton("Open test file")
-        # _ = self.open_btn.clicked.connect(self.on_open_btn_click)
+        self.open_btn = QPushButton("Open test file")
+        _ = self.open_btn.clicked.connect(self.on_open_btn_click)
 
-        # self.central_layout.addWidget(self.open_btn)
+        self.central_layout.addWidget(self.open_btn)
         ###
 
         self.movie_windows: dict[int, MovieWindow] = dict()
@@ -520,6 +520,7 @@ class MainGui(QMainWindow):
         num_pump_overtones = self.fft_filters_group.num_pump_overtones
         num_x_overtones = self.fft_filters_group.num_x_overtones
         high_pass_params = self.fft_filters_group.high_pass_params
+        display_spectrum = self.fft_filters_group.display_spectrum
 
         filterparams = self.fft_filters_group.filterparams
 
@@ -536,6 +537,9 @@ class MainGui(QMainWindow):
 
         _ = fft_filter_worker.signals.finished.connect(fast_movie_window.end_processing)
         self.threadpool.start(fft_filter_worker)
+        if display_spectrum:
+            _ = self.threadpool.waitForDone()
+            ft.plot_fft(fft_display_range)
 
     def on_fft_filter_new(self) -> None:
         """Callback for 'New' button of the `FftFilterGroup`. Creates a new
