@@ -82,7 +82,7 @@ class LabeledDoubleSpinBox(QWidget):
         self.setLayout(layout)
         self.label = QLabel(label_text)
         self.spinbox = QDoubleSpinBox()
-        self.spinbox.setFixedWidth(50)
+        # self.spinbox.setFixedWidth(50)
         self.spinbox.setValue(spinbox_value)
         layout.addWidget(self.label)
         layout.addWidget(self.spinbox)

@@ -31,6 +31,7 @@ FrameExportChannel: TypeAlias = Literal[
 class GeneralConfig(BaseModel):
     channel: ChannelType = "udi"
     colormap: str = "bone"
+    histogram_percentile: tuple[float, float] = (0.0, 1.0)
 
 
 class PhaseConfig(BaseModel):
@@ -87,7 +88,7 @@ class ImageCorrectionConfig(BaseModel):
 
 
 class ImageFilterConfig(BaseModel):
-    filter_type: Literal["gaussian2d", "median2d", "mean2d"] = "gaussian2d"
+    filter_type: Literal["gauss", "median", "mean"] = "gauss"
     pixel_width: int = 3
 
 
