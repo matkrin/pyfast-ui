@@ -78,7 +78,7 @@ class MainGui(QMainWindow):
         self.movie_windows: dict[int, MovieWindow] = dict()
         self.histogram_windows: dict[int, HistogramWindow] = dict()
         self.operate_on: int | None = None
-        config = init_config()
+        self.config = init_config()
 
         self.operate_label = QLabel("Operate on: ")
 
@@ -95,25 +95,25 @@ class MainGui(QMainWindow):
         self.channel_select_group = ChannelSelectGroup()
         # Colormap
         self._colormap = LabeledCombobox("Colormap", plt.colormaps())
-        self._colormap.combobox.setCurrentText(config.general.colormap)
+        self._colormap.combobox.setCurrentText(self.config.general.colormap)
         # Histogram
         self.histogram_btn = QPushButton("Histogram")
         _ = self.histogram_btn.clicked.connect(self.on_histogram_btn)
 
-        self.phase_group = PhaseGroup.from_config(config.phase)
-        self.fft_filters_group = FFTFiltersGroup.from_config(config.fft_filter)
-        self.creep_group = CreepGroup.from_config(config.creep)
+        self.phase_group = PhaseGroup.from_config(self.config.phase)
+        self.fft_filters_group = FFTFiltersGroup.from_config(self.config.fft_filter)
+        self.creep_group = CreepGroup.from_config(self.config.creep)
         self.modify_group = ModifyGroup(cut_range=(0, 0))
 
         # TODO
         # streak_removal_group = QGroupBox("Streak Removal")
 
-        self.drift_group = DriftGroup.from_config(config.drift)
+        self.drift_group = DriftGroup.from_config(self.config.drift)
         self.image_correction_group = ImageCorrectionGroup.from_config(
-            config.image_correction
+            self.config.image_correction
         )
-        self.image_filter_group = ImageFilterGroup.from_config(config.image_filter)
-        self.export_group = ExportGroup.from_config(config.export)
+        self.image_filter_group = ImageFilterGroup.from_config(self.config.image_filter)
+        self.export_group = ExportGroup.from_config(self.config.export)
 
         # Create layouts
         horizontal_layout = QHBoxLayout()
@@ -668,7 +668,7 @@ class MainGui(QMainWindow):
 
         histogram_window = self.histogram_windows.get(self.operate_on)
         if histogram_window is None:
-            contrast = (0.0, 1.0)
+            contrast = self.config.general.histogram_percentile
         else:
             contrast = histogram_window.contrast_percentile()
 
