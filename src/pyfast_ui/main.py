@@ -278,8 +278,16 @@ class MainGui(QMainWindow):
         )
         filepath = Path(filepath).with_suffix(".toml")
 
+        contrast = self.config.general.histogram_percentile
+        if self.operate_on is not None:
+            histogram_window = self.histogram_windows.get(self.operate_on)
+            if histogram_window is not None:
+                contrast = histogram_window.contrast_percentile()
+
         general_config = GeneralConfig(
-            channel=self.channel_select_group.channel, colormap=self._colormap.value()
+            channel=self.channel_select_group.channel,
+            colormap=self._colormap.value(),
+            histogram_percentile=contrast,
         )
         config = Config(
             general=general_config,
