@@ -87,6 +87,7 @@ class MovieWindow(QWidget):
 
         self.setWindowTitle(f"{self.info.filename}({self.info.id_})-{self.picked_channels}")
         self.setFocusPolicy(Qt.StrongFocus)
+        self.move(1000, 0)
 
         layout = QVBoxLayout()
         self.setLayout(layout)

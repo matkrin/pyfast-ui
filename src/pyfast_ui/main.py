@@ -340,22 +340,35 @@ class MainGui(QMainWindow):
             if filepath.is_file() and filepath.suffix == ".h5":
                 ft = FastMovie(str(filepath), y_phase=0)
                 colormap = self._colormap.value()
-                movie_window = MovieWindow(ft, "udi", colormap)
+                channel = self.channel_select_group.channel
+                movie_window = MovieWindow(ft, channel, colormap)
                 _ = movie_window.window_focused.connect(self.update_focused_window)
                 self.movie_windows.update({movie_window.info.id_: movie_window})
                 self.update_focused_window(movie_window.info)
                 # movie_window.show()
+                # Phase
                 self.on_phase_apply()
+                _ = self.threadpool.waitForDone()
+                # FFT filter
                 self.on_fft_filter_apply()
                 _ = self.threadpool.waitForDone()
+                # Creep
                 self.on_creep_apply()
                 _ = self.threadpool.waitForDone()
-                # self.on_drift_apply()
-                # _ = self.threadpool.waitForDone()
+
+                # Image correction
                 self.on_image_correction_apply()
                 _ = self.threadpool.waitForDone()
+
+                # Drift
+                # self.on_drift_apply()
+                # _ = self.threadpool.waitForDone()
+
+                # Image filter
                 # self.on_image_filter_apply()
                 # _ = self.threadpool.waitForDone()
+
+                # Export
                 self.on_export_apply()
                 _ = self.threadpool.waitForDone()
 
@@ -807,9 +820,18 @@ class MainGui(QMainWindow):
 
         print("New Histogram")
         histogram_window = HistogramWindow(
-            fast_movie_window.ft, fast_movie_window.info, fast_movie_window.set_clim
+            fast_movie_window.ft,
+            fast_movie_window.info,
+            self.config.general.histogram_percentile,
+            fast_movie_window.set_clim,
         )
         self.histogram_windows.update({fast_movie_window.info.id_: histogram_window})
+        histogram_window._on_change_limit_percentile(
+            (
+                self.config.general.histogram_percentile[0] * 100,
+                self.config.general.histogram_percentile[1] * 100,
+            )
+        )
         histogram_window.show()
 
     @override
