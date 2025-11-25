@@ -8,6 +8,7 @@ from PySide6.QtCore import QCoreApplication, QThreadPool
 from PySide6.QtGui import QCloseEvent, Qt
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pyfast_ui.batch_dialog import BatchDialog
 from pyfast_ui.config import Config, GeneralConfig, init_config
 from pyfast_ui.custom_widgets import LabeledCombobox
 from pyfast_ui.groups.channel_select_group import ChannelSelectGroup
@@ -69,10 +71,10 @@ class MainGui(QMainWindow):
         self.threadpool = QThreadPool()
 
         ### TEST BUTTON
-        self.open_btn = QPushButton("Open test file")
-        _ = self.open_btn.clicked.connect(self.on_open_btn_click)
+        # self.open_btn = QPushButton("Open test file")
+        # _ = self.open_btn.clicked.connect(self.on_open_btn_click)
 
-        self.central_layout.addWidget(self.open_btn)
+        # self.central_layout.addWidget(self.open_btn)
         ###
 
         self.movie_windows: dict[int, MovieWindow] = dict()
@@ -336,6 +338,16 @@ class MainGui(QMainWindow):
             options=QFileDialog.Option.ShowDirsOnly,
         )
         dirpath = Path(dirname)
+
+        dialog = BatchDialog()
+        result = dialog.exec()
+
+        if result != QDialog.Accepted:
+            return
+
+        selected = dialog.get_selected_options()
+        print("Batch Mode Selected options:", selected)
+
         for filepath in dirpath.iterdir():
             if filepath.is_file() and filepath.suffix == ".h5":
                 ft = FastMovie(str(filepath), y_phase=0)
@@ -346,29 +358,26 @@ class MainGui(QMainWindow):
                 self.movie_windows.update({movie_window.info.id_: movie_window})
                 self.update_focused_window(movie_window.info)
                 # movie_window.show()
-                # Phase
-                self.on_phase_apply()
-                _ = self.threadpool.waitForDone()
-                # FFT filter
-                self.on_fft_filter_apply()
-                _ = self.threadpool.waitForDone()
-                # Creep
-                self.on_creep_apply()
-                _ = self.threadpool.waitForDone()
 
-                # Image correction
-                self.on_image_correction_apply()
-                _ = self.threadpool.waitForDone()
+                if selected.phase:
+                    self.on_phase_apply()
+                    _ = self.threadpool.waitForDone()
+                if selected.fft_filter:
+                    self.on_fft_filter_apply()
+                    _ = self.threadpool.waitForDone()
+                if selected.creep:
+                    self.on_creep_apply()
+                    _ = self.threadpool.waitForDone()
+                if selected.image_correction:
+                    self.on_image_correction_apply()
+                    _ = self.threadpool.waitForDone()
+                if selected.drift:
+                    self.on_drift_apply()
+                    _ = self.threadpool.waitForDone()
+                if selected.image_filter:
+                    self.on_image_filter_apply()
+                    _ = self.threadpool.waitForDone()
 
-                # Drift
-                # self.on_drift_apply()
-                # _ = self.threadpool.waitForDone()
-
-                # Image filter
-                # self.on_image_filter_apply()
-                # _ = self.threadpool.waitForDone()
-
-                # Export
                 self.on_export_apply()
                 _ = self.threadpool.waitForDone()
 
