@@ -831,7 +831,6 @@ class MainGui(QMainWindow):
         histogram_window = HistogramWindow(
             fast_movie_window.ft,
             fast_movie_window.info,
-            self.config.general.histogram_percentile,
             fast_movie_window.set_clim,
         )
         self.histogram_windows.update({fast_movie_window.info.id_: histogram_window})

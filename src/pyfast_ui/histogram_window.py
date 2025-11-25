@@ -31,7 +31,6 @@ class HistogramWindow(QWidget):
         self,
         fast_movie: FastMovie,
         movie_info: MovieInfo,
-        initial_value: tuple[float, float],
         update_callback: Callable[[float, float], None],
     ) -> None:
         super().__init__()
@@ -63,8 +62,8 @@ class HistogramWindow(QWidget):
         self._limit_absolute.setFixedWidth(300)
 
         self._limit_percentile = LabeledDoubleSpinBoxes("Limit percentile", (0, 100))
-        self._limit_percentile.spinbox_left.setMinimum(initial_value[0] * 100)
-        self._limit_percentile.spinbox_right.setMaximum(initial_value[1] * 100)
+        self._limit_percentile.spinbox_left.setMinimum(0)
+        self._limit_percentile.spinbox_right.setMaximum(100)
         self._limit_percentile.setFixedWidth(300)
 
         inputs_layout = QVBoxLayout()
