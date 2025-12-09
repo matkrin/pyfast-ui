@@ -84,7 +84,7 @@ class DriftConfig(BaseModel):
 
 class ImageCorrectionConfig(BaseModel):
     correction_type: Literal["align", "plane", "fixzero"] = "align"
-    align_type: Literal["median", "mean", "poly2", "poly3"] = "median"
+    align_type: Literal["median", "median of diff", "mean", "poly2", "poly3"] = "median"
 
 
 class ImageFilterConfig(BaseModel):

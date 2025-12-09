@@ -374,7 +374,7 @@ class Drift:
         corrspeed: Difference between two correlation windows.
         boxcar: Width of the boxcar filter that applied to the
             drift path. Set to 0 if no boxcar filter should be applied.
-        median_filter: Paramter to decide if the drift path should be smoothed
+        median_filter: Parameter to decide if the drift path should be smoothed
             via a median filter of kernel size 3.
     """
 

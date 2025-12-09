@@ -499,7 +499,7 @@ class FastMovie:
             self.data[i] = frame_corrections.convolve_frame(self.data[i], edge_removal)  # pyright: ignore[reportAny]
 
     def align_rows(
-        self, align_type: Literal["median", "mean", "poly2", "poly3"]
+        self, align_type: Literal["median", "median of diff", "mean", "poly2", "poly3"]
     ) -> None:
         """Frame background correction by row alignment.
 

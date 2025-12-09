@@ -83,7 +83,9 @@ class LabeledDoubleSpinBox(QWidget):
         self.label = QLabel(label_text)
         self.spinbox = QDoubleSpinBox()
         # self.spinbox.setFixedWidth(50)
+        self.spinbox.setRange(0.0, 1000.0)
         self.spinbox.setValue(spinbox_value)
+        self.spinbox.setDecimals(1)
         layout.addWidget(self.label)
         layout.addWidget(self.spinbox)
 
@@ -110,12 +112,15 @@ class LabeledDoubleSpinBoxes(QWidget):
         self.spinbox_left.setRange(0.0, 10_000.0)
         self.spinbox_left.setValue(spinbox_values[0])
         _ = self.spinbox_left.valueChanged.connect(self._emit_value_changed)
+        self.spinbox_left.setDecimals(1)
 
         self.spinbox_right = QDoubleSpinBox()
         self.spinbox_right.setFixedWidth(80)
         self.spinbox_right.setRange(0.0, 10_000.0)
         self.spinbox_right.setValue(spinbox_values[1])
         _ = self.spinbox_right.valueChanged.connect(self._emit_value_changed)
+        self.spinbox_right.setDecimals(1)
+
 
         layout.addWidget(self.label)
         layout.addWidget(self.spinbox_left)

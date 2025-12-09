@@ -17,7 +17,7 @@ class ImageCorrectionGroup(QGroupBox):
             "Correction type", ["align", "plane", "fixzero"]
         )
         self._align_type = LabeledCombobox(
-            "Align type", ["median", "mean", "poly2", "poly3"]
+            "Align type", ["median", "median of diff", "mean", "poly2", "poly3"]
         )
 
         self.apply_btn = QPushButton("Apply")
