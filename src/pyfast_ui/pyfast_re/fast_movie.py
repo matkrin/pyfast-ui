@@ -518,21 +518,47 @@ class FastMovie:
             self.data[i] -= background
 
     def level_plane(self) -> None:
-        """Frame background correction by subtraction of a fitted background plane."""
+        """Frame background correction by subtraction of a fitted background plane.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
         for i in TqdmLogger(range(self.data.shape[0]), desc="Leveling planes"):
             background = frame_corrections.level_plane(self.data[i])  # pyright: ignore[reportAny]
             # Mutate data
             self.data[i] -= background
 
     def fix_zero(self) -> None:
-        """Correct data offset, so that the minimum data point is fixed to zero."""
+        """Correct data offset, so that the minimum data point is fixed to zero.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
         for i in range(self.data.shape[0]):
             # Mutate data
             self.data[i] -= self.data[i].min()  # pyright: ignore[reportAny]
 
+    def filter_frames_gaussian(self, sigma: float) -> None:
+        """Filter each frame using a gaussian convolutional filter.
+
+        Args:
+            sigma: Standard deviation for Gaussian kernel.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
+        if self.mode != DataMode.MOVIE:
+            raise ValueError("Data must be reshaped into movie mode")
+
+        for i in range(self.data.shape[0]):
+            self.data[i] = gaussian_filter(
+                self.data[i],  # pyright: ignore[reportAny]
+                sigma,
+            )
+
     def filter_frames(
         self,
-        filter_type: Literal["gauss", "median", "mean"],
+        filter_type: Literal["median", "mean"],
         kernel_size: int,
     ) -> None:
         """Filter each frame using a convolutional filter.
@@ -548,13 +574,6 @@ class FastMovie:
             raise ValueError("Data must be reshaped into movie mode")
 
         match filter_type:
-            case "gauss":
-                for i in range(self.data.shape[0]):
-                    self.data[i] = gaussian_filter(
-                        self.data[i],  # pyright: ignore[reportAny]
-                        kernel_size - 1,
-                        truncate=0.5,
-                    )
             case "median":
                 for i in range(self.data.shape[0]):
                     self.data[i] = median_filter(
@@ -566,6 +585,7 @@ class FastMovie:
                 kernel = np.ones(kernel_shape) / (kernel_size * kernel_size)
                 for i in range(self.data.shape[0]):
                     self.data[i] = convolve2d(self.data[i], kernel, mode="same")  # pyright: ignore[reportAny]
+
             case _:  # pyright: ignore[reportUnnecessaryComparison]
                 raise ValueError(  # pyright: ignore[reportUnreachable]
                     "Parameter 'filter_types' must be 'gauss', 'median' or 'mean'"

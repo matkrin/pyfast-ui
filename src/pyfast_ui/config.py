@@ -89,6 +89,7 @@ class ImageCorrectionConfig(BaseModel):
 
 class ImageFilterConfig(BaseModel):
     filter_type: Literal["gauss", "median", "mean"] = "gauss"
+    gauss_sigma: float = 1.0
     pixel_width: int = 3
 
 

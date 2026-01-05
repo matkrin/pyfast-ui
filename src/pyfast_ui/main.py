@@ -804,8 +804,13 @@ class MainGui(QMainWindow):
         ft = fast_movie_window.ft
         filter_type = self.image_filter_group.filter_type
         pixel_width = self.image_filter_group.pixel_width
+        gauss_sigma = self.image_filter_group.gauss_sigma
 
-        ft.filter_frames(filter_type=filter_type, kernel_size=pixel_width)
+        if filter_type == "gauss":
+            ft.filter_frames_gaussian(gauss_sigma)
+        else:
+            assert filter_type == "median" or filter_type == "mean"  # type assertion
+            ft.filter_frames(filter_type=filter_type, kernel_size=pixel_width)
 
         fast_movie_window.recreate_plot()
 
