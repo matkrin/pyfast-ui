@@ -1,42 +1,48 @@
-from typing import Callable, Literal, TypeAlias, cast
+from __future__ import annotations
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
+from typing import Callable, cast
 from scipy.signal import convolve2d
 
 
-AlignFunc: TypeAlias = Callable[[NDArray[np.float32]], NDArray[np.float32]]
+AlignFunc = Callable[[NDArray[np.float32]], NDArray[np.float32]]
 
 
 def align_rows(
-    frame: NDArray[np.float32], align_type: Literal["median", "mean", "poly2", "poly3"]
+    frame: NDArray[np.float32],
+    align_type: str = "median",
 ) -> NDArray[np.float32]:
-    """Align the rows of a frame.
-
-    Args:
-        frame: The frame of which the rows will be aligned.
-        align_type: Correction algorithm for row alignment.
-
-    Returns:
-        The background that needs to be substracted from the image for row alignment.
     """
+    Align rows of a 2D frame based on the selected method.
+    """
+
     match align_type:
         case "median":
             func: AlignFunc = lambda row: np.full(row.shape[0], np.median(row))  # noqa: E731
+        case "median of diff":
+            # placeholder (actual implementation handled before apply_along_axis)
+            func: AlignFunc = lambda row: np.full(row.shape[0], np.median(row))  # noqa: E731
         case "mean":
-            func = lambda row: np.full(row.shape[0], np.median(row))  # noqa: E731
+            func: AlignFunc = lambda row: np.full(row.shape[0], np.mean(row))  # noqa: E731
         case "poly2":
-            func = lambda row: _poly_background(row, 2)  # noqa: E731
+            func: AlignFunc = lambda row: _poly_background(row, 2)  # noqa: E731
         case "poly3":
-            func = lambda row: _poly_background(row, 3)  # noqa: E731
+            func: AlignFunc = lambda row: _poly_background(row, 3)  # noqa: E731
+        case _:
+            func: AlignFunc = lambda row: np.full(row.shape[0], np.median(row))  # noqa: E731
 
-    background = np.apply_along_axis(
-        func,
-        axis=1,
-        arr=frame,
-    )
+    # Special handling: "median of diff" depends on adjacent rows, not just a single row.
+    if align_type == "median of diff":
+        med = np.median(frame, axis=1).astype(np.float32)
+        diff = np.zeros_like(med, dtype=np.float32)
+        if med.shape[0] > 1:
+            diff[1:] = med[1:] - med[:-1]
+        background = np.repeat(diff[:, None], frame.shape[1], axis=1)
+        return cast(NDArray[np.float32], background)
 
-    return background
+    background = np.apply_along_axis(func, axis=1, arr=frame)
+    return cast(NDArray[np.float32], background)
 
 
 def level_plane(frame: NDArray[np.float32]) -> NDArray[np.float32]:
