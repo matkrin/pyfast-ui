@@ -178,6 +178,7 @@ class HistogramWindow(QWidget):
         self._updating = True
         try:
             min_percent, max_percent = new_value
+            self._limit_percentile.setValue(new_value)
             # min_absolute = self.data_min + (min_percent / 100) * ( self.data_max - self.data_min)
             # max_absolute = self.data_min + (max_percent / 100) * ( self.data_max - self.data_min)
             min_absolute = np.percentile(self.data, min_percent)
