@@ -84,6 +84,7 @@ class MainGui(QMainWindow):
 
         self.operate_label = QLabel("Operate on: ")
 
+        # Config load/save buttons
         config_layout = QHBoxLayout()
         self.load_config_btn = QPushButton("Load config")
         self.save_config_btn = QPushButton("Save config")
@@ -91,24 +92,26 @@ class MainGui(QMainWindow):
         config_layout.addWidget(self.save_config_btn)
 
         self.import_btn = QPushButton("Import movie")
+
         # Batch mode
         self.batch_btn = QPushButton("Batch")
         _ = self.batch_btn.clicked.connect(self.batch_mode)
         self.channel_select_group = ChannelSelectGroup()
+
         # Colormap
         self._colormap = LabeledCombobox("Colormap", plt.colormaps())
         self._colormap.combobox.setCurrentText(self.config.general.colormap)
+
         # Histogram
         self.histogram_btn = QPushButton("Histogram")
+        self._histogram_percentile_limits = self.config.general.histogram_percentile
         _ = self.histogram_btn.clicked.connect(self.on_histogram_btn)
 
+        # Groups
         self.phase_group = PhaseGroup.from_config(self.config.phase)
         self.fft_filters_group = FFTFiltersGroup.from_config(self.config.fft_filter)
         self.creep_group = CreepGroup.from_config(self.config.creep)
         self.modify_group = ModifyGroup(cut_range=(0, 0))
-
-        # TODO
-        # streak_removal_group = QGroupBox("Streak Removal")
 
         self.drift_group = DriftGroup.from_config(self.config.drift)
         self.image_correction_group = ImageCorrectionGroup.from_config(
@@ -280,7 +283,8 @@ class MainGui(QMainWindow):
         )
         filepath = Path(filepath).with_suffix(".toml")
 
-        contrast = self.config.general.histogram_percentile
+        # TODO: delete contrast = self.config.general.histogram_percentile
+        contrast = self._histogram_percentile_limits
         if self.operate_on is not None:
             histogram_window = self.histogram_windows.get(self.operate_on)
             if histogram_window is not None:
@@ -318,6 +322,8 @@ class MainGui(QMainWindow):
         self._colormap.set_value(config.general.colormap)
         self.update_colormap(config.general.colormap)
         self.channel_select_group.channel = config.general.channel
+
+        self._histogram_percentile_limits = config.general.histogram_percentile
 
         self.phase_group.update_from_config(config.phase)
         self.fft_filters_group.update_from_config(config.fft_filter)
@@ -698,7 +704,8 @@ class MainGui(QMainWindow):
 
         histogram_window = self.histogram_windows.get(self.operate_on)
         if histogram_window is None:
-            contrast = self.config.general.histogram_percentile
+            # TODO: delete: contrast = self.config.general.histogram_percentile
+            contrast = self._histogram_percentile_limits
         else:
             contrast = histogram_window.contrast_percentile()
 
@@ -841,8 +848,11 @@ class MainGui(QMainWindow):
         self.histogram_windows.update({fast_movie_window.info.id_: histogram_window})
         histogram_window._on_change_limit_percentile(
             (
-                self.config.general.histogram_percentile[0] * 100,
-                self.config.general.histogram_percentile[1] * 100,
+                # TODO: delete
+                # self.config.general.histogram_percentile[0] * 100,
+                # self.config.general.histogram_percentile[1] * 100,
+                self._histogram_percentile_limits[0] * 100,
+                self._histogram_percentile_limits[1] * 100,
             )
         )
         histogram_window.show()
