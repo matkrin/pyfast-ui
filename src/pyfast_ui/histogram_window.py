@@ -55,15 +55,26 @@ class HistogramWindow(QWidget):
         self._upper_limit_line = None
 
         self._data_min, self._data_max = self.data.min(), self.data.max()
+
+        # Input limit absolute
         self._limit_absolute = LabeledDoubleSpinBoxes("Limit absolute", (0, 0))
         self._limit_absolute.spinbox_left.setMinimum(self._data_min)
         self._limit_absolute.spinbox_right.setMaximum(self._data_max)
+        self._limit_absolute.spinbox_left.setDecimals(2)
+        self._limit_absolute.spinbox_right.setDecimals(2)
+        self._limit_absolute.spinbox_left.setSingleStep(0.1)
+        self._limit_absolute.spinbox_right.setSingleStep(0.1)
         self._limit_absolute.setValue((self._data_min, self._data_max))
         self._limit_absolute.setFixedWidth(300)
 
+        # Input limit percentile
         self._limit_percentile = LabeledDoubleSpinBoxes("Limit percentile", (0, 100))
         self._limit_percentile.spinbox_left.setMinimum(0)
         self._limit_percentile.spinbox_right.setMaximum(100)
+        self._limit_percentile.spinbox_left.setDecimals(2)
+        self._limit_percentile.spinbox_right.setDecimals(2)
+        self._limit_percentile.spinbox_left.setSingleStep(0.1)
+        self._limit_percentile.spinbox_right.setSingleStep(0.1)
         self._limit_percentile.setFixedWidth(300)
 
         inputs_layout = QVBoxLayout()
