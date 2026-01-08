@@ -665,69 +665,63 @@ class Drift:
                 )
 
     def _adjust_movie_buffered(self):
-        """Embed movie frames into buffered background to move freely according to drift path."""
+        """Embed movie frames into a buffered background so they can move freely
+        according to the integrated drift path.
+        """
         assert self.integrated_trans is not None  # type assertion
 
-        maxy, maxx = np.max(self.integrated_trans, 1)  # pyright: ignore[reportAny]
-        miny, minx = np.min(self.integrated_trans, 1)  # pyright: ignore[reportAny]
+        y_translations = self.integrated_trans[0]
+        x_translations = self.integrated_trans[1]
 
-        buffy = int(np.round(np.abs(maxy) + np.abs(miny))) + 1  # pyright: ignore[reportAny, reportUnknownArgumentType]
-        buffx = int(np.round(np.abs(maxx) + np.abs(minx))) + 1  # pyright: ignore[reportAny, reportUnknownArgumentType]
+        y_min, y_max = np.min(y_translations), np.max(y_translations)
+        x_min, x_max = np.min(x_translations), np.max(x_translations)
+
+        y_padding = int(np.ceil(y_max - y_min))
+        x_padding = int(np.ceil(x_max - x_min))
 
         corr_movie = np.zeros(
-            (self.n_frames, self.img_height + int(buffy), self.img_width + int(buffx)),
+            (
+                self.n_frames,
+                self.img_height + y_padding,
+                self.img_width + x_padding,
+            ),
             dtype=np.float32,
         )
 
+        base_y = int(np.round(-y_min))
+        base_x = int(np.round(-x_min))
+
         for i in range(self.n_frames):
-            shift1, shift2 = self.integrated_trans[:, i]  # pyright: ignore[reportAny]
-            shift1 = int(np.round(shift1))  # pyright: ignore[reportAny, reportUnknownArgumentType]
-            shift2 = int(np.round(shift2))  # pyright: ignore[reportAny, reportUnknownArgumentType]
+            y_shift = int(np.round(y_translations[i]))
+            x_shift = int(np.round(x_translations[i]))
 
-            y_start = int(abs(miny)) + 1 + shift1  # pyright: ignore[reportAny]
-            y_end = int(abs(miny)) + 1 + self.img_height + shift1  # pyright: ignore[reportAny]
-            x_start = int(abs(minx)) + 1 + shift2  # pyright: ignore[reportAny]
-            x_end = int(abs(minx)) + 1 + self.img_width + shift2  # pyright: ignore[reportAny]
+            y_start = base_y + y_shift
+            y_end = y_start + self.img_height
+            x_start = base_x + x_shift
+            x_end = x_start + self.img_width
 
-            # possibly there is a +1 in the i for the frame to be taken.
-            corr_movie[i, y_start:y_end, x_start:x_end] = self.data[i, :, :]
+            corr_movie[i, y_start:y_end, x_start:x_end] = self.data[i]
 
         log.info("Drift correction finished")
+
         return corr_movie
 
     def _adjust_movie_common(self):
-        """Cut out section from movie frames, which stays constant during the entire movie."""
-        assert self.integrated_trans is not None  # type assertion
+        """Apply drift correction and return only the region common to all frames."""
+        buffered = self._adjust_movie_buffered()
 
-        maxy, maxx = np.max(self.integrated_trans, 1)  # pyright: ignore[reportAny]
-        miny, minx = np.min(self.integrated_trans, 1)  # pyright: ignore[reportAny]
+        valid = buffered != 0
+        common_mask = np.all(valid, axis=0)
 
-        buffy = int(np.round(np.abs(maxy) + np.abs(miny))) + 1  # pyright: ignore[reportAny, reportUnknownArgumentType]
-        buffx = int(np.round(np.abs(maxx) + np.abs(minx))) + 1  # pyright: ignore[reportAny, reportUnknownArgumentType]
+        ys, xs = np.where(common_mask)
+        if ys.size == 0 or xs.size == 0:
+            raise ValueError("No common area exists")
 
-        corr_movie = np.zeros(
-            (self.n_frames, self.img_height - int(buffy), self.img_width - int(buffx)),
-            dtype=np.float32,
-        )
+        y_start, y_end = ys.min(), ys.max() + 1
+        x_start, x_end = xs.min(), xs.max() + 1
 
-        for i in range(self.n_frames):
-            y_shift, x_shift = self.integrated_trans[:, -i + 1]  # pyright: ignore[reportAny]
-            y_shift = int(np.round(y_shift))  # pyright: ignore[reportAny, reportUnknownArgumentType]
+        corr_movie = buffered[:, y_start:y_end, x_start:x_end]
 
-            if self.channels.is_interlaced():
-                x_shift = int(np.round(x_shift) / 2)  # pyright: ignore[reportAny, reportUnknownArgumentType]
-            else:
-                x_shift = int(np.round(x_shift))  # pyright: ignore[reportAny, reportUnknownArgumentType]
-
-            y_start = int(abs(miny)) + 1 + y_shift  # pyright: ignore[reportAny]
-            y_end = int(abs(miny)) + 1 + self.img_height - int(buffy) + y_shift  # pyright: ignore[reportAny]
-            x_start = int(abs(minx)) + 1 + x_shift  # pyright: ignore[reportAny]
-            x_end = int(abs(minx)) + 1 + self.img_width - int(buffx) + x_shift  # pyright: ignore[reportAny]
-
-            # possibly there is a +1 in the i for the frame to be taken.
-            corr_movie[i, :, :] = self.data[i, y_start:y_end, x_start:x_end]
-
-        log.info("Drift correction finished")
         return corr_movie
 
 
