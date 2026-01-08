@@ -34,6 +34,8 @@ class ImageFilterGroup(QGroupBox):
         self._pixel_width = LabeledSpinBox("Pixel width", pixel_width)
         # Form gauss
         self._sigma = LabeledDoubleSpinBox("Sigma", gauss_sigma)
+        self._sigma.spinbox.setDecimals(2)
+        self._sigma.spinbox.setSingleStep(0.1)
 
         self.apply_btn = QPushButton("Apply")
         self.new_btn = QPushButton("New")

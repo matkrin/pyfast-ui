@@ -46,7 +46,7 @@ class FftFilter:
     Args:
         fast_movie: `FastMovie` instance.
         filter_config: Boolean parameters for FFT filtering.
-        filter_broadness:
+        filter_broadness: Broadness of fft filters which cut out single frequencies in Hz
         num_x_overtones:
         num_pump_overtones:
         pump_freqs:
