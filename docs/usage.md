@@ -54,7 +54,7 @@ colormap can be chosen by:
 - __Filter pump:__
 - __Filter noise:__
 - __Display spectrum:__
-- __Filter broadness:__
+- __Filter broadness:__ Broadness of fft filters which cut out single frequencies in Hz
 - __Num x overtones:__
 - __High pass params:__
 - __FFT display range:__

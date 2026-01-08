@@ -66,7 +66,12 @@ class MovieExport:
             figsize=(num_x_pixels * px, num_y_pixels * px),
             frameon=False,
         )
-        img_plot = ax.imshow(self.fast_movie.data[0], cmap=color_map)  # pyright: ignore[reportAny, reportUnknownMemberType]
+        img_plot = ax.imshow(  # pyright: ignore[reportUnknownMemberType]
+            self.fast_movie.data[0],  # pyright: ignore[reportAny]
+            cmap=color_map,
+            interpolation="none",
+        )
+
         # Adjust color scale
         min_absolute = float(np.percentile(self.fast_movie.data, contrast[0] * 100))
         max_absolute = float(np.percentile(self.fast_movie.data, contrast[1] * 100))
@@ -133,6 +138,14 @@ class MovieExport:
             frames=num_frames,
             interval=interval,
         )
+
+        # writer = animation.FFMpegWriter(
+        #     fps=int(fps_factor * self.fast_movie.fps()),
+        #     codec="libx264",
+        #     extra_args=["-crf", "0", "-preset", "veryslow", "-pix_fmt", "yuv444p"]
+        # )
+        # ani.save(f"{self.export_filepath}__1.mp4", writer=writer)
+
         ani.save(f"{self.export_filepath}.mp4")
 
     def export_tiff(self) -> None:
@@ -201,7 +214,7 @@ class FrameExport:
         if self.fast_movie.channels.is_up_and_down():
             frame_end *= 2
 
-        data = self.fast_movie.data[frame_start : frame_end, :, :]
+        data = self.fast_movie.data[frame_start:frame_end, :, :]
 
         for i in TqdmLogger(range(data.shape[0]), desc="Exporting frames"):
             frame: NDArray[np.float32] = data[i]
@@ -251,7 +264,7 @@ class FrameExport:
                 figsize=(num_x_pixels * px, num_y_pixels * px),
                 frameon=False,
             )
-            img_plot = ax.imshow(data[i], cmap=color_map)  # pyright: ignore[reportAny, reportUnknownMemberType]
+            img_plot = ax.imshow(data[i], cmap=color_map, interpolation="none")  # pyright: ignore[reportAny, reportUnknownMemberType]
             img_plot.set_clim(min_absolute, max_absolute)
 
             fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
