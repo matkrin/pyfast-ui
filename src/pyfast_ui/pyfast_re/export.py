@@ -222,7 +222,7 @@ class FrameExport:
             frame_id += self.frame_offset
             channel_id = next(frame_channel_iterator)
             frame_name = f"{self.fast_movie.path.stem}_{frame_id}{channel_id}"
-            header = f"Channel: {frame_name}\nWidth: 1 m\nHeight: 1 m\nValue units: m"
+            header = f"Channel: {frame_name}\nWidth: \nHeight: \nValue units: "
             export_filename = f"{self._export_filename(frame_id, channel_id)}.txt"
             np.savetxt(
                 export_filename, frame, delimiter="\t", header=header, fmt="%.4e"
