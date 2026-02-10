@@ -499,7 +499,7 @@ def _gwy_make_si_unit(dimension: str) -> bytes:
         GwySIUnit as bytes.
     """
     si_name = b"si_unit_" + bytes(dimension, "utf-8") + b"\0o" + b"GwySIUnit\0"
-    unit = b"unitstr\0s" + b"m\0"
+    unit = b"unitstr\0s" + b" \0"
     unit_size = struct.pack("<i", len(unit))
 
     return si_name + unit_size + unit
