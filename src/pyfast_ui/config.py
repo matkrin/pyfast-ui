@@ -91,9 +91,15 @@ class DriftConfig(BaseModel):
 
 
 class ImageCorrectionConfig(BaseModel):
-    correction_type: Literal["align", "plane", "fixzero"] = "align"
+    correction_type: Literal["align", "plane", "fixzero", "frame level"] = "align"
     align_type: Literal[
-        "median", "median of diff", "mean", "line", "poly2", "poly3"
+        "median",
+        "median of diff",
+        "median of diff (multi-lag)",
+        "mean",
+        "line",
+        "poly2",
+        "poly3",
     ] = "median"
     area_selection: Literal[
         "whole image", "lowest 50%", "middle 50%", "highest 50%", "exclude ROI"

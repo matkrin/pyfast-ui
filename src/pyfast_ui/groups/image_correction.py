@@ -18,12 +18,21 @@ class ImageCorrectionGroup(QGroupBox):
         layout = QGridLayout()
         self.setLayout(layout)
 
+        # "frame level" needs no fit, so neither selection applies to it.
         self._correction_type = LabeledCombobox(
-            "Correction type", ["align", "plane", "fixzero"]
+            "Correction type", ["align", "plane", "fixzero", "frame level"]
         )
         self._align_type = LabeledCombobox(
             "Align type",
-            ["median", "median of diff", "mean", "line", "poly2", "poly3"],
+            [
+                "median",
+                "median of diff",
+                "median of diff (multi-lag)",
+                "mean",
+                "line",
+                "poly2",
+                "poly3",
+            ],
         )
         self._area_selection = LabeledCombobox(
             "Area selection",

@@ -863,6 +863,8 @@ class MainGui(QMainWindow):
                 ft.level_plane(area_selection=area_selection, roi=roi)
             case "fixzero":
                 ft.fix_zero()
+            case "frame level":
+                ft.level_frames()
 
         fast_movie_window.recreate_plot()
 

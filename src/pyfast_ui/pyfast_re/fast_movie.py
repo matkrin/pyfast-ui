@@ -573,7 +573,13 @@ class FastMovie:
     def align_rows(
         self,
         align_type: Literal[
-            "median", "median of diff", "mean", "line", "poly2", "poly3"
+            "median",
+            "median of diff",
+            "median of diff (multi-lag)",
+            "mean",
+            "line",
+            "poly2",
+            "poly3",
         ],
         area_selection: str = "whole image",
         roi: tuple[int, int, int, int] | None = None,
@@ -600,6 +606,32 @@ class FastMovie:
             background = frame_corrections.align_rows(self.data[i], align_type, mask)  # pyright: ignore[reportAny]
             # Mutate data
             self.data[i] -= background
+
+        if align_type.startswith("median of diff"):
+            # Unlike the other align types this one does not drive the rows to a
+            # common level, so it leaves the height of a whole frame undefined
+            # and the frames pump against each other. Level them here.
+            self.level_frames()
+
+    def level_frames(self) -> None:
+        """Put all frames at a common height level.
+
+        Every background correction fixes the level of a frame by a convention
+        of its own, and some fix it by nothing at all, so the frames can sit at
+        different heights and the movie appears to pump. The offsets are
+        measured as the median of the pixelwise difference between frames, which
+        a minority of the surface changing does not move.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
+        if self.mode != DataMode.MOVIE:
+            raise ValueError("Data must be reshaped into movie mode")
+
+        offsets = frame_corrections.frame_level_offsets(self.data)
+        for i in TqdmLogger(range(self.data.shape[0]), desc="Levelling frames"):
+            # Mutate data
+            self.data[i] -= np.float32(offsets[i])
 
     def level_plane(
         self,

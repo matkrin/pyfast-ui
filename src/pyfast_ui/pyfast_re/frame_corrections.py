@@ -3,7 +3,9 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 from typing import Callable, cast
+from scipy import sparse
 from scipy.signal import convolve2d
+from scipy.sparse.linalg import lsqr
 
 
 AlignFunc = Callable[[NDArray[np.float32]], NDArray[np.float32]]
@@ -12,6 +14,11 @@ MIN_SELECTED = 3
 """Fewest selected pixels a row needs before its own fit is trusted. Below that
 the row falls back to all of its pixels, which is better than a wild
 extrapolation from two points."""
+
+MULTILAG_LAGS = (1, 2, 3, 5, 8, 13)
+"""Row or frame separations compared by the multi-lag estimators. A single
+separation has to be integrated, and integrating its errors is a random walk;
+several of them overdetermine the offsets so the errors average instead."""
 
 MIN_SPAN = 0.25
 """Fraction of the row width the selected pixels must cover before a polynomial
@@ -60,6 +67,67 @@ def selection_mask(
 
     low, high = np.percentile(frame, bounds)
     return (frame >= low) & (frame <= high)
+
+
+def _solve_offsets(
+    count: int,
+    pairs: list[tuple[int, int]],
+    measured: list[float],
+) -> NDArray[np.float64]:
+    """Offsets that best explain the measured differences, gauged to zero mean.
+
+    Least squares for o_j - o_i = d_ij over every measured pair. With one
+    separation this reduces to a cumulative sum; with several it is
+    overdetermined, which is the point.
+    """
+    rows: list[int] = []
+    cols: list[int] = []
+    vals: list[float] = []
+    for index, (i, j) in enumerate(pairs):
+        rows += [index, index]
+        cols += [i, j]
+        vals += [-1.0, 1.0]
+
+    gauge = len(pairs)
+    rows += [gauge] * count
+    cols += list(range(count))
+    vals += [1.0] * count
+
+    matrix = sparse.csr_matrix((vals, (rows, cols)), shape=(gauge + 1, count))
+    right = np.append(np.asarray(measured, dtype=float), 0.0)
+
+    return lsqr(matrix, right, atol=1e-10, btol=1e-10)[0]
+
+
+def frame_level_offsets(
+    movie: NDArray[np.float32], lags: tuple[int, ...] = MULTILAG_LAGS
+) -> NDArray[np.float64]:
+    """One height offset per frame, so that the frames sit at a common level.
+
+    Every background correction fixes the level of a frame by some convention of
+    its own, and "median of diff" fixes it by nothing at all: its offsets start
+    at zero for the first row, so the whole frame hangs on the level of that one
+    noisy row. The frames then pump up and down against each other.
+
+    The level differences are measured as the median of the pixelwise difference
+    between two frames, which a minority of the surface changing does not move,
+    and solved over several frame separations so the estimate does not drift over
+    a long movie.
+    """
+    count = len(movie)
+    pairs: list[tuple[int, int]] = []
+    measured: list[float] = []
+    for lag in lags:
+        if lag >= count:
+            continue
+        for index in range(count - lag):
+            pairs.append((index, index + lag))
+            measured.append(float(np.median(movie[index + lag] - movie[index])))
+
+    if not pairs:
+        return np.zeros(count)
+
+    return _solve_offsets(count, pairs, measured)
 
 
 def _row_background(
@@ -125,8 +193,9 @@ def align_rows(
 
     # "median of diff" couples neighbouring rows and cannot be expressed as a
     # function of a single row.
-    if align_type == "median of diff":
-        return _median_of_diff_background(frame, mask)
+    if align_type.startswith("median of diff"):
+        lags = MULTILAG_LAGS if "multi-lag" in align_type else (1,)
+        return _median_of_diff_background(frame, mask, lags)
 
     background = np.empty(frame.shape, dtype=np.float32)
     for index in range(frame.shape[0]):
@@ -136,7 +205,9 @@ def align_rows(
 
 
 def _median_of_diff_background(
-    frame: NDArray[np.float32], mask: NDArray[np.bool_] | None = None
+    frame: NDArray[np.float32],
+    mask: NDArray[np.bool_] | None = None,
+    lags: tuple[int, ...] = (1,),
 ) -> NDArray[np.float32]:
     """Row offsets that drive the median of the vertical neighbour differences
     to zero.
@@ -154,18 +225,29 @@ def _median_of_diff_background(
     to do nothing.
     """
     num_rows = frame.shape[0]
-    offsets = np.zeros(num_rows, dtype=np.float32)
     if mask is None:
         mask = np.ones(frame.shape, dtype=bool)
 
-    differences = frame[1:] - frame[:-1]
-    # A difference is only meaningful where both of its rows are selected.
-    usable = mask[1:] & mask[:-1]
-    for index in range(num_rows - 1):
-        row = differences[index]
-        chosen = usable[index]
-        offsets[index + 1] = np.median(row[chosen] if chosen.sum() >= MIN_SELECTED else row)
-    offsets[1:] = np.cumsum(offsets[1:])
+    pairs: list[tuple[int, int]] = []
+    measured: list[float] = []
+    for lag in lags:
+        if lag >= num_rows:
+            continue
+        differences = frame[lag:] - frame[:-lag]
+        # A difference is only meaningful where both of its rows are selected.
+        usable = mask[lag:] & mask[:-lag]
+        for index in range(num_rows - lag):
+            chosen = usable[index]
+            row = differences[index]
+            pairs.append((index, index + lag))
+            measured.append(
+                float(np.median(row[chosen] if chosen.sum() >= MIN_SELECTED else row))
+            )
+
+    if not pairs:
+        return np.zeros(frame.shape, dtype=np.float32)
+
+    offsets = _solve_offsets(num_rows, pairs, measured).astype(np.float32)
 
     return np.repeat(offsets[:, None], frame.shape[1], axis=1)
 
