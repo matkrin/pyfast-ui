@@ -182,6 +182,9 @@ class MainGui(QMainWindow):
         _ = self.fft_filters_group.new_btn.clicked.connect(self.on_fft_filter_new)
         _ = self.creep_group.apply_btn.clicked.connect(self.on_creep_apply)
         _ = self.creep_group.new_btn.clicked.connect(self.on_creep_new)
+        _ = self.image_correction_group.area_selection_changed.connect(
+            self.on_area_selection_changed
+        )
         _ = self.image_correction_group.apply_btn.clicked.connect(
             self.on_image_correction_apply
         )
@@ -815,6 +818,17 @@ class MainGui(QMainWindow):
         if export_tiff:
             ft.export_tiff(double_x_pixels=double_x_pixels_tiff)
 
+    def on_area_selection_changed(self, value: str) -> None:
+        """Switch the rectangle selection on when the user picks "exclude ROI",
+        so the region can be drawn without also finding the crop button."""
+        if value != "exclude ROI" or self.operate_on is None:
+            return
+        fast_movie_window = self.movie_windows.get(self.operate_on)
+        if fast_movie_window is None:
+            return
+        fast_movie_window.selection_set_active(True)
+        self.modify_group.toggle_selection_btn.setDefault(True)
+
     def on_image_correction_apply(self) -> None:
         """Callback for 'Apply' button of the `ImageCorrectionGroup`. Applies
         a image correction with the set parameters.
@@ -828,11 +842,52 @@ class MainGui(QMainWindow):
         ft = fast_movie_window.ft
         align_type = self.image_correction_group.align_type
         correction_type = self.image_correction_group.correction_type
+        area_selection = self.image_correction_group.area_selection
 
-        if correction_type == "align":
-            ft.align_rows(align_type=align_type)
+        roi = None
+        if area_selection == "exclude ROI":
+            roi = self._selected_roi(fast_movie_window)
+            if roi is None:
+                self.show_info_message(
+                    "Draw a rectangle on the movie first; it marks the region"
+                    " that the background fit leaves out."
+                )
+                return
+
+        match correction_type:
+            case "align":
+                ft.align_rows(
+                    align_type=align_type, area_selection=area_selection, roi=roi
+                )
+            case "plane":
+                ft.level_plane(area_selection=area_selection, roi=roi)
+            case "fixzero":
+                ft.fix_zero()
 
         fast_movie_window.recreate_plot()
+
+    @staticmethod
+    def _selected_roi(fast_movie_window: MovieWindow) -> tuple[int, int, int, int] | None:
+        """The drawn rectangle as (y_start, y_end, x_start, x_end), clipped to
+        the frame. `None` if nothing is drawn or the rectangle is empty."""
+        rectangle = fast_movie_window.get_selection()
+        if rectangle is None:
+            return None
+
+        upper_left, upper_right, lower_right, _ = rectangle
+        x_start, y_start = upper_left
+        x_end = lower_right[0]
+        y_end = upper_right[1]
+        y_start, y_end = sorted((y_start, y_end))
+        x_start, x_end = sorted((x_start, x_end))
+
+        num_rows, num_cols = fast_movie_window.plot_data.shape[1:]
+        y_start, y_end = max(0, y_start), min(num_rows, y_end)
+        x_start, x_end = max(0, x_start), min(num_cols, x_end)
+        if y_end <= y_start or x_end <= x_start:
+            return None
+
+        return (y_start, y_end, x_start, x_end)
 
     def on_image_correction_new(self) -> None:
         """Callback for 'New' button of the `ImageCorrectionGroup`. Creates a
