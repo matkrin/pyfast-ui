@@ -76,6 +76,10 @@ class FastMovie:
 
         self._drift_path_integrated = None
         self._drift_path_sequential = None
+        self.drift_mode: str | None = None
+        """Which drift mode was applied, "common" or "full", or `None` if the
+        movie has not been drift corrected. The exporters put it in the file
+        name so that both variants of one movie can be produced side by side."""
 
         self.applied_x_phase: float = 0.0
         self.applied_y_phase: int = 0
@@ -432,6 +436,7 @@ class FastMovie:
             subpixel=subpixel,
         )
         result = drift.correct_correlation(driftmode)
+        self.drift_mode = driftmode.value
         # Mutate data
         self.data = result.data
         self._drift_path_sequential = result.drift_path_sequential
@@ -460,6 +465,7 @@ class FastMovie:
         driftmode = DriftMode(mode.lower())
         drift = Drift(self, subpixel=subpixel)
         result = drift.correct_global(driftmode)
+        self.drift_mode = driftmode.value
         # Mutate data
         self.data = result.data
         self._drift_path_sequential = result.drift_path_sequential
@@ -496,6 +502,7 @@ class FastMovie:
             subpixel=subpixel,
         )
         result = drift.correct_stackreg(driftmode, reference)
+        self.drift_mode = driftmode.value
         # Mutate data
         self.data = result.data
         self._drift_path_sequential = result.drift_path_sequential
@@ -519,6 +526,7 @@ class FastMovie:
         drift = Drift(self, subpixel=subpixel)
         # Mutate data
         result = drift.correct_known(driftmode)
+        self.drift_mode = driftmode.value
         # Mutate data
         self.data = result.data
         self._drift_path_sequential = result.drift_path_sequential
