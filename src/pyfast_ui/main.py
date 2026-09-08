@@ -874,10 +874,12 @@ class MainGui(QMainWindow):
         if rectangle is None:
             return None
 
-        upper_left, upper_right, lower_right, _ = rectangle
+        # get_selection returns the four corners as (x, y). The lower right one
+        # carries both end coordinates; the upper right shares its y with the
+        # upper left, so reading the end row from it always gave zero height.
+        upper_left, _, lower_right, _ = rectangle
         x_start, y_start = upper_left
-        x_end = lower_right[0]
-        y_end = upper_right[1]
+        x_end, y_end = lower_right
         y_start, y_end = sorted((y_start, y_end))
         x_start, x_end = sorted((x_start, x_end))
 
