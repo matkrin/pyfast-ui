@@ -12,6 +12,7 @@ from scipy.interpolate import Rbf, splev, splrep
 from scipy.optimize import LinearConstraint, NonlinearConstraint, curve_fit, minimize
 from scipy.signal import correlate
 
+from pyfast_ui.pyfast_re import updown
 from pyfast_ui.pyfast_re.data_mode import DataMode
 
 
@@ -83,7 +84,40 @@ class Creep:
         self.bounds = self.creep_bounds[creep_mode.value]
 
     def _get_shift(self, imrange: float):
+        """How far creep displaces the middle of a frame, in pixels.
+
+        Measured as the difference between the middle of the frame and its two
+        ends. Up and down sweep share their turning points, so at the first and
+        the last line they are at the same height whatever the creep; a
+        displacement that is there as well is a constant offset between the
+        sweeps, that is the y-phase, and it is not creep. The old measurement
+        took the offset in the middle of frames 3 and 4 and returned the sum of
+        the two, so an uncorrected y-phase was fed to the creep correction as if
+        it were creep: on FS_251128_028, 29 rows of y-phase became a creep
+        amplitude of 12 px and bent the ends of every frame by 6 rows.
+
+        Args:
+            imrange: kept for the signature; the profile covers the whole frame.
+
+        Returns: number of pixels the middle of a frame is displaced by creep.
         """
+        profile = updown.mismatch_profile(self.data)
+        amplitude = abs(updown.creep_amplitude(profile))
+        constant = updown.constant_offset(profile)
+
+        log.info(
+            "Creep amplitude %.2f px (middle against the ends). Constant up/down "
+            "offset y %.2f px, x %.2f px, which is not creep.",
+            amplitude,
+            constant[0],
+            constant[1],
+        )
+
+        return amplitude
+
+    def _get_shift_middle_only(self, imrange: float):
+        """The previous measurement, kept for comparison.
+
         Args:
             imrange: percentage of movie that should be used to evaluate shift. 0.5 recommended
 

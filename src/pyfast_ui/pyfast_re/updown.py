@@ -1,0 +1,198 @@
+"""How an up frame and the following down frame disagree, row by row.
+
+Two different errors show up as a displacement between the up and the down
+sweep of one image, and they used to be measured as one number:
+
+- the y-phase, a constant offset of the whole frame, from cutting the series at
+  the wrong sample
+- creep, the delayed response of the y piezo after a turning point
+
+They can be told apart by their shape. The two sweeps share their turning
+points, so at the first and the last line of a frame the up and the down sweep
+are at the same height and only the y-phase remains. Between the turning points
+the piezo lags, so the lines in the middle carry the y-phase plus the creep.
+Measuring the offset in the middle alone, as the creep correction used to,
+returns the sum and cannot separate them: a movie with a large y-phase then
+gets a creep correction that bends the ends of every frame to compensate an
+offset that is not creep.
+
+The horizontal offset is measured alongside. It has no creep term, so whatever
+appears there is a rigid displacement between the two sweeps.
+"""
+
+from __future__ import annotations
+
+import logging
+
+import numpy as np
+from numpy.typing import NDArray
+from scipy.ndimage import gaussian_filter
+from scipy.ndimage import shift as ndshift
+from skimage.registration import phase_cross_correlation
+
+log = logging.getLogger(__name__)
+
+
+BLOCKS = 8
+"""Row blocks per frame. Eight leaves each block wide enough to register on a
+242 row frame and still resolves the difference between the ends and the
+middle."""
+
+PAIRS = 24
+"""Frame pairs averaged over. The offset is a property of the scan, so it is
+the same in every pair, and this only fights the noise."""
+
+SMOOTH = 0.6
+"""Gaussian smoothing before the correlation, in pixels. Enough to take the
+edge off the pixel noise, small enough to leave the features that carry the
+displacement.
+
+A band pass was tried here, as in the drift estimation, and had to be dropped:
+combined with the phase normalisation of the correlation it attenuates small
+displacements badly. Measured on a frame displaced by a known amount, a band
+passed 0.5 px came back as 0.12 to 0.24 px, while the lightly smoothed frame
+gave 0.46 px."""
+
+
+def _prepare(frame: NDArray[np.float32]) -> NDArray[np.float64]:
+    frame = frame.astype(np.float64)
+    frame = frame - frame.mean()
+    return gaussian_filter(frame, SMOOTH)
+
+
+def _shift(a: NDArray[np.float64], b: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Sub-pixel displacement of b relative to a.
+
+    The plain correlation is used, not the masked one: on a residual of a
+    pixel or two the bias of the plain variant towards zero does not matter,
+    and the masked variant resolves whole pixels only.
+    """
+    result = phase_cross_correlation(a, b, upsample_factor=50)  # pyright: ignore[reportUnknownVariableType]
+    value = result[0] if isinstance(result, tuple) else result
+    return np.asarray(value, dtype=float)
+
+
+def _coarse_shift(a: NDArray[np.float64], b: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Whole-pixel displacement of the frame as a whole.
+
+    A y-phase of a few tens of rows is larger than one row block, so the blocks
+    have to be brought together before their residual can be measured. The
+    masked variant is used here because it normalises by the overlap and so
+    handles a displacement of that size.
+    """
+    valid = np.ones(a.shape, dtype=bool)
+    result = phase_cross_correlation(  # pyright: ignore[reportUnknownVariableType]
+        a, b, upsample_factor=1, reference_mask=valid, moving_mask=valid,
+        overlap_ratio=0.5,
+    )
+    value = result[0] if isinstance(result, tuple) else result
+    return np.asarray(value, dtype=float)
+
+
+def mismatch_profile(
+    data: NDArray[np.float32], blocks: int = BLOCKS, pairs: int = PAIRS
+) -> NDArray[np.float64]:
+    """Displacement between up and down frames, per row block.
+
+    Neighbouring frames are one up and one down, in alternating order, so the
+    displacement between them changes sign from pair to pair. Half the
+    difference between the two orders is the part that belongs to the up/down
+    asymmetry; everything else, drift above all, is common to both and drops
+    out.
+
+    Args:
+        data: The movie, in movie mode.
+        blocks: Row blocks per frame.
+        pairs: How many frame pairs to measure.
+
+    Returns:
+        Array of shape (blocks, 2) with the (y, x) displacement of each row
+        block, in pixels, from the top of the frame to the bottom.
+    """
+    num_frames = len(data)
+    if num_frames < 3:
+        return np.zeros((blocks, 2))
+
+    edges = np.linspace(0, data.shape[1], blocks + 1).astype(int)
+    measured: dict[int, list[list[NDArray[np.float64]]]] = {
+        0: [[] for _ in range(blocks)],
+        1: [[] for _ in range(blocks)],
+    }
+
+    # Both parities have to be sampled: one gives the up to down displacement,
+    # the other down to up, and the difference of the two is the measurement.
+    # Spreading indices evenly does not guarantee that, they can all come out
+    # even, in which case nothing is measured at all.
+    half = max(pairs // 2, 1)
+    starts = np.linspace(0, num_frames - 3, half).astype(int)
+    indices = np.unique(
+        np.concatenate([starts - (starts % 2), starts - (starts % 2) + 1])
+    )
+    indices = indices[(indices >= 0) & (indices < num_frames - 1)]
+    for index in indices:
+        first, second = _prepare(data[index]), _prepare(data[index + 1])
+        # Coarse first, so that the blocks overlap at all, then the residual per
+        # block. A y-phase of thirty rows exceeds the height of one block, and a
+        # block correlated over that distance returns nothing usable.
+        coarse = _coarse_shift(first, second)
+        aligned = ndshift(second, coarse, order=1, mode="nearest")
+        for block in range(blocks):
+            low, high = edges[block], edges[block + 1]
+            if high - low < 8:
+                continue
+            residual = _shift(first[low:high], aligned[low:high])
+            measured[index % 2][block].append(coarse + residual)
+
+    profile = np.zeros((blocks, 2))
+    for block in range(blocks):
+        even, odd = measured[0][block], measured[1][block]
+        if not even or not odd:
+            continue
+        profile[block] = 0.5 * (
+            np.median(np.stack(even), axis=0) - np.median(np.stack(odd), axis=0)
+        )
+
+    return profile
+
+
+def constant_offset(profile: NDArray[np.float64]) -> NDArray[np.float64]:
+    """The part of the mismatch that is the same in every row, in pixels.
+
+    Vertically this is read off the first and the last block, where the two
+    sweeps meet at their turning points and creep has decayed; the blocks in
+    between carry creep on top and would inflate it.
+
+    Horizontally there is no creep term, the y sweep does not move the tip
+    sideways, so every block measures the same quantity and the median over all
+    of them is used. Two blocks would be needlessly noisy.
+    """
+    if len(profile) < 3:
+        return np.zeros(2)
+
+    return np.array(
+        [0.5 * (profile[0, 0] + profile[-1, 0]), float(np.median(profile[:, 1]))]
+    )
+
+
+def creep_amplitude(profile: NDArray[np.float64]) -> float:
+    """How far the middle of a frame is displaced beyond the constant offset.
+
+    This is the quantity the creep correction should be sized by. It is
+    unaffected by the y-phase, which adds the same amount to every block.
+    """
+    if len(profile) < 4:
+        return 0.0
+
+    middle = profile[len(profile) // 2 - 1 : len(profile) // 2 + 1, 0].mean()
+    return float(middle - constant_offset(profile)[0])
+
+
+def describe(profile: NDArray[np.float64]) -> str:
+    """One line for the log."""
+    constant = constant_offset(profile)
+    return (
+        f"up/down mismatch: constant part y {constant[0]:+.2f} px, "
+        f"x {constant[1]:+.2f} px; creep part y {creep_amplitude(profile):+.2f} px; "
+        "profile "
+        + " ".join(f"{value:+.2f}" for value in profile[:, 0])
+    )

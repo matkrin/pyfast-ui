@@ -74,6 +74,10 @@ class CreepConfig(BaseModel):
     initial_guess: float = 0.3
     guess_ind: float = 0.2
     known_params: float | None = None
+    align_updown: bool = False
+    """Remove the constant offset between the up and the down frames after the
+    creep correction, in both directions and by interpolation. The y-phase can
+    only reach multiples of four rows and does nothing at all horizontally."""
 
 
 class DriftConfig(BaseModel):

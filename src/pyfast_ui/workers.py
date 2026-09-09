@@ -66,10 +66,12 @@ class CreepWorker(QRunnable):
         initial_guess: float,
         guess_ind: float,
         known_params: float | None,
+        align_updown: bool = False,
     ) -> None:
         super().__init__()
 
         self.ft = fast_movie
+        self.align_updown = align_updown
         self.creep_mode = creep_mode
         self.weight_boundary = weight_boundary
         self.creep_num_cols = creep_num_cols
@@ -98,6 +100,14 @@ class CreepWorker(QRunnable):
             )
 
         self.ft.interpolate()
+
+        if self.align_updown:
+            # After the creep correction, not before: the creep grid is
+            # recentred and displaces the up and the down frames by half the
+            # creep amplitude each, so a movie aligned first comes out of the
+            # creep step misaligned again.
+            self.ft.align_updown()
+
         self.signals.finished.emit()
 
 

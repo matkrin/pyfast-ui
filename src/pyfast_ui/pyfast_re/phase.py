@@ -11,6 +11,7 @@ from scipy.ndimage import shift as ndshift
 from skimage.registration import phase_cross_correlation
 
 from pyfast_ui.pyfast_re.channels import Channels
+from pyfast_ui.pyfast_re import updown
 from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
 
 if TYPE_CHECKING:
@@ -262,32 +263,27 @@ def updown_line_mismatch(
     return float(np.mean(scores)) if scores else float("inf")
 
 
-def updown_row_offset(
-    data: NDArray[np.float32], num_pairs: int = 6
-) -> float:
+def updown_row_offset(data: NDArray[np.float32]) -> float:
     """Vertical offset between an up frame and the following down frame, in rows.
 
     A wrong y-phase puts the two sweeps of one image at different heights, which
-    is what makes features double in y. The masked variant of the correlation is
-    used because the plain one grows with the overlap and would favour zero.
+    is what makes features double in y.
+
+    Only the constant part of the offset belongs to the y-phase. The two sweeps
+    share their turning points, so at the first and the last line of a frame
+    they are at the same height and what is measured there is the y-phase alone;
+    the lines in between carry the delayed response of the piezo on top, which
+    is creep and is the creep correction's business. Measuring over the whole
+    frame, as this used to, returns the sum of the two and hands part of the
+    creep signal to the y-phase, which then removes it.
     """
-    if len(data) < 2:
+    if len(data) < 3:
         return 0.0
 
-    valid = np.ones(data[0].shape, dtype=bool)
-    offsets: list[float] = []
-    for index in range(0, min(2 * num_pairs, len(data) - 1), 2):
-        result = phase_cross_correlation(  # pyright: ignore[reportUnknownVariableType]
-            data[index].astype(np.float64),
-            data[index + 1].astype(np.float64),
-            upsample_factor=1,
-            reference_mask=valid,
-            moving_mask=valid,
-        )
-        shift = result[0] if isinstance(result, tuple) else result
-        offsets.append(float(np.asarray(shift)[0]))
+    profile = updown.mismatch_profile(data)
+    log.info(updown.describe(profile))
 
-    return float(np.median(offsets))
+    return float(updown.constant_offset(profile)[0])
 
 
 def get_x_phase_autocorrection(

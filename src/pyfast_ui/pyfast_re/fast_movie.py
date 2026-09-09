@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 from pathlib import Path
 from typing import Hashable, Literal, Self, final
 
@@ -12,9 +13,10 @@ import scipy
 import skimage
 from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter, median_filter
+from scipy.ndimage import shift as ndshift
 from scipy.signal import convolve2d
 
-from pyfast_ui.pyfast_re import frame_corrections
+from pyfast_ui.pyfast_re import frame_corrections, updown
 from pyfast_ui.pyfast_re.channels import Channels
 from pyfast_ui.pyfast_re.creep import Creep, CreepMode
 from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
@@ -31,6 +33,9 @@ from pyfast_ui.pyfast_re.interpolation import (
     valid_window,
 )
 from pyfast_ui.pyfast_re.phase import PhaseCorrection
+
+
+log = logging.getLogger(__name__)
 
 
 @final
@@ -270,6 +275,70 @@ class FastMovie:
         self.updown_row_shift = result.updown_row_shift
         # Mutate data
         self.data = result.data
+
+    def align_updown(self, align_y: bool = True, align_x: bool = True) -> None:
+        """Remove what is left of the rigid offset between up and down frames.
+
+        The y-phase moves the cut of the series and can only reach multiples of
+        four rows, so a fraction of a row always survives; and the two sweeps
+        can sit apart horizontally as well, which no correction addresses at
+        all. Both are constant over a movie and identical in every row, so they
+        are measured at the turning points, where creep has decayed, and applied
+        by interpolation, half to the up frames and half to the down frames so
+        that the movie as a whole does not move.
+
+        Only the constant part is touched. What varies along the frame is creep
+        and is left to the creep correction.
+
+        Args:
+            align_y: Apply the vertical part of the offset.
+            align_x: Apply the horizontal part.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
+        if self.mode != DataMode.MOVIE:
+            raise ValueError(f"`FastMovie` must be in mode {DataMode.MOVIE}")
+
+        profile = updown.mismatch_profile(self.data)
+        constant = updown.constant_offset(profile)
+        offset_y = float(constant[0]) if align_y else 0.0
+        offset_x = float(constant[1]) if align_x else 0.0
+
+        limit = 0.05 * self.data.shape[1]
+        if abs(offset_y) > limit:
+            log.warning(
+                "The up and down frames are %.1f rows apart, more than %.0f rows. "
+                "Shifting frames that far would interpolate away a strip at the "
+                "top and the bottom of every frame; the y-phase moves the cut of "
+                "the series instead and costs nothing. Correct the y-phase first, "
+                "the vertical part is left alone here.",
+                offset_y,
+                limit,
+            )
+            offset_y = 0.0
+
+        if abs(offset_y) < 0.02 and abs(offset_x) < 0.02:
+            log.info("Up and down frames are aligned to better than 0.02 px.")
+            return
+
+        log.info(
+            "Aligning up and down frames: y %+.2f px, x %+.2f px, applied half to "
+            "each so the movie does not move.",
+            offset_y,
+            offset_x,
+        )
+
+        for index in range(len(self.data)):
+            # The measurement is the position of the second frame of a pair
+            # relative to the first, and pairs start on even frames.
+            direction = 0.5 if index % 2 else -0.5
+            self.data[index] = ndshift(
+                self.data[index],
+                (direction * offset_y, direction * offset_x),
+                order=3,
+                mode="nearest",
+            ).astype(np.float32)
 
     def fft_filter(
         self,

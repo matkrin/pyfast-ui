@@ -2,6 +2,7 @@ from typing import Self, final
 
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QGridLayout,
     QGroupBox,
     QPushButton,
@@ -24,6 +25,7 @@ class CreepGroup(QGroupBox):
         initial_guess: float,
         guess_ind: float,
         known_params: float | None,
+        align_updown: bool = False,
     ):
         super().__init__("Creep Correction")
         layout = QGridLayout()
@@ -81,6 +83,17 @@ class CreepGroup(QGroupBox):
         non_bezier_group_layout.addWidget(self._initial_guess)
         non_bezier_group_layout.addWidget(self._guess_ind)
 
+        # Alignment of the two sweeps against each other
+        self._align_updown = QCheckBox("Align up/down frames")
+        self._align_updown.setChecked(align_updown)
+        self._align_updown.setToolTip(
+            "After the creep correction, shift the up and the down frames onto"
+            " each other by interpolation, vertically and horizontally. Removes"
+            " what the y-phase cannot reach, it moves in steps of four rows, and"
+            " a horizontal offset between the two sweeps, which nothing else"
+            " corrects."
+        )
+
         # Apply button
         self.apply_btn = QPushButton("Apply")
         self.new_btn = QPushButton("New")
@@ -93,8 +106,9 @@ class CreepGroup(QGroupBox):
         layout.addWidget(bezier_group, 1, 0, 1, 2)
         layout.addWidget(non_bezier_group, 1, 2, 1, 2)
 
-        layout.addWidget(self.apply_btn, 2, 0, 1, 2)
-        layout.addWidget(self.new_btn, 2, 2, 1, 2)
+        layout.addWidget(self._align_updown, 2, 0, 1, 4)
+        layout.addWidget(self.apply_btn, 3, 0, 1, 2)
+        layout.addWidget(self.new_btn, 3, 2, 1, 2)
 
     @property
     def creep_mode(self) -> str:
@@ -142,6 +156,14 @@ class CreepGroup(QGroupBox):
         self._initial_guess.setValue(value)
 
     @property
+    def align_updown(self) -> bool:
+        return self._align_updown.isChecked()
+
+    @align_updown.setter
+    def align_updown(self, value: bool) -> None:
+        self._align_updown.setChecked(value)
+
+    @property
     def guess_ind(self) -> float:
         return self._guess_ind.value()
 
@@ -161,6 +183,7 @@ class CreepGroup(QGroupBox):
         self.guess_ind = creep_config.guess_ind
         self.known_input = creep_config.known_input
         self.known_params = creep_config.known_params
+        self.align_updown = creep_config.align_updown
 
     def to_config(self) -> CreepConfig:
         return CreepConfig(
@@ -171,4 +194,5 @@ class CreepGroup(QGroupBox):
             initial_guess=self.initial_guess,
             guess_ind=self.guess_ind,
             known_params=self.known_params,
+            align_updown=self.align_updown,
         )
