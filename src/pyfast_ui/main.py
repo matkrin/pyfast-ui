@@ -41,6 +41,12 @@ from pyfast_ui.workers import CreepWorker, DriftWorker, FftFilterWorker
 
 FAST_FILE = "/Users/matthias/Documents/work/pyfast/FS_250520_001.h5"
 
+MOVIE_PREFIX = "FS_"
+"""Name prefix of a FAST movie. A folder holds other .h5 files as well, high
+speed spectroscopy among them, and those are not movies: opening one raises
+somewhere inside the reshaping, which in a batch run means an error message
+per file and nothing usable. A batch run therefore takes the movies only."""
+
 log = logging.getLogger(__name__)
 
 
@@ -366,38 +372,62 @@ class MainGui(QMainWindow):
         self._batch_options = selected.to_config()
         log.info("Batch mode, selected operations: %s", selected)
 
-        for filepath in dirpath.iterdir():
-            if filepath.is_file() and filepath.suffix == ".h5":
-                ft = FastMovie(str(filepath), y_phase=0)
-                colormap = self._colormap.value()
-                channel = self.channel_select_group.channel
-                movie_window = MovieWindow(ft, channel, colormap)
-                _ = movie_window.window_focused.connect(self.update_focused_window)
-                self.movie_windows.update({movie_window.info.id_: movie_window})
-                self.update_focused_window(movie_window.info)
-                # movie_window.show()
+        candidates = sorted(
+            path
+            for path in dirpath.iterdir()
+            if path.is_file() and path.suffix == ".h5"
+        )
+        movies = [
+            path for path in candidates if path.name.startswith(MOVIE_PREFIX)
+        ]
+        skipped = len(candidates) - len(movies)
+        if skipped:
+            log.info(
+                "Batch mode: %d of %d .h5 files in %s do not start with '%s' and "
+                "are left out.",
+                skipped,
+                len(candidates),
+                dirpath,
+                MOVIE_PREFIX,
+            )
+        if not movies:
+            self.show_info_message(
+                f"No file in {dirpath} starts with '{MOVIE_PREFIX}', so there is "
+                "no movie to process."
+            )
+            return
 
-                if selected.phase:
-                    self.on_phase_apply()
-                    _ = self.threadpool.waitForDone()
-                if selected.fft_filter:
-                    self.on_fft_filter_apply()
-                    _ = self.threadpool.waitForDone()
-                if selected.creep:
-                    self.on_creep_apply()
-                    _ = self.threadpool.waitForDone()
-                if selected.image_correction:
-                    self.on_image_correction_apply()
-                    _ = self.threadpool.waitForDone()
-                if selected.drift:
-                    self.on_drift_apply()
-                    _ = self.threadpool.waitForDone()
-                if selected.image_filter:
-                    self.on_image_filter_apply()
-                    _ = self.threadpool.waitForDone()
+        for filepath in movies:
+            ft = FastMovie(str(filepath), y_phase=0)
+            colormap = self._colormap.value()
+            channel = self.channel_select_group.channel
+            movie_window = MovieWindow(ft, channel, colormap)
+            _ = movie_window.window_focused.connect(self.update_focused_window)
+            self.movie_windows.update({movie_window.info.id_: movie_window})
+            self.update_focused_window(movie_window.info)
+            # movie_window.show()
 
-                self.on_export_apply()
+            if selected.phase:
+                self.on_phase_apply()
                 _ = self.threadpool.waitForDone()
+            if selected.fft_filter:
+                self.on_fft_filter_apply()
+                _ = self.threadpool.waitForDone()
+            if selected.creep:
+                self.on_creep_apply()
+                _ = self.threadpool.waitForDone()
+            if selected.image_correction:
+                self.on_image_correction_apply()
+                _ = self.threadpool.waitForDone()
+            if selected.drift:
+                self.on_drift_apply()
+                _ = self.threadpool.waitForDone()
+            if selected.image_filter:
+                self.on_image_filter_apply()
+                _ = self.threadpool.waitForDone()
+
+            self.on_export_apply()
+            _ = self.threadpool.waitForDone()
 
                 # The window has served its purpose. Keeping it would hold two
                 # copies of the movie and a figure per processed file.
