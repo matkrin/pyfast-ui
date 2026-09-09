@@ -47,6 +47,11 @@ class Creep:
     affect the rest of pyfastspm.
     """
 
+    MIN_INFORMATIVE_FITS = 3
+    """How many of the fifteen fit attempts must produce a value of their own
+    before the average is taken as a measurement. Below this the parameter is
+    not determined by the data and the initial guess is kept."""
+
     def __init__(
         self,
         fast_movie: FastMovie,
@@ -105,6 +110,21 @@ class Creep:
         log.info(
             f"Correlation of image rows retunred a shift of {abs(diff_in_pixels)} pixels in the middle of the frame."
         )
+
+        # Creep displaces the ends of a frame, not its middle, so a large shift
+        # measured here is a constant offset between the up and the down frames,
+        # that is an uncorrected y-phase. It is not creep, and letting it set the
+        # bounds lets the fit reach creep amplitudes the movie does not show.
+        if abs(diff_in_pixels) > 0.05 * self.number_ypixels:
+            log.warning(
+                "The up/down shift in the middle of the frame is %.1f px, %.0f %% "
+                "of the frame height. The middle of a frame is where creep is "
+                "smallest, so a shift of this size is a constant offset between "
+                "the up and the down frames: correct the y-phase before the creep, "
+                "or the creep fit is given a range several times too wide.",
+                abs(diff_in_pixels),
+                100.0 * abs(diff_in_pixels) / self.number_ypixels,
+            )
 
         return abs(diff_in_pixels)
 
@@ -358,7 +378,37 @@ class Creep:
 
         return tuple(clamped)
 
-    def fit_creep(self, params=(0.6,), frames=[0, 2], known_params=None):
+    def _sample_frames(self, count=5):
+        """Even frame numbers spread over the movie.
+
+        The fit used to run on frames 0 and 2 alone, so a creep that changes
+        over a movie of several hundred frames was represented by its first
+        second, and an atypical pair at the start decided the correction for
+        everything that followed.
+        """
+        last = max(int(self.data.shape[0]) - 2, 0)
+        frames = np.linspace(0, last, count).astype(int)
+        return sorted({int(frame) - int(frame) % 2 for frame in frames})
+
+    def _is_informative(self, value, guess):
+        """Whether a fitted value says anything about the movie.
+
+        curve_fit returns the initial guess when the first step does not
+        improve the residual, and a bound when the residual falls monotonically
+        towards it. Both mean that the data do not determine the parameter, and
+        averaging them in produces a number that looks like a measurement but is
+        not one.
+        """
+        lower, upper = self.bounds
+        span = upper - lower
+        tolerance = 1e-3 * span if np.isfinite(span) else 1e-3
+        if abs(value - guess) <= max(tolerance, 1e-9):
+            return False
+        return not (
+            abs(value - lower) <= tolerance or abs(value - upper) <= tolerance
+        )
+
+    def fit_creep(self, params=(0.6,), frames=None, known_params=None):
         """
         Minimizes "_get_diff_from_grid" to obtain creep corrected
         grid of predicted STM tip movement.
@@ -366,7 +416,8 @@ class Creep:
         Parameters:
             params: tupple containing initial guess for input parameters
                 of the creep function.
-            frames: n-Tuple/list deciding which frames are used for fit.
+            frames: n-Tuple/list deciding which frames are used for fit. `None`
+                spreads the samples over the whole movie.
             known_params: tuple or None. Params are only calculated if this is None.
                 Otherwise reestimatin is skipped and known_params is used as optimizer.
 
@@ -376,11 +427,15 @@ class Creep:
         if known_params == None:
             log.info("Starting creep correction")
             params = self._clamp_to_bounds(params)
-            for frame_number_index in range(len(frames)):
-                if frames[frame_number_index] % 2 != 0:
-                    frames[frame_number_index] += 1
-            fitresult = np.zeros(len(params))
-            count = 0
+            if frames is None:
+                frames = self._sample_frames()
+            else:
+                frames = [
+                    frame + 1 if frame % 2 != 0 else frame for frame in list(frames)
+                ]
+            guess = float(params[0])
+            informative = []
+            uninformative = 0
             for frame in frames:
                 for row in np.linspace(
                     self.data.shape[2] * 0.25, self.data.shape[2] * 0.75, 3
@@ -393,8 +448,6 @@ class Creep:
                             params,
                             bounds=self.bounds,
                         )
-                        fitresult += popt
-                        count += 1
                     except Exception as e:
                         # One line per failed fit; the full traceback of every
                         # frame and row buried the actual message in a batch run.
@@ -402,18 +455,42 @@ class Creep:
                         log.warning(
                             "Creep fit failed for frame %d, row %d: %s", frame, row, e
                         )
+                        continue
 
-            if count == 0:  ## Only happens if all curve_fit attempts fail.
+                    if self._is_informative(float(popt[0]), guess):
+                        informative.append(np.asarray(popt, dtype=float))
+                    else:
+                        uninformative += 1
+
+            attempts = len(frames) * 3
+            if len(informative) < self.MIN_INFORMATIVE_FITS:
                 avg_result = np.array(params)
-
-                log.info(
-                    f"Creep fitting failed on all iterations (all frames and rows). Using input parameter values {avg_result}:"
+                log.warning(
+                    "Creep fit: only %d of %d attempts determined a parameter, "
+                    "the rest stayed at the initial guess or ran into a bound. "
+                    "One or two values out of fifteen are noise, not a "
+                    "measurement, so the guess %s is kept and the creep "
+                    "correction for this movie is probably better switched off. "
+                    "A large measured up/down shift is the usual cause: check the "
+                    "y-phase first, since a constant offset between the up and the "
+                    "down frames enters that shift and inflates the bounds.",
+                    len(informative),
+                    attempts,
+                    avg_result,
                 )
             else:
-                avg_result = np.asarray(fitresult) / float(count)
-
+                # The median, not the mean: a single frame that ran into a bound
+                # would drag a mean of a handful of values a long way.
+                avg_result = np.median(np.stack(informative), axis=0)
                 log.info(
-                    f"Creep fitting returned {avg_result} as optimal parameter values."
+                    "Creep fitting returned %s, from %d of %d attempts; %d gave no "
+                    "information (initial guess or bound) and were left out. "
+                    "Spread of the usable values: %.4g.",
+                    avg_result,
+                    len(informative),
+                    attempts,
+                    uninformative,
+                    float(np.ptp(np.stack(informative), axis=0)[0]),
                 )
         else:
             avg_result = known_params
