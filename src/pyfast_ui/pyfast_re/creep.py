@@ -361,7 +361,17 @@ class Creep:
             The guess, moved just inside the bounds where necessary.
         """
         lower, upper = self.bounds
-        margin = 0.02 * (upper - lower) if np.isfinite(upper - lower) else 0.0
+        span = upper - lower
+        if np.isfinite(span):
+            margin = 0.02 * span
+        else:
+            # The root mode's range is (-inf, u] with u a hair below zero, and
+            # the function degenerates as the parameter approaches u: the grid
+            # comes out non-monotonic, every spline fit fails with "Error on
+            # input data" and the interpolation that follows keeps a single
+            # column of the movie. Clamping onto the bound is therefore the
+            # worst possible choice; a value well inside is needed.
+            margin = 0.5
         clamped = []
         for value in params:
             inside = float(np.clip(value, lower + margin, upper - margin))
@@ -499,8 +509,33 @@ class Creep:
             )
         ycreep = self.creep_function(*avg_result)
         y_up, y_down, rest = self._shape_to_grid(ycreep)
+        self._check_grid(y_up, y_down, avg_result)
 
         return (y_up, y_down)
+
+    def _check_grid(self, y_up, y_down, params):
+        """Refuse a grid that is not a usable sampling of the frame.
+
+        The corrected grid has to rise along a column: it is the list of
+        positions the tip visited, and the interpolation reads it as one. A
+        parameter at the edge of its range can produce a grid that turns back
+        on itself, and then every spline fails, the interpolation marks nearly
+        every pixel invalid and the movie comes out one column wide. That is
+        worse than no correction, and silent, so it is caught here.
+        """
+        for name, grid in (("up", y_up), ("down", y_down)):
+            grid = np.asarray(grid)
+            column = grid[:, grid.shape[1] // 2]
+            steps = np.diff(column)
+            if steps.size and np.any(steps <= 0):
+                raise ValueError(
+                    f"The creep parameters {np.round(params, 5)} produce a "
+                    f"{name} grid that does not increase along the frame "
+                    f"({int(np.sum(steps <= 0))} of {steps.size} steps go "
+                    "backwards). The correction is refused; for the root mode "
+                    "the initial guess has to be negative and away from zero, "
+                    "-0.5 is a reasonable value."
+                )
 
     def _Bezier(self, y, shape, pixels, Bezier_points):
         """Corrects a given y meshgrid for probe creep, using a Bezier curve
