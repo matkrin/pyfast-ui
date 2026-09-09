@@ -345,7 +345,13 @@ class Creep:
         return return_val
 
     def _clamp_to_bounds(self, params):
-        """Move the initial guess inside the fitted bounds if it lies outside.
+        """Bring the initial guess inside the fitted bounds.
+
+        The guess is taken as a magnitude, so the same positive number works
+        for every mode. The sin parameter is positive and the root parameter
+        negative, and their ranges say which is wanted, so a value on the wrong
+        side is simply reflected. Nobody has to remember the sign of the mode
+        they picked, and the input box in the interface needs no negative range.
 
         The upper bound is not a constant: it follows from the pixel shift
         measured in the movie, so a movie with little creep gets a tight bound.
@@ -374,12 +380,24 @@ class Creep:
             margin = 0.5
         clamped = []
         for value in params:
-            inside = float(np.clip(value, lower + margin, upper - margin))
-            if inside != value:
+            wanted = float(value)
+            if not lower <= wanted <= upper and lower <= -wanted <= upper:
+                log.info(
+                    "Creep initial guess %+.4g reflected to %+.4g, which is the "
+                    "side of zero this mode works on.",
+                    wanted,
+                    -wanted,
+                )
+                wanted = -wanted
+
+            inside = float(np.clip(wanted, lower + margin, upper - margin))
+            if inside != wanted:
+                outside = not lower <= wanted <= upper
                 log.warning(
-                    "Creep initial guess %.4g lies outside the bounds [%.4g, %.4g] "
-                    "that this movie allows; using %.4g instead.",
-                    value,
+                    "Creep initial guess %.4g %s the bounds [%.4g, %.4g] that "
+                    "this movie allows; using %.4g instead.",
+                    wanted,
+                    "lies outside" if outside else "sits too close to",
                     lower,
                     upper,
                     inside,
