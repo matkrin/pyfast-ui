@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
 from scipy.interpolate import Rbf, splev, splrep
+from scipy.ndimage import map_coordinates
 from scipy.optimize import LinearConstraint, NonlinearConstraint, curve_fit, minimize
 from scipy.signal import correlate
 
@@ -21,6 +22,18 @@ if TYPE_CHECKING:
 
 
 log = logging.getLogger(__name__)
+
+
+def _displace_rows(frame, amplitude):
+    """Move the rows of a frame by a bulge of `amplitude` px in the middle."""
+    rows, columns = frame.shape
+    positions = np.arange(rows)
+    bulge = amplitude * np.sin(np.pi * positions / max(rows - 1, 1))
+    grid_y, grid_x = np.meshgrid(positions, np.arange(columns), indexing="ij")
+
+    return map_coordinates(
+        frame, [grid_y + bulge[:, None], grid_x], order=3, mode="nearest"
+    ).astype(np.float32)
 
 
 class CreepMode(Enum):
@@ -588,6 +601,381 @@ class Creep:
                     "the initial guess has to be negative and away from zero, "
                     "-0.5 is a reasonable value."
                 )
+
+    def fit_creep_measured(self, params=(0.3,), known_params=None):
+        """Creep grid from the robust fit.
+
+        Same contract as `fit_creep`, so the two can be swapped: it returns the
+        up and the down grid, and honours `known_params`.
+        """
+        if known_params is not None:
+            amplitude = self.pixel_shift
+            shape = float(np.atleast_1d(known_params)[0])
+            log.info(
+                "Creep parameters known. Using shape %.4g with the measured "
+                "amplitude %.2f px.",
+                shape,
+                amplitude,
+            )
+        else:
+            amplitude, shape = self.fit_creep_robust(float(params[0]))
+
+        self.pixel_shift = float(amplitude)
+        self.limit_function()
+        y_up, y_down, _ = self._shape_to_grid(np.asarray(self.creep_function(shape)))
+
+        return (y_up, y_down)
+
+    # --- robust fit -------------------------------------------------------
+
+    FIT_FRAMES = 6
+    """Frame pairs the fit is measured on, spread over the whole movie."""
+
+    FIT_COLUMNS = 40
+    """Columns per frame. More than this buys nothing; the estimate is already
+    dominated by how well the surface can be registered, not by counting."""
+
+    FIT_BLOCKS = 8
+    """Row blocks the residual displacement is measured in, at most. A block
+    has to be several times taller than whatever repeats along the frame: on an
+    atomically resolved surface a block one lattice period tall matches equally
+    well at every period and the measurement is then free to return anything."""
+
+    MIN_BLOCK_ROWS = 24
+    """Smallest block, in rows, whatever the surface."""
+
+    PERIODS_PER_BLOCK = 3.0
+    """How many repeats of the dominant vertical period a block must span."""
+
+    def _resampled_pair(self, frame, up_grid, down_grid, rows, keep, target):
+        """One up frame and the following down frame, both put on the same grid."""
+        columns = self._fit_columns()
+        first = np.zeros((keep.size, columns.size), dtype=np.float32)
+        second = np.zeros_like(first)
+        for index, column in enumerate(columns):
+            source_up = up_grid[rows, column]
+            source_down = down_grid[rows, column]
+            positions = target[keep, column]
+            first[:, index] = splev(
+                positions, splrep(source_up, self.data[frame, rows, column], s=0)
+            )
+            second[:, index] = splev(
+                positions,
+                splrep(source_down, self.data[frame + 1, rows, column], s=0),
+            )
+        return first, second
+
+    def _fit_columns(self):
+        return np.unique(
+            (
+                np.linspace(0.05, 0.95, self.FIT_COLUMNS) * (self.data.shape[2] - 1)
+            ).astype(int)
+        )
+
+    def _vertical_period(self):
+        """Dominant repeat along the frame, in rows, or 0 if there is none.
+
+        Read off the mean power spectrum of a few frames. A lattice shows up as
+        a sharp line; a surface without one leaves the spectrum smooth and the
+        peak is not worth acting on.
+        """
+        frames = self.data[: min(len(self.data), 8)]
+        rows = frames.shape[1]
+        window = np.hanning(rows)[:, None]
+        spectrum = np.zeros(rows // 2 + 1)
+        for frame in frames:
+            centred = frame - frame.mean(axis=0, keepdims=True)
+            spectrum += np.abs(np.fft.rfft(centred * window, axis=0)).mean(axis=1)
+
+        # ignore the lowest frequencies, which carry the shape of the surface
+        low = max(3, rows // 60)
+        band = spectrum[low:]
+        if band.size < 4:
+            return 0.0
+        peak = int(np.argmax(band))
+        if band[peak] < 3.0 * float(np.median(band)):
+            return 0.0
+
+        return float(rows) / float(peak + low)
+
+    def _fit_block_count(self, rows):
+        if getattr(self, "_period_cache", None) is None:
+            self._period_cache = self._vertical_period()
+        period = self._period_cache
+        smallest = max(self.MIN_BLOCK_ROWS, self.PERIODS_PER_BLOCK * period)
+        count = int(min(self.FIT_BLOCKS, max(3, rows // max(smallest, 1))))
+        if period and not getattr(self, "_period_logged", False):
+            self._period_logged = True
+            log.info(
+                "Creep fit: the frame repeats every %.1f rows, so the residual is "
+                "measured in %d blocks of %d rows.",
+                period,
+                count,
+                int(rows / count),
+            )
+        return count
+
+    def _lattice_wavevector(self, frame):
+        """Dominant 2D Fourier component of a resampled frame.
+
+        On a surface that repeats, the displacement between two frames is read
+        off the phase of that component. A block correlation cannot do it: the
+        surface looks the same at every repeat, so every block returns much the
+        same number and the row dependence, which is the whole quantity of
+        interest, is lost. Measured on FS_251128_001 against a known
+        distortion, the correlation reported a flat 1.0 px where the truth ran
+        from 0.25 to 0.95 px, while the phase followed it to 0.05 px.
+        """
+        rows, columns = frame.shape
+        window = np.outer(np.hanning(rows), np.hanning(columns))
+        spectrum = np.abs(np.fft.fft2((frame - frame.mean()) * window)) ** 2
+        ky = np.fft.fftfreq(rows)[:, None] * np.ones((1, columns))
+        kx = np.ones((rows, 1)) * np.fft.fftfreq(columns)[None, :]
+        usable = (np.abs(ky) > 2.0 / rows) & (np.abs(ky) < 0.45) & (np.abs(kx) < 0.45)
+        index = np.unravel_index(np.argmax(np.where(usable, spectrum, 0.0)), spectrum.shape)
+
+        return float(ky[index[0], 0]), float(kx[0, index[1]])
+
+    def _phase_displacement(self, first, second, carrier, period):
+        """Displacement between two blocks from the phase of their lattice."""
+        amplitude_first = (first * carrier).sum()
+        amplitude_second = (second * carrier).sum()
+        difference = np.angle(amplitude_first * np.conjugate(amplitude_second))
+
+        return float(difference / (2.0 * np.pi) * period)
+
+    def _fit_frames(self):
+        num_frames = len(self.data)
+        return [
+            int(index) - int(index) % 2
+            for index in np.linspace(0, num_frames - 2, self.FIT_FRAMES)
+        ]
+
+    def residual_profile(self, amplitude, shape, estimator=None, probe=None):
+        """Displacement left between up and down frames, per row block.
+
+        The two sweeps are resampled onto the same grid with the creep
+        parameters given, and what remains is measured block by block. A
+        correction that is right leaves a flat profile; one that is too weak
+        leaves the bulge in the middle that creep produces, and one that is too
+        strong turns the bulge inside out.
+
+        Only one scan direction is used. An interlaced frame interleaves the
+        forward and the backward lines, and what is left of the doubling between
+        them is a zigzag along every column that the block registration locks
+        onto instead of the surface. Taking every second line removes it.
+
+        Returns:
+            The profile, or `None` if the parameters produce a grid that is not
+            usable.
+        """
+        self.pixel_shift = float(amplitude)
+        self.limit_function()
+        try:
+            path = np.asarray(self.creep_function(shape))
+        except Exception:
+            return None
+        up_grid, down_grid, _ = self._shape_to_grid(path)
+
+        rows = slice(0, None, 2) if self.channels.is_interlaced() else slice(None)
+        target = self.ygridfold
+        low = max(up_grid[rows][0, :].max(), down_grid[rows][0, :].max())
+        high = min(up_grid[rows][-1, :].min(), down_grid[rows][-1, :].min())
+        sub_target = target[rows, :]
+        keep = np.where(
+            (sub_target.min(axis=1) >= low) & (sub_target.max(axis=1) <= high)
+        )[0]
+        blocks = self._fit_block_count(keep.size)
+        if keep.size < 3 * blocks:
+            return None
+
+        columns = self._fit_columns()
+        if np.any(np.diff(up_grid[rows][:, columns], axis=0) <= 0) or np.any(
+            np.diff(down_grid[rows][:, columns], axis=0) <= 0
+        ):
+            # A grid that turns back on itself cannot be interpolated on.
+            return None
+
+        if estimator is None:
+            estimator = getattr(self, "_estimator", "correlation")
+
+        edges = np.linspace(1, keep.size - 1, blocks + 1).astype(int)
+        measured = [[] for _ in range(blocks)]
+        carrier = None
+        for frame in self._fit_frames():
+            first, second = self._resampled_pair(
+                frame, up_grid, down_grid, rows, keep, sub_target
+            )
+            if probe is not None:
+                # a known distortion, for choosing between the estimators
+                second = _displace_rows(second, probe)
+            prepared_first = updown._prepare(first)
+            prepared_second = updown._prepare(second)
+
+            if estimator == "phase" and carrier is None:
+                wave_y, wave_x = self._lattice_wavevector(prepared_first)
+                if not wave_y:
+                    estimator = "correlation"
+                else:
+                    grid_y = np.arange(first.shape[0])[:, None]
+                    grid_x = np.arange(first.shape[1])[None, :]
+                    carrier = np.exp(
+                        -2j * np.pi * (wave_y * grid_y + wave_x * grid_x)
+                    )
+                    self._carrier_period = 1.0 / abs(wave_y)
+
+            for block in range(blocks):
+                low_row, high_row = edges[block], edges[block + 1]
+                if estimator == "phase" and carrier is not None:
+                    measured[block].append(
+                        self._phase_displacement(
+                            prepared_first[low_row:high_row],
+                            prepared_second[low_row:high_row],
+                            carrier[low_row:high_row],
+                            self._carrier_period,
+                        )
+                    )
+                else:
+                    measured[block].append(
+                        float(
+                            updown._shift(
+                                prepared_first[low_row:high_row],
+                                prepared_second[low_row:high_row],
+                            )[0]
+                        )
+                    )
+
+        return np.array([np.median(values) for values in measured])
+
+    def _fit_score(self, amplitude, shape):
+        """How much of the row dependence is left, in pixels. Lower is better."""
+        profile = self.residual_profile(amplitude, shape)
+        if profile is None or not np.all(np.isfinite(profile)):
+            return np.inf
+        # The rigid part is the y-phase's business and is taken out later, so
+        # only the spread counts here.
+        return float(np.ptp(profile))
+
+    def _choose_estimator(self):
+        """Decide how to measure the residual, by trying both on a known case.
+
+        A displacement between two frames can be read from a block correlation
+        or, where the surface repeats, from the phase of the repeat. Neither
+        wins everywhere: the correlation goes blind when a block is not much
+        taller than the repeat, and the phase is meaningless when there is no
+        repeat to speak of. Rather than guess from the spectrum, a known
+        distortion is imposed on the second frame of each pair and whichever
+        estimator recovers it more closely is used for the fit.
+        """
+        rows_kept = self.residual_profile(0.0, self._neutral_shape(),
+                                          estimator="correlation")
+        if rows_kept is None:
+            return "correlation"
+
+        blocks = rows_kept.size
+        centre = np.linspace(0.0, np.pi, blocks + 2)[1:-1]
+        truth = np.sin(centre)          # a one pixel bulge in the middle
+        errors = {}
+        for estimator in ("correlation", "phase"):
+            base = self.residual_profile(0.0, self._neutral_shape(),
+                                         estimator=estimator)
+            with_probe = self.residual_profile(
+                0.0, self._neutral_shape(), estimator=estimator, probe=1.0
+            )
+            if base is None or with_probe is None:
+                errors[estimator] = np.inf
+                continue
+            recovered = np.abs(with_probe - base)
+            errors[estimator] = float(np.abs(recovered - truth).mean())
+
+        choice = min(errors, key=lambda key: errors[key])
+        log.info(
+            "Creep fit: a known one pixel bulge is recovered to %.2f px by the "
+            "correlation and %.2f px by the lattice phase; using the %s.",
+            errors["correlation"],
+            errors["phase"],
+            choice,
+        )
+        return choice
+
+    def _neutral_shape(self):
+        return -0.3 if getattr(self.creep_function, "__name__", "") == "root_creep" else 0.3
+
+    def fit_creep_robust(self, shape_guess):
+        """Find the creep parameters by measuring what the correction leaves.
+
+        The fit that came with the code minimised the pixel difference between
+        the two sweeps with `curve_fit`. That does not work here: the difference
+        is dominated by how the surface images differently in the two scan
+        directions, the geometry is a small term on top, and the numerical
+        gradient of the whole thing is zero to fifteen digits, so the optimiser
+        returns the value it started from. Measured on five movies, not one of
+        the fifteen attempts per movie ever moved off its starting point.
+
+        What is measured instead is the displacement the correction leaves
+        between the sweeps, block by block along the frame, which is what the
+        eye sees as the ends of the frame breathing. Both the amplitude and the
+        shape are searched, on a coarse grid first and then locally, because the
+        landscape is smooth but the gradient is not worth trusting.
+
+        Returns:
+            Amplitude and shape.
+        """
+        self._estimator = self._choose_estimator()
+        measured = abs(updown.creep_amplitude(updown.mismatch_profile(self.data)))
+        ceiling = max(4.0 * measured, 3.0)
+        amplitudes = np.linspace(0.0, ceiling, 7)
+        # By name, not by identity: attribute access builds a fresh bound
+        # method every time, so `is` never matches.
+        if getattr(self.creep_function, "__name__", "") == "root_creep":
+            shapes = np.array([-0.05, -0.3, -1.0, -3.0, -8.0])
+        else:
+            shapes = np.array([0.05, 0.3, 0.7, 1.1, 1.4])
+
+        best = (np.inf, 0.0, float(shapes[0]))
+        for amplitude in amplitudes:
+            for shape in shapes:
+                score = self._fit_score(amplitude, shape)
+                if score < best[0]:
+                    best = (score, float(amplitude), float(shape))
+
+        # Local refinement of the amplitude, which is the parameter that matters:
+        # the shape only sets how the compression is distributed over the ends.
+        step = float(amplitudes[1] - amplitudes[0]) / 2.0
+        score, amplitude, shape = best
+        for _ in range(3):
+            for candidate in (amplitude - step, amplitude + step):
+                if candidate < 0.0:
+                    continue
+                trial = self._fit_score(candidate, shape)
+                if trial < score:
+                    score, amplitude = trial, candidate
+            step /= 2.0
+
+        without = self._fit_score(0.0, shape)
+        if not score < without:
+            log.warning(
+                "Creep fit: no amplitude improved on leaving the movie alone "
+                "(best %.3f px against %.3f px), so no creep correction is "
+                "applied. The up and down frames of this movie disagree in a way "
+                "the model does not describe.",
+                score,
+                without,
+            )
+            return 0.0, float(shape)
+
+        log.info(
+            "Creep fit: amplitude %.2f px, shape %.3f. Residual displacement "
+            "between the sweeps %.3f px, against %.3f px uncorrected and %.3f px "
+            "for the amplitude the up/down profile suggests (%.2f px).",
+            amplitude,
+            shape,
+            score,
+            without,
+            self._fit_score(measured, shape),
+            measured,
+        )
+        return float(amplitude), float(shape)
 
     def _Bezier(self, y, shape, pixels, Bezier_points):
         """Corrects a given y meshgrid for probe creep, using a Bezier curve

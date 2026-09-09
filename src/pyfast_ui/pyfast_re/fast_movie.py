@@ -422,7 +422,9 @@ class FastMovie:
         # must be movie mode now
         mode = CreepMode(creep_mode.lower())
         creep = Creep(self, index_to_linear=guess_ind, creep_mode=mode)
-        self._grid = creep.fit_creep((initial_guess,), known_params=known_params)
+        self._grid = creep.fit_creep_measured(
+            (initial_guess,), known_params=known_params
+        )
 
     def correct_creep_bezier(
         self,
