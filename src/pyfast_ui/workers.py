@@ -1,3 +1,4 @@
+import logging
 from typing import Callable, final, override
 from PySide6.QtCore import QObject, QRunnable, Signal
 from pyfast_ui.config import FftFilterConfig
@@ -6,6 +7,8 @@ from pyfast_ui.pyfast_re.fft_filter import FftFilterParams
 import numpy as np
 from numpy.typing import NDArray
 from pystackreg import StackReg
+
+log = logging.getLogger(__name__)
 
 
 @final
@@ -111,6 +114,7 @@ class DriftWorker(QRunnable):
         stackreg_reference: str,
         boxcar: int,
         median_filter: bool,
+        subpixel: bool = False,
     ) -> None:
         super().__init__()
 
@@ -123,6 +127,7 @@ class DriftWorker(QRunnable):
         self.stackreg_reference = stackreg_reference
         self.boxcar = boxcar
         self.median_filter = median_filter
+        self.subpixel = subpixel
         self.signals = WorkerSignals()
 
     @override
@@ -142,22 +147,37 @@ class DriftWorker(QRunnable):
         #     )
 
         # self.ft.data = corrected_data
-        match self.drift_algorithm:
-            case "correlation":
-                self.ft.correct_drift_correlation(
-                    mode=self.drifttype,
-                    stepsize=self.stepsize,
-                    boxcar=self.boxcar,
-                    median_filter=self.median_filter,
-                )
-            case "stackreg":
-                self.ft.correct_drift_stackreg(
-                    mode=self.drifttype,
-                    stackreg_reference=self.stackreg_reference,
-                    boxcar=self.boxcar,
-                    median_filter=self.median_filter
-                )
-            case "known":
-                self.ft.correct_drift_known(mode=self.drifttype)
+        try:
+            match self.drift_algorithm:
+                case "correlation":
+                    self.ft.correct_drift_correlation(
+                        mode=self.drifttype,
+                        stepsize=self.stepsize,
+                        boxcar=self.boxcar,
+                        median_filter=self.median_filter,
+                        subpixel=self.subpixel,
+                    )
+                case "stackreg":
+                    self.ft.correct_drift_stackreg(
+                        mode=self.drifttype,
+                        stackreg_reference=self.stackreg_reference,
+                        boxcar=self.boxcar,
+                        median_filter=self.median_filter,
+                        subpixel=self.subpixel,
+                    )
+                case "global":
+                    self.ft.correct_drift_global(
+                        mode=self.drifttype,
+                        subpixel=self.subpixel,
+                    )
+                case "known":
+                    self.ft.correct_drift_known(
+                        mode=self.drifttype, subpixel=self.subpixel
+                    )
+        except Exception:
+            # A batch run walks over many files; one that cannot be corrected
+            # must not take the rest of the run with it, and `finished` has to
+            # be emitted either way or the movie window stays blocked.
+            log.exception("Drift correction failed; the movie is left uncorrected.")
 
         self.signals.finished.emit()

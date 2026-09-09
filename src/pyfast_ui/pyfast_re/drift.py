@@ -16,8 +16,11 @@ from numpy.typing import NDArray
 from pyfast_ui.pyfast_re.tqdm_logging import TqdmLogger
 import skimage
 from pystackreg import StackReg  # pyright: ignore[reportMissingTypeStubs]
-from scipy.ndimage import convolve
+from scipy import sparse
+from scipy.ndimage import convolve, gaussian_filter, shift as ndshift
 from scipy.signal import correlate, medfilt
+from scipy.sparse.linalg import lsqr
+from skimage.registration import phase_cross_correlation
 
 from pyfast_ui.pyfast_re.data_mode import DataMode
 
@@ -362,6 +365,240 @@ class DriftCorrectionResult:
     drift_path_integrated: NDArray[np.float32]
 
 
+#### Global drift estimation ###################################################
+#
+# The sequential methods above measure one displacement per frame and integrate
+# it, so their errors accumulate into a random walk that no smoothing of the
+# path can undo. The estimator below measures many redundant frame pairs and
+# solves for all frame positions at once, which averages those errors instead of
+# summing them.
+
+_BAND_LO, _BAND_HI = 1.0, 8.0
+"""Widths of the difference-of-Gaussians band pass, in pixels. The low cut
+suppresses shot noise, the high cut the slowly varying background that would
+otherwise dominate the correlation."""
+
+
+def _hann_window(shape: tuple[int, int]) -> NDArray[np.float64]:
+    return np.outer(
+        np.hanning(shape[0] + 2)[1:-1], np.hanning(shape[1] + 2)[1:-1]
+    )
+
+
+def _bandpass(frame: NDArray[np.float32]) -> NDArray[np.float32]:
+    return gaussian_filter(frame, _BAND_LO) - gaussian_filter(frame, _BAND_HI)
+
+
+def _overlap(
+    a: NDArray[np.float32], b: NDArray[np.float32], dy: int, dx: int
+) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
+    """The parts of two frames that coincide when b is displaced by (dy, dx).
+
+    Both crops are empty when the displacement exceeds the frame, which happens
+    while the path is still being estimated. The bounds are clamped into
+    [0, size] first: an unclamped stop can come out negative, and numpy reads a
+    negative stop as an offset from the end, so one of the two crops would come
+    back non-empty and of a different shape than the other.
+    """
+    num_y, num_x = a.shape
+
+    def span(size: int, start: int, stop: int) -> tuple[int, int]:
+        low = min(max(start, 0), size)
+        high = min(max(stop, low), size)
+        return low, high
+
+    ay0, ay1 = span(num_y, dy, num_y + dy)
+    by0, by1 = span(num_y, -dy, num_y - dy)
+    ax0, ax1 = span(num_x, dx, num_x + dx)
+    bx0, bx1 = span(num_x, -dx, num_x - dx)
+
+    return a[ay0:ay1, ax0:ax1], b[by0:by1, bx0:bx1]
+
+
+_MIN_OVERLAP = 0.5
+"""Smallest share of a frame that two frames must still share for a match to
+count. The normalised correlation divides by the overlap, so a displacement
+that leaves only a sliver in common is scored on a handful of pixels and can
+beat the true peak. `skimage` allows down to 0.3 by default, which permits a
+displacement of two thirds of a frame between neighbouring frames; that is far
+outside anything a piezo drift produces and it is exactly where the spurious
+peaks sit."""
+
+_MAX_STEP = 0.2
+"""Largest displacement between two neighbouring frames that the sequential
+chain accepts, as a share of the frame. Beyond this the estimate is treated as
+a failed match and the step is set to zero, which leaves that frame to the
+redundant pairs of the global fit. A wrong jump of half a frame, in contrast,
+is never recovered, because every later pair is measured around it."""
+
+
+def _coarse_shift(
+    a: NDArray[np.float32], b: NDArray[np.float32]
+) -> NDArray[np.float64]:
+    """Whole-pixel displacement, searched over the full range.
+
+    Plain cross correlation sums over the overlap and therefore grows with it,
+    which biases the result towards small displacements. The normalised variant
+    divides that out, at some cost in speed, and needs a floor on the overlap
+    so that it does not bias the other way.
+    """
+    ones = np.ones(a.shape, dtype=bool)
+    result = phase_cross_correlation(  # pyright: ignore[reportUnknownVariableType]
+        a,
+        b,
+        upsample_factor=1,
+        reference_mask=ones,
+        moving_mask=ones,
+        overlap_ratio=_MIN_OVERLAP,
+    )
+    value = result[0] if isinstance(result, tuple) else result
+    return np.asarray(value, dtype=float)
+
+
+def _plausible_step(
+    step: NDArray[np.float64], shape: tuple[int, int]
+) -> bool:
+    """Whether a displacement between neighbouring frames is small enough to be
+    drift rather than a mismatched correlation peak."""
+    return bool(
+        abs(step[0]) <= _MAX_STEP * shape[0] and abs(step[1]) <= _MAX_STEP * shape[1]
+    )
+
+
+def _refine_shift(
+    a: NDArray[np.float32],
+    b: NDArray[np.float32],
+    prediction: tuple[float, float] | NDArray[np.float64],
+    upsample: int = 50,
+    max_residual: float = 4.0,
+    min_side: int = 24,
+) -> tuple[NDArray[np.float64] | None, float]:
+    """Sub-pixel displacement of b relative to a, close to `prediction`.
+
+    The refinement runs on the overlapping part alone. Measuring on the whole
+    frame instead leaves a bias of the order of a tenth of a pixel, because the
+    non-overlapping margins contribute noise that pulls the correlation peak
+    towards zero.
+
+    Returns:
+        The displacement and a confidence, which is the normalised correlation
+        of the matched overlap. `(None, 0.0)` if the pair is unusable, either
+        because the overlap is too small or because the measurement disagrees
+        with the prediction by more than `max_residual`.
+    """
+    dy, dx = int(round(float(prediction[0]))), int(round(float(prediction[1])))
+    a_crop, b_crop = _overlap(a, b, dy, dx)
+    if a_crop.shape != b_crop.shape or min(a_crop.shape) < min_side:
+        return None, 0.0
+
+    window = _hann_window(a_crop.shape)
+    residual, _, _ = phase_cross_correlation(  # pyright: ignore[reportUnknownVariableType]
+        a_crop * window, b_crop * window, upsample_factor=upsample, normalization=None
+    )
+    if max(abs(residual[0]), abs(residual[1])) > max_residual:  # pyright: ignore[reportAny]
+        return None, 0.0
+
+    u = a_crop - a_crop.mean()
+    v = b_crop - b_crop.mean()
+    norm = np.sqrt((u * u).sum() * (v * v).sum())
+    confidence = float((u * v).sum() / norm) if norm > 0 else 0.0
+    if not np.isfinite(confidence) or confidence <= 0.05:
+        return None, 0.0
+
+    return np.array([dy + residual[0], dx + residual[1]], dtype=float), confidence
+
+
+def _frame_pairs(
+    num_frames: int,
+    window: int,
+    long_lags: tuple[int, ...],
+    stride: int,
+) -> list[tuple[int, int]]:
+    """Every pair within `window` frames, plus a sparse set of distant pairs.
+
+    The near pairs describe the fast frame-to-frame movement, the distant ones
+    tie the slow drift down; without the latter the fit is again free to walk
+    away over the length of the movie.
+    """
+    pairs = [
+        (i, j)
+        for i in range(num_frames)
+        for j in range(i + 1, min(i + window + 1, num_frames))
+    ]
+    for lag in long_lags:
+        pairs += [(i, i + lag) for i in range(0, num_frames - lag, stride)]
+    return sorted(set(pairs))
+
+
+def _solve_positions(
+    pairs: list[tuple[int, int]],
+    measured: NDArray[np.float64],
+    confidence: NDArray[np.float64],
+    num_frames: int,
+    huber: float = 2.5,
+    iterations: int = 5,
+    scale_floor: float = 0.03,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    """Weighted least squares for all frame positions at once.
+
+    Model `p_j - p_i = d_ij` for every measured pair, with the gauge
+    `sum_i p_i = 0` to fix the free constant. Reweighted with a Huber rule, so
+    that pairs spoiled by moving surface features lose their influence instead
+    of dragging the whole path. The scale has a floor, so that a set of mutually
+    consistent measurements is not over-rejected.
+    """
+    num_pairs = len(pairs)
+    rows: list[int] = []
+    cols: list[int] = []
+    vals: list[float] = []
+    for row, (i, j) in enumerate(pairs):
+        rows += [row, row]
+        cols += [i, j]
+        vals += [-1.0, 1.0]
+    rows += [num_pairs] * num_frames
+    cols += list(range(num_frames))
+    vals += [1.0] * num_frames
+    matrix = sparse.csr_matrix(
+        (vals, (rows, cols)), shape=(num_pairs + 1, num_frames)
+    )
+
+    weights = np.append(np.asarray(confidence, dtype=float), 10.0)
+    positions = np.zeros((num_frames, 2))
+    residual_norm = np.zeros(num_pairs)
+    for _ in range(iterations):
+        weighted = sparse.diags(weights) @ matrix
+        residuals = np.empty((num_pairs, 2))
+        for axis in range(2):
+            rhs = np.append(measured[:, axis], 0.0)
+            solution = lsqr(weighted, weights * rhs, atol=1e-12, btol=1e-12)[0]
+            positions[:, axis] = solution
+            residuals[:, axis] = matrix[:num_pairs] @ solution - measured[:, axis]
+        residual_norm = np.linalg.norm(residuals, axis=1)
+        deviation = np.median(np.abs(residual_norm - np.median(residual_norm)))
+        scale = max(1.4826 * float(deviation), scale_floor)
+        weights[:num_pairs] = confidence * np.minimum(
+            1.0, huber * scale / np.maximum(residual_norm, 1e-9)
+        )
+        weights[num_pairs] = 10.0
+
+    return positions, residual_norm, weights[:num_pairs]
+
+
+def _updown_offset(path: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Mean offset between up frames and down frames, for the log only.
+
+    Up and down frames of the same image are recorded with opposite y sweep, so
+    a residual y phase shows up as an alternation of the path. The value depends
+    on the frame rate and the image size, so it is measured rather than assumed.
+    It needs no correcting: the fit gives every frame its own position anyway.
+    """
+    if len(path) < 3:
+        return np.zeros(2)
+    curvature = path[1:-1] - 0.5 * (path[:-2] + path[2:])
+    parity = np.where(np.arange(1, len(path) - 1) % 2 == 0, 0.5, -0.5)
+    return (curvature * parity[:, None]).mean(axis=0) * 2.0
+
+
 @final
 class Drift:
     """
@@ -376,6 +613,11 @@ class Drift:
             drift path. Set to 0 if no boxcar filter should be applied.
         median_filter: Parameter to decide if the drift path should be smoothed
             via a median filter of kernel size 3.
+        subpixel: Apply the fractional part of the drift path by interpolation
+            instead of rounding it away. Without it the correction is quantised
+            to whole pixels, which leaves up to half a pixel per frame however
+            accurate the path is. The pixel values become interpolated, so it is
+            off by default.
     """
 
     def __init__(
@@ -385,6 +627,7 @@ class Drift:
         corrspeed: int = 1,
         boxcar: int = 50,
         median_filter: bool = True,
+        subpixel: bool = False,
     ):
         if fast_movie.mode != DataMode.MOVIE:
             raise ValueError(f"`FastMovie` instance must be in mode {DataMode.MOVIE}")
@@ -399,6 +642,7 @@ class Drift:
         self.corrspeed = corrspeed
         self.boxcar = boxcar
         self.median_filter = median_filter
+        self.subpixel = subpixel
 
         self.n_frames, self.img_height, self.img_width = self.data.shape
         self.transformations = np.zeros((2, self.n_frames), dtype=np.float32)
@@ -541,6 +785,130 @@ class Drift:
                     self.transformations,
                     self.integrated_trans,
                 )
+
+    def correct_global(self, mode: DriftMode = DriftMode.FULL) -> DriftCorrectionResult:
+        """Drift correction by a global fit over many redundant frame pairs.
+
+        Unlike the sequential methods this does not integrate a per-frame
+        displacement, so its error does not accumulate over the movie. The path
+        is used as it comes out of the fit; the boxcar and median settings do
+        not apply, because there is no integrated noise left for them to hide.
+
+        Args:
+            mode: Cut out the largest common area (`"common"`) or apply padding
+                around frames (`"full"`).
+        """
+        self._get_drift_global()
+        self._write_drift()
+
+        assert self.integrated_trans is not None  # type assertion
+
+        match mode:
+            case DriftMode.FULL:
+                data = self._adjust_movie_buffered()
+            case DriftMode.COMMON:
+                data = self._adjust_movie_common()
+
+        return DriftCorrectionResult(
+            data, self.transformations, self.integrated_trans
+        )
+
+    def _get_drift_global(
+        self,
+        window: int = 8,
+        long_lags: tuple[int, ...] = (25, 50, 100, 200),
+        stride: int = 5,
+        upsample: int = 50,
+        rounds: int = 2,
+    ) -> None:
+        """Determine the drift path by a global fit over redundant frame pairs.
+
+        Three stages: a sequential chain to have a starting point, then the
+        redundant pairs measured around the prediction that the current path
+        gives, then a robust least squares over all of them. The prediction
+        matters: measured blind, distant pairs pick the wrong correlation peak
+        on a surface with repeating features.
+
+        Falls back to the sequential chain if too few pairs can be measured, so
+        that a difficult movie in a batch run yields a usable path instead of an
+        exception.
+        """
+        num_frames = len(self.data)
+        prepared = np.stack([_bandpass(frame) for frame in self.data])
+
+        # Stage one: neighbouring frames only.
+        shape = self.data.shape[1:]
+        path = np.zeros((num_frames, 2))
+        implausible = 0
+        for i in TqdmLogger(range(1, num_frames), desc="Drift: frame chain"):
+            prediction = _coarse_shift(prepared[i - 1], prepared[i])
+            measured, _ = _refine_shift(prepared[i - 1], prepared[i], prediction)
+            step = prediction if measured is None else measured
+            if not _plausible_step(step, shape):
+                implausible += 1
+                step = np.zeros(2)
+            path[i] = path[i - 1] + step
+
+        if implausible:
+            log.info(
+                "Global drift: %d of %d frame steps looked implausible and were "
+                "left to the global fit.",
+                implausible,
+                num_frames - 1,
+            )
+
+        pairs = _frame_pairs(num_frames, window, long_lags, stride)
+        for round_index in range(rounds):
+            kept: list[tuple[int, int]] = []
+            measurements: list[NDArray[np.float64]] = []
+            confidences: list[float] = []
+            for i, j in TqdmLogger(pairs, desc="Drift: frame pairs"):
+                measured, confidence = _refine_shift(
+                    prepared[i], prepared[j], path[j] - path[i], upsample
+                )
+                if measured is not None:
+                    kept.append((i, j))
+                    measurements.append(measured)
+                    confidences.append(confidence)
+
+            if len(kept) < 2 * num_frames:
+                log.warning(
+                    "Global drift: only %d of %d frame pairs could be measured; "
+                    "keeping the sequential path.",
+                    len(kept),
+                    len(pairs),
+                )
+                break
+
+            previous = path
+            path, residuals, weights = _solve_positions(
+                kept, np.asarray(measurements), np.asarray(confidences), num_frames
+            )
+            rejected = float((weights < 0.5 * np.asarray(confidences)).mean())
+            offset = _updown_offset(path)
+            log.info(
+                "Global drift round %d: %d of %d pairs used, "
+                "pair residual RMS %.3f px, %.0f%% down-weighted, "
+                "up/down offset (%.3f, %.3f) px",
+                round_index,
+                len(kept),
+                len(pairs),
+                float(np.sqrt((residuals**2).mean())),
+                rejected * 100.0,
+                offset[0],
+                offset[1],
+            )
+            moved = np.abs(
+                (path - path.mean(axis=0)) - (previous - previous.mean(axis=0))
+            ).max()
+            if round_index and moved < 0.01:
+                break
+
+        path = path - path[0]
+        self.integrated_trans = path.T.astype(np.float32)
+        self.transformations = np.diff(
+            path, axis=0, prepend=path[:1]
+        ).T.astype(np.float32)
 
     def _get_drift_correlation(self) -> None:
         """Calculation of the drift path by FFT cross correlation of two frames."""
@@ -700,7 +1068,21 @@ class Drift:
             x_start = base_x + x_shift
             x_end = x_start + self.img_width
 
-            corr_movie[i, y_start:y_end, x_start:x_end] = self.data[i]
+            frame = self.data[i]
+            if self.subpixel:
+                # Whole pixels by placement, the remainder by interpolation.
+                # Done frame by frame, so no second copy of the movie is held.
+                frame = ndshift(
+                    frame,
+                    (
+                        y_translations[i] - y_shift,
+                        x_translations[i] - x_shift,
+                    ),
+                    order=3,
+                    mode="nearest",
+                )
+
+            corr_movie[i, y_start:y_end, x_start:x_end] = frame
 
         log.info("Drift correction finished")
 

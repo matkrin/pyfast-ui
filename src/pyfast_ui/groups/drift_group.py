@@ -28,6 +28,7 @@ class DriftGroup(QGroupBox):
         stackreg_reference: str,
         boxcar: int,
         median_filter: bool,
+        subpixel: bool,
     ) -> None:
         super().__init__("Drift")
         layout = QVBoxLayout()
@@ -53,17 +54,25 @@ class DriftGroup(QGroupBox):
 
         self._drift_algo_correlation = QRadioButton("correlation", self)
         self._drift_algo_stackreg = QRadioButton("stackreg", self)
+        self._drift_algo_global = QRadioButton("global", self)
+        self._drift_algo_global.setToolTip(
+            "Fits all frame positions at once from many redundant frame pairs,"
+            " so the error does not accumulate over the movie. No parameters;"
+            " the boxcar and median settings do not apply to it."
+        )
         self._known_drift = QRadioButton("known", self)
 
         self._drift_algo_button_group = QButtonGroup(self)
         self._drift_algo_button_group.addButton(self._drift_algo_correlation)
         self._drift_algo_button_group.addButton(self._drift_algo_stackreg)
+        self._drift_algo_button_group.addButton(self._drift_algo_global)
         self._drift_algo_button_group.addButton(self._known_drift)
 
         drift_algo_layout = QVBoxLayout()
         drift_algo_layout.addWidget(QLabel("Mode"))
         drift_algo_layout.addWidget(self._drift_algo_correlation)
         drift_algo_layout.addWidget(self._drift_algo_stackreg)
+        drift_algo_layout.addWidget(self._drift_algo_global)
         drift_algo_layout.addWidget(self._known_drift)
 
         match drift_algorithm:
@@ -71,8 +80,19 @@ class DriftGroup(QGroupBox):
                 self._drift_algo_correlation.setChecked(True)
             case "stackreg" if not known_drift:
                 self._drift_algo_stackreg.setChecked(True)
+            case "global" if not known_drift:
+                self._drift_algo_global.setChecked(True)
             case _ if known_drift:
                 self._known_drift.setChecked(True)
+
+        self._subpixel = QCheckBox("Sub-pixel shifts", self)
+        self._subpixel.setChecked(subpixel)
+        self._subpixel.setToolTip(
+            "Apply the fractional part of the drift path by interpolation."
+            " Without it the correction is rounded to whole pixels, which leaves"
+            " up to half a pixel per frame however accurate the path is. The"
+            " pixel values become interpolated."
+        )
 
         self._drift_filter_group = DriftFilterGroup(boxcar, median_filter)
 
@@ -90,11 +110,38 @@ class DriftGroup(QGroupBox):
         layout.addWidget(self.correlation_group)
         layout.addWidget(self.stackreg_group)
         layout.addWidget(self._drift_filter_group)
+        layout.addWidget(self._subpixel)
 
         btn_layout = QHBoxLayout()
         btn_layout.addWidget(self.apply_btn)
         btn_layout.addWidget(self.new_btn)
         layout.addLayout(btn_layout)
+
+        _ = self._drift_algo_button_group.buttonToggled.connect(
+            self._update_algorithm_controls
+        )
+        self._update_algorithm_controls()
+
+    def _update_algorithm_controls(self) -> None:
+        """Grey out the settings the selected algorithm does not read.
+
+        Only the correlation path uses the stepsize and only stackreg uses its
+        reference frame. The boxcar and median filters live in `_filter_drift`,
+        which the correlation and stackreg paths call and the global and known
+        paths do not: the global fit returns absolute positions rather than an
+        integrated sum, so there is no accumulated noise for a filter to hide,
+        and smoothing it would only blur genuine fast movement back in.
+        """
+        checked = self._drift_algo_button_group.checkedButton()
+        if checked is None:
+            # Qt reports the old button being unchecked before the new one is
+            # checked, so this is called once with nothing selected.
+            return
+
+        algorithm = checked.text()
+        self.correlation_group.setEnabled(algorithm == "correlation")
+        self.stackreg_group.setEnabled(algorithm == "stackreg")
+        self._drift_filter_group.setEnabled(algorithm in ("correlation", "stackreg"))
 
     @property
     def drift_algorithm(self) -> str:
@@ -108,8 +155,18 @@ class DriftGroup(QGroupBox):
                 self._drift_algo_correlation.setChecked(True)
             case "stackreg":
                 self._drift_algo_stackreg.setChecked(True)
+            case "global":
+                self._drift_algo_global.setChecked(True)
             case _:
                 self._known_drift.setChecked(True)
+
+    @property
+    def subpixel(self) -> bool:
+        return self._subpixel.isChecked()
+
+    @subpixel.setter
+    def subpixel(self, value: bool) -> None:
+        self._subpixel.setChecked(value)
 
     @property
     def stackreg_reference(self) -> str:
@@ -185,6 +242,7 @@ class DriftGroup(QGroupBox):
         self.known_drift = drift_config.known_drift
         self.boxcar = drift_config.boxcar
         self.median_filter = drift_config.median_filter
+        self.subpixel = drift_config.subpixel
 
     def to_config(self) -> DriftConfig:
         return DriftConfig(
@@ -196,6 +254,7 @@ class DriftGroup(QGroupBox):
             stackreg_reference=self.stackreg_reference,
             boxcar=self.boxcar,
             median_filter=self.median_filter,
+            subpixel=self.subpixel,
         )
 
 

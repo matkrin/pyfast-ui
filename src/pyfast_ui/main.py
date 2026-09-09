@@ -657,6 +657,7 @@ class MainGui(QMainWindow):
         stackreg_reference = self.drift_group.stackreg_reference
         boxcar = self.drift_group.boxcar
         median_filter = self.drift_group.median_filter
+        subpixel = self.drift_group.subpixel
 
         image_range = None
         print(f"Drift correction with {drift_algorithm=}")
@@ -671,6 +672,7 @@ class MainGui(QMainWindow):
             stackreg_reference=stackreg_reference,
             boxcar=boxcar,
             median_filter=median_filter,
+            subpixel=subpixel,
         )
 
         _ = drift_worker.signals.finished.connect(fast_movie_window.end_processing)

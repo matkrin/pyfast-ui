@@ -391,6 +391,7 @@ class FastMovie:
         stepsize: int,
         boxcar: int,
         median_filter: bool,
+        subpixel: bool = False,
     ) -> None:
         """Drift correction via cross correlation.
 
@@ -406,9 +407,41 @@ class FastMovie:
         """
         driftmode = DriftMode(mode.lower())
         drift = Drift(
-            self, stepsize=stepsize, boxcar=boxcar, median_filter=median_filter
+            self,
+            stepsize=stepsize,
+            boxcar=boxcar,
+            median_filter=median_filter,
+            subpixel=subpixel,
         )
         result = drift.correct_correlation(driftmode)
+        # Mutate data
+        self.data = result.data
+        self._drift_path_sequential = result.drift_path_sequential
+        self._drift_path_integrated = result.drift_path_integrated
+
+    def correct_drift_global(
+        self,
+        mode: Literal["common", "full"],
+        subpixel: bool = False,
+    ) -> None:
+        """Drift correction by a global fit over many redundant frame pairs.
+
+        The sequential methods measure one displacement per frame and integrate
+        it, so their errors accumulate; this one solves for all frame positions
+        at once and averages them instead. It takes no tuning parameters, which
+        also makes it suitable for batch runs.
+
+        Args:
+            mode: Cut out the largest common area (`"common"`) or apply padding
+                around frames (`"full"`).
+            subpixel: Apply the fractional part of the path by interpolation.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
+        driftmode = DriftMode(mode.lower())
+        drift = Drift(self, subpixel=subpixel)
+        result = drift.correct_global(driftmode)
         # Mutate data
         self.data = result.data
         self._drift_path_sequential = result.drift_path_sequential
@@ -421,6 +454,7 @@ class FastMovie:
         stackreg_reference: Literal["previous", "first", "mean"],
         boxcar: int,
         median_filter: bool,
+        subpixel: bool = False,
     ):
         """Drift correction via stackreg image registration.
 
@@ -436,7 +470,13 @@ class FastMovie:
         """
         driftmode = DriftMode(mode)
         reference = StackRegReferenceType(stackreg_reference)
-        drift = Drift(self, stepsize=1, boxcar=boxcar, median_filter=median_filter)
+        drift = Drift(
+            self,
+            stepsize=1,
+            boxcar=boxcar,
+            median_filter=median_filter,
+            subpixel=subpixel,
+        )
         result = drift.correct_stackreg(driftmode, reference)
         # Mutate data
         self.data = result.data
@@ -446,17 +486,19 @@ class FastMovie:
     def correct_drift_known(
         self,
         mode: Literal["common", "full"],
+        subpixel: bool = False,
     ):
         """Drift correction from a known drift path from a '.drift.txt' file.
 
         Args:
             mode: Cut out the largest common area (`"common"`) or apply padding
+            subpixel: Apply the fractional part of the path by interpolation.
 
         Returns:
             None: Updates the movie's data in-place.
         """
         driftmode = DriftMode(mode)
-        drift = Drift(self)
+        drift = Drift(self, subpixel=subpixel)
         # Mutate data
         result = drift.correct_known(driftmode)
         # Mutate data

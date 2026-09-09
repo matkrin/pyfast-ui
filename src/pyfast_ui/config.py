@@ -72,7 +72,9 @@ class CreepConfig(BaseModel):
 
 
 class DriftConfig(BaseModel):
-    drift_algorithm: Literal["correlation", "stackreg", "known"] = "correlation"
+    drift_algorithm: Literal["correlation", "stackreg", "global", "known"] = (
+        "correlation"
+    )
     fft_drift: bool = True
     drifttype: Literal["common", "full"] = "common"
     stepsize: int = 10
@@ -80,6 +82,7 @@ class DriftConfig(BaseModel):
     stackreg_reference: Literal["previous", "first", "mean"] = "previous"
     boxcar: int = 50
     median_filter: bool = True
+    subpixel: bool = False
 
 
 class ImageCorrectionConfig(BaseModel):
