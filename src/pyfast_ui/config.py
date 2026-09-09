@@ -105,6 +105,22 @@ class ExportConfig(BaseModel):
     frame_export_format: Literal["gwy", "png", "jpg", "bmp"] = "gwy"
 
 
+class BatchConfig(BaseModel):
+    """Which steps the batch dialog offers as ticked.
+
+    The dialog used to start from hard coded values every time, so a batch run
+    over a folder silently left out whatever the ticks did not cover, drift
+    above all.
+    """
+
+    phase: bool = True
+    fft_filter: bool = True
+    creep: bool = True
+    image_correction: bool = True
+    drift: bool = False
+    image_filter: bool = False
+
+
 class Config(BaseModel):
     general: GeneralConfig = field(default_factory=GeneralConfig)
     phase: PhaseConfig = field(default_factory=PhaseConfig)
@@ -116,6 +132,7 @@ class Config(BaseModel):
     )
     image_filter: ImageFilterConfig = field(default_factory=ImageFilterConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
+    batch: BatchConfig = field(default_factory=BatchConfig)
 
     def save_toml(self, tomlfile: Path) -> None:
         config = self.model_dump()
@@ -160,6 +177,8 @@ class Config(BaseModel):
                         config_dict[key][k] = None
 
         return cls(
+            # A file written before the batch section existed has none.
+            batch=BatchConfig(**config_dict.get("batch", {})),
             general=GeneralConfig(**config_dict["general"]),
             phase=PhaseConfig(**config_dict["phase"]),
             fft_filter=FftFilterConfig(**config_dict["fft_filter"]),

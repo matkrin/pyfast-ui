@@ -40,6 +40,8 @@ from pyfast_ui.workers import CreepWorker, DriftWorker, FftFilterWorker
 
 FAST_FILE = "/Users/matthias/Documents/work/pyfast/FS_250520_001.h5"
 
+log = logging.getLogger(__name__)
+
 
 @final
 class MainGui(QMainWindow):
@@ -106,6 +108,10 @@ class MainGui(QMainWindow):
         self.histogram_btn = QPushButton("Histogram")
         self._histogram_percentile_limits = self.config.general.histogram_percentile
         _ = self.histogram_btn.clicked.connect(self.on_histogram_btn)
+
+        # Steps ticked in the batch dialog. Kept here so that the selection
+        # survives a run and reaches the config file.
+        self._batch_options = self.config.batch
 
         # Groups
         self.phase_group = PhaseGroup.from_config(self.config.phase)
@@ -283,17 +289,15 @@ class MainGui(QMainWindow):
         )
         filepath = Path(filepath).with_suffix(".toml")
 
-        # TODO: delete contrast = self.config.general.histogram_percentile
-        contrast = self._histogram_percentile_limits
-        if self.operate_on is not None:
-            histogram_window = self.histogram_windows.get(self.operate_on)
-            if histogram_window is not None:
-                contrast = histogram_window.contrast_percentile()
-
+        # Every histogram window reports its limits back, so this holds the
+        # setting last made, whichever movie it was made on. Reading it off the
+        # window of the movie that happens to be selected missed the setting
+        # whenever that movie had no histogram window of its own, which is the
+        # case for every window created by one of the 'New' buttons.
         general_config = GeneralConfig(
             channel=self.channel_select_group.channel,
             colormap=self._colormap.value(),
-            histogram_percentile=contrast,
+            histogram_percentile=self._histogram_percentile_limits,
         )
         config = Config(
             general=general_config,
@@ -304,6 +308,7 @@ class MainGui(QMainWindow):
             image_correction=self.image_correction_group.to_config(),
             image_filter=self.image_filter_group.to_config(),
             export=self.export_group.to_config(),
+            batch=self._batch_options,
         )
         config.save_toml(filepath)
 
@@ -324,6 +329,10 @@ class MainGui(QMainWindow):
         self.channel_select_group.channel = config.general.channel
 
         self._histogram_percentile_limits = config.general.histogram_percentile
+        for histogram_window in self.histogram_windows.values():
+            histogram_window.set_contrast_percentile(self._histogram_percentile_limits)
+
+        self._batch_options = config.batch
 
         self.phase_group.update_from_config(config.phase)
         self.fft_filters_group.update_from_config(config.fft_filter)
@@ -345,14 +354,16 @@ class MainGui(QMainWindow):
         )
         dirpath = Path(dirname)
 
-        dialog = BatchDialog()
+        dialog = BatchDialog(self._batch_options)
         result = dialog.exec()
 
         if result != QDialog.Accepted:
             return
 
         selected = dialog.get_selected_options()
-        print("Batch Mode Selected options:", selected)
+        # Keep the selection, so that the next run and 'Save config' see it.
+        self._batch_options = selected.to_config()
+        log.info("Batch mode, selected operations: %s", selected)
 
         for filepath in dirpath.iterdir():
             if filepath.is_file() and filepath.suffix == ".h5":
@@ -703,14 +714,10 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
-        histogram_window = self.histogram_windows.get(self.operate_on)
-        if histogram_window is None:
-            # TODO: delete: contrast = self.config.general.histogram_percentile
-            contrast = self._histogram_percentile_limits
-        else:
-            contrast = histogram_window.contrast_percentile()
-
-        print(contrast)
+        # The limits in force, wherever they were set: from the config file, or
+        # in any histogram window, all of which report back.
+        contrast = self._histogram_percentile_limits
+        log.info("Exporting with contrast percentiles %s", contrast)
         ft = fast_movie_window.ft
         color_map = self._colormap.value()
 
@@ -828,23 +835,25 @@ class MainGui(QMainWindow):
         if fast_movie_window is None:
             return
 
-        print("New Histogram")
         histogram_window = HistogramWindow(
             fast_movie_window.ft,
             fast_movie_window.info,
             fast_movie_window.set_clim,
         )
         self.histogram_windows.update({fast_movie_window.info.id_: histogram_window})
-        histogram_window._on_change_limit_percentile(
-            (
-                # TODO: delete
-                # self.config.general.histogram_percentile[0] * 100,
-                # self.config.general.histogram_percentile[1] * 100,
-                self._histogram_percentile_limits[0] * 100,
-                self._histogram_percentile_limits[1] * 100,
-            )
+        _ = histogram_window.contrast_percentile_changed.connect(
+            self.on_contrast_percentile_changed
         )
+        histogram_window.set_contrast_percentile(self._histogram_percentile_limits)
         histogram_window.show()
+
+    def on_contrast_percentile_changed(self, percentile: tuple[float, float]) -> None:
+        """Keep the contrast limits set in any histogram window.
+
+        They apply to the movies opened afterwards, to a batch run and to the
+        config file, so they cannot be left in the window they were set in.
+        """
+        self._histogram_percentile_limits = percentile
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:

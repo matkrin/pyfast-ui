@@ -5,6 +5,7 @@ from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToo
 from matplotlib.backends.backend_qtagg import FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.widgets import RangeSlider
+from PySide6.QtCore import Signal
 from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 from scipy.stats import percentileofscore
@@ -26,6 +27,12 @@ class HistogramWindow(QWidget):
         update_callback: Callback that runs to update the `FastMovie`'s color
             range.
     """
+
+    contrast_percentile_changed = Signal(tuple)
+    """Emitted with the limits as a fraction of one whenever they change, so
+    that the application can keep them for the movies opened later and write
+    them to the config file. Without this the setting lives only in this window
+    and is lost as soon as another movie is selected."""
 
     def __init__(
         self,
@@ -97,6 +104,14 @@ class HistogramWindow(QWidget):
         min, max = self._limit_percentile.value()
         return (min / 100, max / 100)
 
+    def set_contrast_percentile(self, percentile: tuple[float, float]) -> None:
+        """Set the limits from a pair of fractions of one, as the config holds them.
+
+        Args:
+            percentile: Lower and upper limit, 0.01 and 0.999 for 1 % and 99.9 %.
+        """
+        self._on_change_limit_percentile((percentile[0] * 100, percentile[1] * 100))
+
     def _create_plot(self) -> None:
         """Create the histogram plot."""
         self._ax = self._canvas.figure.subplots()
@@ -150,6 +165,14 @@ class HistogramWindow(QWidget):
         finally:
             self._updating = False
 
+        self._announce_percentile()
+
+    def _announce_percentile(self) -> None:
+        """Report the limits now in force. Every one of the three inputs, the
+        slider, the absolute values and the percentiles, ends up here, so the
+        application sees the change whichever one the user touched."""
+        self.contrast_percentile_changed.emit(self.contrast_percentile())
+
     def _on_change_limit_absolute(self, new_values: tuple[float, float]) -> None:
         """Callback that gets called when the values of the absolute input change."""
         # Avoid recursion if we're already updating.
@@ -181,6 +204,8 @@ class HistogramWindow(QWidget):
         finally:
             self._updating = False
 
+        self._announce_percentile()
+
     def _on_change_limit_percentile(self, new_value: tuple[float, float]) -> None:
         """Callback that gets called when values of the percentile input change."""
         # Avoid recursion if we're already updating.
@@ -210,3 +235,5 @@ class HistogramWindow(QWidget):
             self.slider.set_val([min_absolute, max_absolute])
         finally:
             self._updating = False
+
+        self._announce_percentile()
