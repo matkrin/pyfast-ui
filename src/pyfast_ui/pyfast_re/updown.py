@@ -174,17 +174,50 @@ def constant_offset(profile: NDArray[np.float64]) -> NDArray[np.float64]:
     )
 
 
+def profile_noise(profile: NDArray[np.float64]) -> float:
+    """How much blocks that should agree disagree, in pixels.
+
+    The two sweeps enter a frame from opposite ends, so the creep they leave
+    behind is symmetric about the middle: the block a given distance from the
+    top must agree with the block the same distance from the bottom. How far
+    they disagree is a measure of everything that is not creep, noise above all,
+    and on a movie with few distinct features, a scan zoomed far in for
+    instance, that reaches a couple of pixels. A profile that runs uphill rather
+    than bulging in the middle is caught by the same test.
+    """
+    if len(profile) < 4:
+        return 0.0
+
+    return float(np.abs(profile[:, 0] - profile[::-1, 0]).mean() / 2.0)
+
+
 def creep_amplitude(profile: NDArray[np.float64]) -> float:
     """How far the middle of a frame is displaced beyond the constant offset.
 
     This is the quantity the creep correction should be sized by. It is
     unaffected by the y-phase, which adds the same amount to every block.
+
+    Zero when the profile is too noisy to say. The creep correction takes this
+    number as the amplitude to remove, so noise here is not harmless: it warps
+    every frame by half of whatever is passed in.
     """
     if len(profile) < 4:
         return 0.0
 
     middle = profile[len(profile) // 2 - 1 : len(profile) // 2 + 1, 0].mean()
-    return float(middle - constant_offset(profile)[0])
+    amplitude = float(middle - constant_offset(profile)[0])
+
+    noise = profile_noise(profile)
+    if abs(amplitude) <= noise:
+        log.info(
+            "Creep amplitude %.2f px is within the scatter of the measurement "
+            "(%.2f px), so it is not determined; treating it as zero.",
+            amplitude,
+            noise,
+        )
+        return 0.0
+
+    return amplitude
 
 
 def describe(profile: NDArray[np.float64]) -> str:

@@ -97,17 +97,7 @@ class PhaseCorrection:
         y_phase = metadata.acquisition_y_phase
         row_shift = 0
         if self.auto_y_phase:
-            probe = self._as_movie(np.roll(series, int(round(x_phase))))
-            offset = updown_row_offset(probe)
-            y_phase = int(round(offset / ROWS_PER_Y_PHASE))
-            row_shift = int(round(offset - ROWS_PER_Y_PHASE * y_phase))
-            log.info(
-                "Automatic y-phase: up/down offset %.1f rows -> y-phase %d, "
-                "%d row(s) left for the frames",
-                offset,
-                y_phase,
-                row_shift,
-            )
+            y_phase, row_shift = self._search_y_phase(series, x_phase)
         elif self.manual_y_phase is not None:
             y_phase = self.manual_y_phase
 
@@ -129,6 +119,49 @@ class PhaseCorrection:
         )
 
         return PhaseCorrectionResult(data, x_phase, y_phase, row_shift)
+
+    def _search_y_phase(
+        self, series: NDArray[np.float32], x_phase: float, span: int = 2
+    ) -> tuple[int, int]:
+        """Pick the y-phase that leaves the two sweeps closest together.
+
+        A first estimate comes from dividing the measured offset by the rows a
+        y-phase step is worth, but that step is not reliably four rows: measured
+        on FS_251128_026 it came out anywhere between three and seven, so a
+        movie tens of rows out lands two steps away from the best value. Each
+        candidate around the estimate is therefore tried and measured. Every
+        measurement that decides the outcome is then made close to zero offset,
+        which is where the correlation is most trustworthy.
+
+        Returns:
+            The y-phase and the rows that are left for `reshape_data` to shift.
+        """
+        num_x_points = self.fast_movie.metadata.scanner_x_points
+        whole_x = int(round(x_phase))
+
+        offset = updown_row_offset(self._as_movie(np.roll(series, whole_x)))
+        estimate = int(round(offset / ROWS_PER_Y_PHASE))
+
+        residuals: dict[int, float] = {}
+        for candidate in range(estimate - span, estimate + span + 1):
+            probe = self._as_movie(
+                np.roll(series, whole_x + candidate * num_x_points * 2)
+            )
+            profile = updown.mismatch_profile(probe, pairs=8)
+            residuals[candidate] = float(updown.constant_offset(profile)[0])
+
+        best = min(residuals, key=lambda c: abs(residuals[c]))
+        log.info(
+            "Automatic y-phase: offset %.1f rows suggests %d; tried %s, taking %d "
+            "with %.2f rows left",
+            offset,
+            estimate,
+            ", ".join(f"{c}: {residuals[c]:+.1f}" for c in sorted(residuals)),
+            best,
+            residuals[best],
+        )
+
+        return best, int(round(residuals[best]))
 
     def _resolve_sign(self, series: NDArray[np.float32], magnitude: float) -> float:
         """Decide whether the phase is positive or negative.
