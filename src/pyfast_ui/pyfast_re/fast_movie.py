@@ -301,7 +301,11 @@ class FastMovie:
             raise ValueError(f"`FastMovie` must be in mode {DataMode.MOVIE}")
 
         profile = updown.mismatch_profile(self.data)
-        constant = updown.constant_offset(profile)
+        # The rigid estimator, not the one the y-phase uses: by this point the
+        # creep correction has already measured itself against the turning
+        # points, so anchoring there again would push its residual into the
+        # middle of the frame.
+        constant = updown.rigid_offset(profile)
         offset_y = float(constant[0]) if align_y else 0.0
         offset_x = float(constant[1]) if align_x else 0.0
 

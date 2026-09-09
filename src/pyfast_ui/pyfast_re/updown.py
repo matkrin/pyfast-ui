@@ -155,6 +155,28 @@ def mismatch_profile(
     return profile
 
 
+def rigid_offset(profile: NDArray[np.float64]) -> NDArray[np.float64]:
+    """The offset to take out of an already creep-corrected movie, in pixels.
+
+    Not the same estimator as `constant_offset`, and for a reason. Before the
+    creep correction the turning points are the reference: the two sweeps meet
+    there, so the ends carry the y-phase alone and the ends are what the
+    y-phase should read.
+
+    Afterwards they are not. The creep model measures its own correction
+    against the ends and recentres the grid, so a movie whose bulk it has
+    straightened comes out with a residual offset spread over the whole frame.
+    Reading the ends again then anchors on the one place the model has already
+    used and pushes the residual back into the middle of the frame, which is
+    where it is most visible. The median over all blocks leaves the residual
+    centred instead: half of what is left above the middle, half below.
+    """
+    if len(profile) < 3:
+        return np.zeros(2)
+
+    return np.median(profile, axis=0)
+
+
 def constant_offset(profile: NDArray[np.float64]) -> NDArray[np.float64]:
     """The part of the mismatch that is the same in every row, in pixels.
 
