@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import logging
+import shutil
 import struct
+import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Hashable, Literal, TypeAlias, final
 
 from PIL import Image
+import matplotlib as mpl
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,6 +18,8 @@ from numpy.typing import NDArray
 from pyfast_ui.pyfast_re.channels import FrameChannelType
 from pyfast_ui.pyfast_re.data_mode import DataMode
 from pyfast_ui.pyfast_re.tqdm_logging import TqdmLogger
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pyfast_ui.pyfast_re.fast_movie import FastMovie
@@ -85,9 +92,74 @@ visible on the atomic corrugation and the labels are smeared; the worst pixel
 is 95 grey levels out of 255. 12 costs twice the file size and brings that to
 48, with little left to gain below it."""
 
+MOVIE_FALLBACK_BITRATE = 16000
+"""Kilobits per second for an encoder that takes no constant rate factor. A
+generous number: the point is not to lose the corrugation."""
+
 MOVIE_PRESET = "slow"
 """How hard x264 works for that quality. A movie is written once and watched
 many times, and the difference against the default is seconds."""
+
+
+
+def _ffmpeg_has(encoder: str) -> bool:
+    """Whether the ffmpeg on this machine can encode with `encoder`.
+
+    Not every build carries x264: the licence keeps it out of some
+    distributions, and a build without it fails on the flags meant for it, at
+    the point where the frames are already being piped in.
+    """
+    path = mpl.rcParams["animation.ffmpeg_path"]
+    if shutil.which(path) is None and not Path(path).is_file():
+        return False
+
+    try:
+        result = subprocess.run(
+            [path, "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+    return f" {encoder} " in result.stdout
+
+
+def _movie_writer(fps: int) -> animation.AbstractMovieWriter:
+    """The writer for a scientific movie, or the plain one if it cannot be had.
+
+    Returns:
+        An FFMpegWriter set to a quality worth keeping, or the default writer
+        when this ffmpeg has no x264 to set it on.
+    """
+    if _ffmpeg_has("libx264"):
+        return animation.FFMpegWriter(
+            fps=fps,
+            codec="libx264",
+            extra_args=[
+                "-crf",
+                str(MOVIE_QUALITY),
+                "-preset",
+                MOVIE_PRESET,
+                # 4:2:0 halves the colour resolution, which is what every
+                # player can read; the structure rides on the brightness.
+                "-pix_fmt",
+                "yuv420p",
+                # so that ffmpeg's own complaint reaches the log if it has one
+                "-loglevel",
+                "warning",
+            ],
+        )
+
+    log.warning(
+        "This ffmpeg has no libx264, so the movie is written with whatever "
+        "encoder it defaults to and at that encoder's own quality. The frames "
+        "will be more strongly compressed than intended."
+    )
+
+    return animation.FFMpegWriter(fps=fps, bitrate=MOVIE_FALLBACK_BITRATE)
 
 
 @final
@@ -232,25 +304,23 @@ class MovieExport:
             interval=interval,
         )
 
-        # The default writer leaves the encoder at its own default quality,
-        # which is meant for video of the world and not for a frame whose
-        # information sits in a corrugation of a few grey levels.
-        writer = animation.FFMpegWriter(
-            fps=max(int(fps_factor * self.fast_movie.fps()), 1),
-            codec="libx264",
-            extra_args=[
-                "-crf",
-                str(MOVIE_QUALITY),
-                "-preset",
-                MOVIE_PRESET,
-                # 4:2:0 halves the colour resolution, which is what every player
-                # can read; the structure rides on the brightness, so the cost
-                # is small, and the low crf keeps the colour from smearing.
-                "-pix_fmt",
-                "yuv420p",
-            ],
-        )
-        ani.save(f"{self.export_filepath}.mp4", writer=writer)
+        # The encoder's own default quality is meant for video of the world,
+        # not for a frame whose information sits in a few grey levels.
+        writer = _movie_writer(max(int(fps_factor * self.fast_movie.fps()), 1))
+        target = f"{self.export_filepath}.mp4"
+        try:
+            ani.save(target, writer=writer)
+        except Exception as error:
+            # Whatever this ffmpeg objected to, a movie written plainly beats
+            # no movie at all, and the reason belongs in the log.
+            log.warning(
+                "Writing %s with the chosen quality settings failed (%s). "
+                "Falling back to the plain writer; the movie will be more "
+                "strongly compressed.",
+                Path(target).name,
+                error,
+            )
+            ani.save(target)
 
     def export_tiff(self, double_x_pixels: bool = False) -> None:
         """Export the movie as multipage TIFF file.
