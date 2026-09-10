@@ -606,19 +606,48 @@ class Creep:
         """Creep grid from the robust fit.
 
         Same contract as `fit_creep`, so the two can be swapped: it returns the
-        up and the down grid, and honours `known_params`.
+        up and the down grid, and honours `known_params`, which may be the shape
+        alone or an (amplitude, shape) pair.
         """
         if known_params is not None:
-            amplitude = self.pixel_shift
-            shape = float(np.atleast_1d(known_params)[0])
-            log.info(
-                "Creep parameters known. Using shape %.4g with the measured "
-                "amplitude %.2f px.",
-                shape,
-                amplitude,
+            given = np.atleast_1d(known_params).astype(float)
+            if given.size >= 2:
+                amplitude, shape = float(given[0]), float(given[1])
+                log.info(
+                    "Creep parameters known: amplitude %.2f px, shape %.4g.",
+                    amplitude,
+                    shape,
+                )
+            else:
+                amplitude, shape = self.pixel_shift, float(given[0])
+                log.info(
+                    "Creep parameters known. Using shape %.4g with the amplitude "
+                    "measured on this movie, %.2f px.",
+                    shape,
+                    amplitude,
+                )
+        elif not self.channels.is_up_and_down():
+            log.warning(
+                "This movie holds only the %s sweep, so there is nothing to "
+                "compare against: the creep parameters are found by measuring "
+                "how far an up frame and the following down frame disagree, and "
+                "one sweep alone cannot show that. No creep correction is "
+                "applied. To correct a single sweep movie, run the fit on the "
+                "same file in a channel that has both sweeps, note the amplitude "
+                "and shape from the log, and enter them as the known creep "
+                "parameters here.",
+                "up" if self.channels.is_up_not_down() else "down",
             )
+            amplitude, shape = 0.0, self._neutral_shape()
         else:
             amplitude, shape = self.fit_creep_robust(float(params[0]))
+            log.info(
+                "Creep parameters for this movie: known_params = [%.4f, %.4f]. "
+                "The same pair applies to any single sweep channel of the same "
+                "file.",
+                amplitude,
+                shape,
+            )
 
         self.pixel_shift = float(amplitude)
         self.limit_function()

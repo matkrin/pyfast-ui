@@ -73,7 +73,10 @@ class CreepConfig(BaseModel):
     known_input: tuple[float, float, float] | None = None
     initial_guess: float = 0.3
     guess_ind: float = 0.2
-    known_params: float | None = None
+    known_params: tuple[float, float] | float | None = None
+    """Creep parameters to use instead of fitting: either the shape alone, or
+    an (amplitude, shape) pair. A movie of one sweep only cannot be fitted, so
+    it takes the pair found on a channel that has both."""
     align_updown: bool = False
     """Remove the constant offset between the up and the down frames after the
     creep correction, in both directions and by interpolation. The y-phase can
