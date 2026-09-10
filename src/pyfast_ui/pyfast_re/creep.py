@@ -826,14 +826,16 @@ class Creep:
 
         return up_grid, down_grid, rest, offset
 
-    def _resampled_pair(self, frame, up_grid, down_grid, rows, keep, target):
+    def _resampled_pair(
+        self, frame, up_grid, down_grid, rows, up_rows, down_rows, keep, target
+    ):
         """One up frame and the following down frame, both put on the same grid."""
         columns = self._fit_columns()
         first = np.zeros((keep.size, columns.size), dtype=np.float32)
         second = np.zeros_like(first)
         for index, column in enumerate(columns):
-            source_up = up_grid[rows, column]
-            source_down = down_grid[rows, column]
+            source_up = up_grid[up_rows, column]
+            source_down = down_grid[down_rows, column]
             positions = target[keep, column]
             first[:, index] = splev(
                 positions, splrep(source_up, self.data[frame, rows, column], s=0)
@@ -843,6 +845,24 @@ class Creep:
                 splrep(source_down, self.data[frame + 1, rows, column], s=0),
             )
         return first, second
+
+    def _fit_row_slices(self):
+        """Which rows of the frame and of the two grids belong together.
+
+        The grid always covers the interlaced sampling, two lines per y point,
+        while a frame holds what the channel selected. An interlaced frame has
+        both scan directions, and one of them is taken so that the doubling
+        between them cannot be mistaken for the surface. A forward or backward
+        frame holds every second line already, and then the up sweep sits on the
+        even rows of the grid and the down sweep on the odd ones, or the other
+        way round, exactly as the interpolation reads it.
+        """
+        if self.channels.is_interlaced():
+            return slice(0, None, 2), slice(0, None, 2), slice(0, None, 2)
+        if self.channels.is_backward():
+            return slice(None), slice(1, None, 2), slice(0, None, 2)
+
+        return slice(None), slice(0, None, 2), slice(1, None, 2)
 
     def _fit_columns(self):
         return np.unique(
@@ -956,11 +976,11 @@ class Creep:
             return None
         up_grid, down_grid, _, _ = self._balanced_grids(path)
 
-        rows = slice(0, None, 2) if self.channels.is_interlaced() else slice(None)
+        rows, up_rows, down_rows = self._fit_row_slices()
         target = self.ygridfold
-        low = max(up_grid[rows][0, :].max(), down_grid[rows][0, :].max())
-        high = min(up_grid[rows][-1, :].min(), down_grid[rows][-1, :].min())
-        sub_target = target[rows, :]
+        low = max(up_grid[up_rows][0, :].max(), down_grid[down_rows][0, :].max())
+        high = min(up_grid[up_rows][-1, :].min(), down_grid[down_rows][-1, :].min())
+        sub_target = target[up_rows, :]
         keep = np.where(
             (sub_target.min(axis=1) >= low) & (sub_target.max(axis=1) <= high)
         )[0]
@@ -969,8 +989,8 @@ class Creep:
             return None
 
         columns = self._fit_columns()
-        if np.any(np.diff(up_grid[rows][:, columns], axis=0) <= 0) or np.any(
-            np.diff(down_grid[rows][:, columns], axis=0) <= 0
+        if np.any(np.diff(up_grid[up_rows][:, columns], axis=0) <= 0) or np.any(
+            np.diff(down_grid[down_rows][:, columns], axis=0) <= 0
         ):
             # A grid that turns back on itself cannot be interpolated on.
             return None
@@ -983,7 +1003,7 @@ class Creep:
         carrier = None
         for frame in self._fit_frames():
             first, second = self._resampled_pair(
-                frame, up_grid, down_grid, rows, keep, sub_target
+                frame, up_grid, down_grid, rows, up_rows, down_rows, keep, sub_target
             )
             if probe is not None:
                 # a known distortion, for choosing between the estimators
