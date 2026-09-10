@@ -134,6 +134,11 @@ class ExportConfig(BaseModel):
     The frames are not resampled for it: the picture is drawn larger and
     enlarged by nearest neighbour, so no value is invented. Raise it when the
     labels are too small to read."""
+    smooth_scaling: bool = False
+    """Draw the enlarged pixels with bilinear interpolation instead of as
+    blocks. Nothing is resampled in the data either way; this decides only what
+    is shown between two pixel centres, blocks by default, so that what the eye
+    sees are the values that were measured."""
     fps_factor: int = 5
     auto_label: bool = True
     frame_export_images: tuple[int, int] = (0, 1)

@@ -29,6 +29,7 @@ class ExportGroup(QGroupBox):
         # frame_export_channel: str,
         double_x_pixels_tiff: bool,
         scaling: int,
+        smooth_scaling: bool,
         fps_factor: int,
         frame_export_format: str,
         auto_label: bool,
@@ -62,6 +63,16 @@ class ExportGroup(QGroupBox):
         )
 
         self._scaling = LabeledSpinBox("Scaling (movie and images)", scaling)
+
+        self._smooth_scaling = QCheckBox("Smooth (bilinear) scaling", self)
+        self._smooth_scaling.setChecked(smooth_scaling)
+        self._smooth_scaling.setToolTip(
+            "Off: every measured pixel is drawn as a block, so what you see are"
+            " the values that were measured. On: the picture is smoothed"
+            " between the pixel centres, which looks better for presentation"
+            " but shows values that were never measured. The data written to"
+            " the file is the same either way."
+        )
 
         fps_factor_lbl = QLabel("FPS factor")
         self._fps_factor = QSpinBox(self)
@@ -102,12 +113,13 @@ class ExportGroup(QGroupBox):
         layout.addWidget(self._double_x_pixels_tiff, 1, 0, 1, 3)
         # layout.addLayout(scaling_layout, 2, 0, 1, 3)
         layout.addWidget(self._scaling, 2, 0, 1, 3)
-        layout.addLayout(fps_factor_layout, 3, 0, 1, 3)
-        layout.addWidget(self._frame_export_images, 4, 0, 1, 3)
-        # layout.addLayout(frame_export_channel_layout, 5, 0, 1, 3)
-        layout.addLayout(frame_export_format_layout, 5, 0, 1, 3)
-        layout.addWidget(self._auto_label, 6, 0)
-        layout.addWidget(self.apply_btn, 7, 0, 1, 3)
+        layout.addWidget(self._smooth_scaling, 3, 0, 1, 3)
+        layout.addLayout(fps_factor_layout, 4, 0, 1, 3)
+        layout.addWidget(self._frame_export_images, 5, 0, 1, 3)
+        # layout.addLayout(frame_export_channel_layout, 6, 0, 1, 3)
+        layout.addLayout(frame_export_format_layout, 6, 0, 1, 3)
+        layout.addWidget(self._auto_label, 7, 0)
+        layout.addWidget(self.apply_btn, 8, 0, 1, 3)
 
     @property
     def export_movie(self) -> bool:
@@ -166,6 +178,14 @@ class ExportGroup(QGroupBox):
         self._scaling.setValue(value)
 
     @property
+    def smooth_scaling(self) -> bool:
+        return self._smooth_scaling.isChecked()
+
+    @smooth_scaling.setter
+    def smooth_scaling(self, value: bool) -> None:
+        self._smooth_scaling.setChecked(value)
+
+    @property
     def fps_factor(self) -> int:
         return self._fps_factor.value()
 
@@ -199,6 +219,7 @@ class ExportGroup(QGroupBox):
         self.export_frames = export_config.export_frames
         self.double_x_pixels_tiff = export_config.double_x_pixels_tiff
         self.scaling = export_config.scaling
+        self.smooth_scaling = export_config.smooth_scaling
         self.fps_factor = export_config.fps_factor
         self.auto_label = export_config.auto_label
         self.frame_export_images = export_config.frame_export_images
@@ -212,6 +233,7 @@ class ExportGroup(QGroupBox):
             export_frames=self.export_frames,
             double_x_pixels_tiff=self.double_x_pixels_tiff,
             scaling=self.scaling,
+            smooth_scaling=self.smooth_scaling,
             fps_factor=self.fps_factor,
             auto_label=self.auto_label,
             frame_export_images=self.frame_export_images,

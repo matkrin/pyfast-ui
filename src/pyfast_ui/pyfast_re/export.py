@@ -240,6 +240,7 @@ class MovieExport:
         color_map: str,
         label_frames: bool,
         scaling: int = 1,
+        smooth: bool = False,
     ) -> None:
         """Export of a `FastMovie` as MP4.
 
@@ -252,6 +253,11 @@ class MovieExport:
                 not resampled for it: the axes are drawn larger and the image
                 is enlarged by nearest neighbour, so no value is invented, and
                 the labels and the colour scale get the room to be legible.
+            smooth: Draw the enlarged pixels with bilinear interpolation rather
+                than as blocks. It changes how the frame is drawn, not the data
+                behind it, so the values written to the file are still the
+                measured ones; what the eye sees between two pixel centres is
+                then interpolated rather than repeated.
         """
         assert self.fast_movie.channels is not None  # type assertion
 
@@ -276,7 +282,7 @@ class MovieExport:
         img_plot = ax.imshow(  # pyright: ignore[reportUnknownMemberType]
             self.fast_movie.data[0],  # pyright: ignore[reportAny]
             cmap=color_map,
-            interpolation="none",
+            interpolation="bilinear" if smooth else "none",
             aspect="auto",
         )
 
@@ -508,6 +514,8 @@ class FrameExport:
         image_format: FrameExportFormat,
         contrast: tuple[float, float],
         color_map: str,
+        scaling: int = 1,
+        smooth: bool = False,
     ) -> None:
         """Export of frames as image.
 
@@ -515,6 +523,10 @@ class FrameExport:
             image_format: Image format to be exported.
             contrast: The lower and upper percentile bound of the color map.
             color_map: Any matplotlib color map to be applied on the exported frame(s).
+            scaling: Output pixels per measured pixel, as for the movie: the
+                picture is drawn larger, the data is not resampled.
+            smooth: Draw the enlarged pixels with bilinear interpolation instead
+                of as blocks.
         """
         assert self.fast_movie.channels is not None  #  type assertion
         _, num_y_pixels, num_x_pixels = self.fast_movie.data.shape
@@ -536,6 +548,9 @@ class FrameExport:
         out_y_pixels, out_x_pixels = _square_pixel_size(
             self.fast_movie, num_y_pixels, num_x_pixels
         )
+        scaling = max(int(scaling), 1)
+        out_y_pixels *= scaling
+        out_x_pixels *= scaling
 
         for i in TqdmLogger(range(data.shape[0]), desc="Exporting frames"):
             frame_id = i // 2 if self.fast_movie.channels.is_up_and_down() else i
@@ -546,7 +561,10 @@ class FrameExport:
                 frameon=False,
             )
             img_plot = ax.imshow(  # pyright: ignore[reportAny, reportUnknownMemberType]
-                data[i], cmap=color_map, interpolation="none", aspect="auto"
+                data[i],
+                cmap=color_map,
+                interpolation="bilinear" if smooth else "none",
+                aspect="auto",
             )
             img_plot.set_clim(min_absolute, max_absolute)
 

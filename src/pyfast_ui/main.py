@@ -778,6 +778,7 @@ class MainGui(QMainWindow):
         export_frames = self.export_group.export_frames
         fps_factor = self.export_group.fps_factor
         scaling = self.export_group.scaling
+        smooth_scaling = self.export_group.smooth_scaling
         auto_label = self.export_group.auto_label
         double_x_pixels_tiff = self.export_group.double_x_pixels_tiff
 
@@ -787,8 +788,8 @@ class MainGui(QMainWindow):
         # No channel dependent rescaling of the data any more. Every exporter
         # derives the physical proportions from `Metadata.pixel_aspect`: the
         # raster formats through the output size, the Gwyddion and TIFF writers
-        # through their dimension tags. The pixel values are left untouched.
-        data_copy = ft.data.copy()
+        # through their dimension tags. The pixel values are left untouched, so
+        # nothing has to be copied and restored around the exporters any more.
 
         if export_movie:
             # The scaling enlarges the picture, it does not resample the data:
@@ -800,6 +801,7 @@ class MainGui(QMainWindow):
                 color_map=color_map,
                 label_frames=auto_label,
                 scaling=scaling,
+                smooth=smooth_scaling,
             )
 
         if export_frames:
@@ -808,15 +810,17 @@ class MainGui(QMainWindow):
             elif frame_export_format == "txt":
                 ft.export_frames_txt(frame_range=frame_export_images)
             else:
-                ft.rescale((scaling, scaling))
+                # As for the movie: the picture is drawn larger, the frames are
+                # not resampled, so the exported image still holds the measured
+                # values rather than interpolated ones.
                 ft.export_frames_image(
                     image_format=frame_export_format,
                     frame_range=frame_export_images,
                     contrast=contrast,
                     color_map=color_map,
+                    scaling=scaling,
+                    smooth=smooth_scaling,
                 )
-
-                ft.data = data_copy
 
         if export_tiff:
             ft.export_tiff(double_x_pixels=double_x_pixels_tiff)

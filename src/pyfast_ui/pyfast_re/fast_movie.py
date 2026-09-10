@@ -865,6 +865,7 @@ class FastMovie:
         color_map: str = "bone",
         label_frames: bool = True,
         scaling: int = 1,
+        smooth: bool = False,
     ) -> None:
         """Export the movie as MP4 file.
 
@@ -876,10 +877,13 @@ class FastMovie:
             scaling: Output pixels per measured pixel. The frames are not
                 resampled: the picture is drawn larger and enlarged by nearest
                 neighbour, so no value is invented and the labels become legible.
+            smooth: Draw the enlarged pixels with bilinear interpolation rather
+                than as blocks. A matter of how the frame is drawn; the data is
+                untouched either way.
         """
         movie_export = MovieExport(self)
         movie_export.export_mp4(
-            fps_factor, contrast, color_map, label_frames, scaling
+            fps_factor, contrast, color_map, label_frames, scaling, smooth
         )
 
     def export_tiff(self, double_x_pixels: bool = False) -> None:
@@ -920,6 +924,8 @@ class FastMovie:
         frame_range: tuple[int, int],
         contrast: tuple[float, float],
         color_map: str,
+        scaling: int = 1,
+        smooth: bool = False,
     ) -> None:
         """Export frame as image file.
 
@@ -928,9 +934,13 @@ class FastMovie:
             frame_range: Start (inclusive) and end (exclusive) frame to be exported.
             contrast: The lower and upper percentile bound of the color map.
             color_map: Matplotlib color map.
+            scaling: Output pixels per measured pixel; the picture is drawn
+                larger, the data is not resampled.
+            smooth: Draw the enlarged pixels with bilinear interpolation rather
+                than as blocks.
         """
         export = FrameExport(self, frame_range)
-        export.export_image(image_format, contrast, color_map)
+        export.export_image(image_format, contrast, color_map, scaling, smooth)
 
 
 @final
