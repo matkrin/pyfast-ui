@@ -622,7 +622,14 @@ class Creep:
 
         self.pixel_shift = float(amplitude)
         self.limit_function()
-        y_up, y_down, _ = self._shape_to_grid(np.asarray(self.creep_function(shape)))
+        y_up, y_down, _, offset = self._balanced_grids(self.creep_function(shape))
+        if abs(offset) > 0.5:
+            log.info(
+                "Creep correction: the model displaced the two sweeps by %.1f px "
+                "against each other; that is a rigid shift, not creep, and has "
+                "been taken back out.",
+                offset,
+            )
 
         return (y_up, y_down)
 
@@ -646,6 +653,25 @@ class Creep:
 
     PERIODS_PER_BLOCK = 3.0
     """How many repeats of the dominant vertical period a block must span."""
+
+    def _balanced_grids(self, path):
+        """Up and down grid for a creep path, with no rigid offset between them.
+
+        The model builds the down grid as the mirror of the up grid and recentres
+        both, which is meant to leave the movie where it was. It does not: the
+        larger the correction, the more the two sweeps end up displaced against
+        each other, and on a movie with strong creep that reaches a dozen rows,
+        which is far more than the distortion the correction removed. The offset
+        is not creep, it is a rigid shift, so it is taken out here and left to
+        the y-phase and the alignment, whose job it is.
+        """
+        up_grid, down_grid, rest = self._shape_to_grid(np.asarray(path))
+        offset = float(np.mean(up_grid) - np.mean(down_grid))
+        if offset:
+            up_grid = up_grid - offset / 2.0
+            down_grid = down_grid + offset / 2.0
+
+        return up_grid, down_grid, rest, offset
 
     def _resampled_pair(self, frame, up_grid, down_grid, rows, keep, target):
         """One up frame and the following down frame, both put on the same grid."""
@@ -775,7 +801,7 @@ class Creep:
             path = np.asarray(self.creep_function(shape))
         except Exception:
             return None
-        up_grid, down_grid, _ = self._shape_to_grid(path)
+        up_grid, down_grid, _, _ = self._balanced_grids(path)
 
         rows = slice(0, None, 2) if self.channels.is_interlaced() else slice(None)
         target = self.ygridfold
