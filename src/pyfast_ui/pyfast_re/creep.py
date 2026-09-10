@@ -203,6 +203,29 @@ class Creep:
         self.number_ypixels = fast_movie.metadata.scanner_y_points * 2
         self.rel_ind_raw = index_to_linear
         self.data = fast_movie.data
+        # Only of interest on a filtered movie: an unfiltered one measures its
+        # own creep perfectly well, and the value from the y-phase search is
+        # taken over fewer frame pairs, so it is the worse of the two.
+        self.measured_profile = (
+            fast_movie.updown_profile if fast_movie.fft_filtered else None
+        )
+        self.measured_profile_rows = fast_movie.updown_profile_rows
+        self._coarse_limit = (
+            0.05 if fast_movie.updown_profile is not None else updown.COARSE_LIMIT
+        )
+        """How far the up/down measurement may look for the frame offset, as a
+        fraction of the frame height. A movie whose y-phase was determined
+        automatically has its two sweeps within a few rows of each other, so a
+        narrow search suffices, and narrow is what a filtered movie needs: the
+        wide search then has whole lattice periods to choose from and takes the
+        wrong one. On a movie that arrives with an uncorrected y-phase the offset
+        can be thirty rows and the search has to be able to reach it."""
+
+        self._measured_preferred = False
+        """Set when the movie in hand no longer measures its own creep and the
+        value from before the FFT filter had to be used. Whatever blinds the
+        measurement blinds the fit that checks it, so the fit is told not to
+        read its own verdict as evidence that there is no creep."""
         self.ygridfold, self.ygridstraight = self.ygrid()
         self.pixel_shift = self._get_shift(0.5)
         creep_functions = {"sin": self.sin_one_param, "root": self.root_creep}
@@ -237,7 +260,7 @@ class Creep:
 
         Returns: number of pixels the middle of a frame is displaced by creep.
         """
-        profile = updown.mismatch_profile(self.data)
+        profile = updown.mismatch_profile(self.data, coarse_limit=self._coarse_limit)
         amplitude = abs(updown.creep_amplitude(profile))
         constant = updown.constant_offset(profile)
 
@@ -249,7 +272,47 @@ class Creep:
             constant[1],
         )
 
-        return amplitude
+        return self._prefer_measured_amplitude(amplitude)
+
+    def _prefer_measured_amplitude(self, amplitude: float) -> float:
+        """Fall back on the measurement made before the FFT filter, if there is one.
+
+        The filter removes the slow, non-periodic part of the image, and what is
+        left on a lattice movie registers as well one lattice period out as it
+        does in the right place. On FS_250903_037 the measurement then came back
+        at 15.5 px instead of 7.7 px, which the creep correction duly bent into
+        every frame and paid for with fourteen unusable rows at each end. The
+        image itself does not move by the filter, measured at 0.00 px, so the
+        earlier number is the same quantity, measured where it can still be
+        measured.
+
+        The two are compared rather than the earlier one simply taken: the
+        y-phase search measures with fewer frame pairs, so where both are sound
+        the one taken here is the better of them.
+        """
+        if self.measured_profile is None or self.measured_profile_rows <= 0:
+            return amplitude
+
+        scale = self.data.shape[1] / self.measured_profile_rows
+        measured = abs(updown.creep_amplitude(self.measured_profile)) * scale
+        if measured <= 0.0:
+            return amplitude
+
+        # A lattice period out is a large disagreement, several pixels; the
+        # scatter between two honest measurements of the same movie is not.
+        if abs(amplitude - measured) <= 0.25 * max(amplitude, measured) + 0.5:
+            return amplitude
+
+        log.warning(
+            "Creep amplitude measured here is %.2f px, but %.2f px before the FFT "
+            "filter, on an image the filter does not move. The filtered movie is "
+            "periodic and registers a whole lattice period out just as well, so "
+            "the earlier value is used.",
+            amplitude,
+            measured,
+        )
+        self._measured_preferred = True
+        return measured
 
     def _get_shift_middle_only(self, imrange: float):
         """The previous measurement, kept for comparison.
@@ -1046,9 +1109,38 @@ class Creep:
 
         return np.array([np.median(values) for values in measured])
 
+    def _model_amplitude_ceiling(self) -> float:
+        """Largest amplitude the creep model can express, in pixels.
+
+        The sin model reaches its limit where the compressed part of the sweep
+        would have to run backwards: `sin_limit_function` writes that as
+        `y_max = 1 - shift / (rows * index_to_linear)` and refuses below 0.5, so
+        the amplitude cannot pass half the rows that the transition point leaves
+        for it. The search is kept a little short of that, where the polynomial
+        inversion behind the limit is still sound.
+        """
+        if getattr(self.creep_function, "__name__", "") == "root_creep":
+            return float(self.number_ypixels)
+
+        return 0.45 * self.number_ypixels * self.rel_ind_raw
+
     def _fit_score(self, amplitude, shape):
         """How much of the row dependence is left, in pixels. Lower is better."""
-        profile = self.residual_profile(amplitude, shape)
+        previous_shift = self.pixel_shift
+        try:
+            profile = self.residual_profile(amplitude, shape)
+        except ValueError as error:
+            self.pixel_shift = previous_shift
+            # The model refuses amplitudes beyond what its geometry admits, and
+            # the search is allowed to ask for them: an amplitude the model
+            # cannot express is simply not a candidate. Before this, one such
+            # trial ended the whole correction with "y_max seems to be smaller
+            # than 0.5", on FS_250903_037 for instance, where the measured 8.5 px
+            # put the top of the search grid at 34 px and the sin model tops out
+            # at 33 px.
+            log.debug("Creep fit: amplitude %.2f rejected by the model: %s",
+                      amplitude, error)
+            return np.inf
         if profile is None or not np.all(np.isfinite(profile)):
             return np.inf
         # The rigid part is the y-phase's business and is taken out later, so
@@ -1121,8 +1213,16 @@ class Creep:
             Amplitude and shape.
         """
         self._estimator = self._choose_estimator()
-        measured = abs(updown.creep_amplitude(updown.mismatch_profile(self.data)))
-        ceiling = max(4.0 * measured, 3.0)
+        measured = self._prefer_measured_amplitude(
+            abs(
+                updown.creep_amplitude(
+                    updown.mismatch_profile(
+                        self.data, coarse_limit=self._coarse_limit
+                    )
+                )
+            )
+        )
+        ceiling = min(max(4.0 * measured, 3.0), self._model_amplitude_ceiling())
         amplitudes = np.linspace(0.0, ceiling, 7)
         # By name, not by identity: attribute access builds a fresh bound
         # method every time, so `is` never matches.
@@ -1152,6 +1252,25 @@ class Creep:
             step /= 2.0
 
         without = self._fit_score(0.0, shape)
+        if not score < without and self._measured_preferred:
+            # The residual is read off the movie in hand, and this movie no
+            # longer answers that question: the FFT filter has left it periodic,
+            # so a frame put back one period out scores as well as one put back
+            # correctly and every amplitude looks the same. The amplitude
+            # measured before the filter is the evidence there is, so it is
+            # applied with the default shape rather than thrown away.
+            log.warning(
+                "Creep fit: the filtered movie cannot tell the amplitudes apart "
+                "(best %.3f px against %.3f px uncorrected). Applying the %.2f px "
+                "measured before the FFT filter with the default shape %.3f; check "
+                "the result, or measure the creep on the unfiltered movie.",
+                score,
+                without,
+                measured,
+                shape,
+            )
+            return float(measured), float(shape)
+
         if not score < without:
             log.warning(
                 "Creep fit: no amplitude improved on leaving the movie alone "

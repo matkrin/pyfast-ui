@@ -72,25 +72,91 @@ def _shift(a: NDArray[np.float64], b: NDArray[np.float64]) -> NDArray[np.float64
     return np.asarray(value, dtype=float)
 
 
-def _coarse_shift(a: NDArray[np.float64], b: NDArray[np.float64]) -> NDArray[np.float64]:
+COARSE_LIMIT = 0.25
+"""Largest coarse displacement considered, as a fraction of the frame size.
+
+A y-phase of a few tens of rows has to be within reach; anything beyond a
+quarter of the frame is not a y-phase but a failed measurement, and letting the
+search go there only invites one.
+"""
+
+COARSE_TIE = 0.02
+"""How much worse than the best a candidate may score and still be preferred if
+it displaces the frame less, as a fraction of the best score.
+
+On a periodic surface every lattice period is a candidate: shifting one frame by
+a whole period puts the atoms back on top of each other and scores almost as
+well as the true offset. The alternatives are then near ties, and the smallest
+of them is the physical one, because a larger displacement would have to show up
+as a y-phase of that size as well.
+"""
+
+
+def _best_offset(
+    a: NDArray[np.float64], b: NDArray[np.float64], axis: int, limit: float
+) -> float:
+    """Whole-pixel displacement of b relative to a along one axis.
+
+    A plain normalised correlation over the overlap, evaluated at every
+    candidate offset within `limit` and taking the best. The phase correlation
+    used here before whitens the spectrum, which on a lattice movie raises the
+    aliases of the true peak to the height of the peak itself: after an FFT
+    filter has taken out the slow, non-periodic part of the image, on
+    FS_250903_037 it locked onto an offset two lattice periods away, +15 px
+    instead of -8 px. The creep step reads that number as the constant up/down
+    offset, sizes its correction by it and then cuts the rows it has bent, so a
+    filter setting that does not move the image by a hundredth of a pixel cost
+    fourteen rows at each end of every frame.
+    """
+    length = a.shape[axis]
+    span = min(max(int(round(limit * length)), 1), length - 2)
+    a = np.moveaxis(a, axis, 0)
+    b = np.moveaxis(b, axis, 0)
+
+    offsets = np.arange(-span, span + 1)
+    scores = np.zeros(offsets.size)
+    for index, offset in enumerate(offsets):
+        if offset >= 0:
+            first, second = a[offset:], b[: length - offset]
+        else:
+            first, second = a[: length + offset], b[-offset:]
+        first = first - first.mean()
+        second = second - second.mean()
+        norm = float(np.sqrt((first * first).sum() * (second * second).sum()))
+        if norm > 0.0:
+            scores[index] = float((first * second).sum()) / norm
+
+    best = scores.max()
+    if best <= 0.0:
+        return 0.0
+
+    close = offsets[scores >= best * (1.0 - COARSE_TIE)]
+    return float(close[np.argmin(np.abs(close))])
+
+
+def _coarse_shift(
+    a: NDArray[np.float64], b: NDArray[np.float64], limit: float = COARSE_LIMIT
+) -> NDArray[np.float64]:
     """Whole-pixel displacement of the frame as a whole.
 
     A y-phase of a few tens of rows is larger than one row block, so the blocks
-    have to be brought together before their residual can be measured. The
-    masked variant is used here because it normalises by the overlap and so
-    handles a displacement of that size.
+    have to be brought together before their residual can be measured. The two
+    axes are searched one after the other; they are all but independent here,
+    since the y-phase moves the frame vertically and leaves the columns alone.
     """
-    valid = np.ones(a.shape, dtype=bool)
-    result = phase_cross_correlation(  # pyright: ignore[reportUnknownVariableType]
-        a, b, upsample_factor=1, reference_mask=valid, moving_mask=valid,
-        overlap_ratio=0.5,
+    return np.array(
+        [
+            _best_offset(a, b, axis=0, limit=limit),
+            _best_offset(a, b, axis=1, limit=limit),
+        ]
     )
-    value = result[0] if isinstance(result, tuple) else result
-    return np.asarray(value, dtype=float)
 
 
 def mismatch_profile(
-    data: NDArray[np.float32], blocks: int = BLOCKS, pairs: int = PAIRS
+    data: NDArray[np.float32],
+    blocks: int = BLOCKS,
+    pairs: int = PAIRS,
+    coarse_limit: float = COARSE_LIMIT,
 ) -> NDArray[np.float64]:
     """Displacement between up and down frames, per row block.
 
@@ -104,6 +170,10 @@ def mismatch_profile(
         data: The movie, in movie mode.
         blocks: Row blocks per frame.
         pairs: How many frame pairs to measure.
+        coarse_limit: Largest displacement to consider, as a fraction of the
+            frame height. Worth narrowing when the movie is known to be close to
+            aligned already, as after a creep correction: a wide search on a
+            lattice movie can prefer an offset a whole period out.
 
     Returns:
         Array of shape (blocks, 2) with the (y, x) displacement of each row
@@ -129,12 +199,36 @@ def mismatch_profile(
         np.concatenate([starts - (starts % 2), starts - (starts % 2) + 1])
     )
     indices = indices[(indices >= 0) & (indices < num_frames - 1)]
+
+    # Coarse first, so that the blocks overlap at all, then the residual per
+    # block. A y-phase of thirty rows exceeds the height of one block, and a
+    # block correlated over that distance returns nothing usable.
+    #
+    # The coarse offset is a property of the scan and therefore the same in
+    # every pair of one parity, so it is taken over the movie rather than pair
+    # by pair. On a lattice movie a single pair can prefer an offset a whole
+    # period out by a percent or two of correlation, and a pair started that far
+    # from its neighbours takes its whole profile with it; measured on
+    # FS_251128_026 after the creep correction, pair by pair it read +7.7 px
+    # where the movie is in fact +0.3 px out.
+    prepared = {index: _prepare(data[index]) for index in indices}
+    prepared.update(
+        {index + 1: _prepare(data[index + 1]) for index in indices}
+    )
+    coarse_by_parity: dict[int, NDArray[np.float64]] = {}
+    for parity in (0, 1):
+        seen = [
+            _coarse_shift(prepared[index], prepared[index + 1], coarse_limit)
+            for index in indices
+            if index % 2 == parity
+        ]
+        coarse_by_parity[parity] = (
+            np.median(np.stack(seen), axis=0) if seen else np.zeros(2)
+        )
+
     for index in indices:
-        first, second = _prepare(data[index]), _prepare(data[index + 1])
-        # Coarse first, so that the blocks overlap at all, then the residual per
-        # block. A y-phase of thirty rows exceeds the height of one block, and a
-        # block correlated over that distance returns nothing usable.
-        coarse = _coarse_shift(first, second)
+        first, second = prepared[index], prepared[index + 1]
+        coarse = coarse_by_parity[index % 2]
         aligned = ndshift(second, coarse, order=1, mode="nearest")
         for block in range(blocks):
             low, high = edges[block], edges[block + 1]

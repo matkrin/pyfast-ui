@@ -40,6 +40,14 @@ class PhaseCorrectionResult:
     roll. The roll can only reach multiples of four rows, so an odd offset
     leaves one row behind."""
 
+    updown_profile: NDArray[np.float64] | None = None
+    """The up/down mismatch of the corrected series, per row block, measured on
+    the interlaced movie. Kept because this is the last point in the pipeline
+    where the image still carries its slow, non-periodic structure; the FFT
+    filter takes that structure out and leaves a lattice movie whose
+    registration is ambiguous by whole lattice periods. `None` unless the
+    y-phase was determined automatically, since only then is it measured."""
+
 
 @final
 class PhaseCorrection:
@@ -96,8 +104,9 @@ class PhaseCorrection:
 
         y_phase = metadata.acquisition_y_phase
         row_shift = 0
+        profile: NDArray[np.float64] | None = None
         if self.auto_y_phase:
-            y_phase, row_shift = self._search_y_phase(series, x_phase)
+            y_phase, row_shift, profile = self._search_y_phase(series, x_phase)
         elif self.manual_y_phase is not None:
             y_phase = self.manual_y_phase
 
@@ -118,11 +127,11 @@ class PhaseCorrection:
             y_phase,
         )
 
-        return PhaseCorrectionResult(data, x_phase, y_phase, row_shift)
+        return PhaseCorrectionResult(data, x_phase, y_phase, row_shift, profile)
 
     def _search_y_phase(
         self, series: NDArray[np.float32], x_phase: float, span: int = 2
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, NDArray[np.float64]]:
         """Pick the y-phase that leaves the two sweeps closest together.
 
         A first estimate comes from dividing the measured offset by the rows a
@@ -134,7 +143,8 @@ class PhaseCorrection:
         which is where the correlation is most trustworthy.
 
         Returns:
-            The y-phase and the rows that are left for `reshape_data` to shift.
+            The y-phase, the rows that are left for `reshape_data` to shift, and
+            the mismatch profile of the chosen candidate.
         """
         num_x_points = self.fast_movie.metadata.scanner_x_points
         whole_x = int(round(x_phase))
@@ -143,12 +153,13 @@ class PhaseCorrection:
         estimate = int(round(offset / ROWS_PER_Y_PHASE))
 
         residuals: dict[int, float] = {}
+        profiles: dict[int, NDArray[np.float64]] = {}
         for candidate in range(estimate - span, estimate + span + 1):
             probe = self._as_movie(
                 np.roll(series, whole_x + candidate * num_x_points * 2)
             )
-            profile = updown.mismatch_profile(probe, pairs=8)
-            residuals[candidate] = float(updown.constant_offset(profile)[0])
+            profiles[candidate] = updown.mismatch_profile(probe, pairs=8)
+            residuals[candidate] = float(updown.constant_offset(profiles[candidate])[0])
 
         best = min(residuals, key=lambda c: abs(residuals[c]))
         log.info(
@@ -161,7 +172,7 @@ class PhaseCorrection:
             residuals[best],
         )
 
-        return best, int(round(residuals[best]))
+        return best, int(round(residuals[best])), profiles[best]
 
     def _resolve_sign(self, series: NDArray[np.float32], magnitude: float) -> float:
         """Decide whether the phase is positive or negative.

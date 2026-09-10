@@ -95,6 +95,16 @@ class FastMovie:
         self.applied_y_phase: int = 0
         self.updown_row_shift: int = 0
 
+        self.updown_profile: NDArray[np.float64] | None = None
+        """Up/down mismatch per row block, as measured during the automatic
+        y-phase, together with the number of rows of the frame it was measured
+        on. Set there and used by the creep correction, which runs after the FFT
+        filter and can no longer measure it reliably itself: the filter leaves a
+        movie of nothing but lattice, and one lattice period of displacement
+        looks as good as none."""
+        self.updown_profile_rows: int = 0
+        self.fft_filtered: bool = False
+
         # Initial phase correction from either parameters or file metadata
         if x_phase is None:
             x_phase = self.metadata.acquisition_x_phase
@@ -278,6 +288,12 @@ class FastMovie:
         # Remembered rather than applied here: it is a shift of whole frames and
         # can only be carried out once the series has been reshaped.
         self.updown_row_shift = result.updown_row_shift
+        if result.updown_profile is not None:
+            self.updown_profile = result.updown_profile
+            # The measurement is made on the interlaced movie, whatever channel
+            # the movie is later built in, so the row count has to travel with
+            # it: half the rows mean half the pixels for the same displacement.
+            self.updown_profile_rows = self.metadata.scanner_y_points * 2
         # Mutate data
         self.data = result.data
 
@@ -314,7 +330,12 @@ class FastMovie:
             )
             return
 
-        profile = updown.mismatch_profile(self.data)
+        # A narrow search: this runs after the y-phase and the creep correction,
+        # so whatever is left is a few rows at most, and a wide search on a
+        # lattice movie can prefer an offset a whole period out. On
+        # FS_251128_026 the wide search read +26.9 px where the movie is +1.0 px
+        # out, which is a shift this would then have applied.
+        profile = updown.mismatch_profile(self.data, coarse_limit=0.1)
         # The rigid estimator, not the one the y-phase uses: by this point the
         # creep correction has already measured itself against the turning
         # points, so anchoring there again would push its residual into the
@@ -395,6 +416,11 @@ class FastMovie:
             high_pass_params=high_pass_params,
         )
         filtered_data = fft_filtering.filter_movie()
+        # Remembered because the up/down measurement is only in doubt on a
+        # filtered movie: taking out the scan frequencies takes the slow,
+        # non-periodic part of the image with them and leaves a picture that
+        # registers as well one lattice period out as in the right place.
+        self.fft_filtered = True
         # Mutate data
         self.data = filtered_data
 
