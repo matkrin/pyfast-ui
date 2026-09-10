@@ -26,6 +26,16 @@ log = logging.getLogger(__name__)
 
 
 
+MIN_CREEP = 0.5
+"""Smallest creep worth correcting, in pixels of the frame.
+
+Below half a pixel the correction cannot express what it would have to do, the
+interpolation that carries it out costs more than it removes, and the fit is
+left chasing the noise of its own residual estimator. The up/down profile is the
+direct measurement of the quantity, so it decides; a movie whose two sweeps
+agree along the whole frame is left alone."""
+
+
 CREEP_FILE_SUFFIX = ".creep.txt"
 """Written next to the movie, like the drift path. It carries what an up and
 down evaluation found, so that the single sweep channels of the same file can
@@ -1222,6 +1232,22 @@ class Creep:
                 )
             )
         )
+        if measured < MIN_CREEP:
+            # The up and down sweeps agree along the whole frame, to less than
+            # the correction could express, so there is nothing for the model to
+            # take out. Fitting anyway means fitting the residual estimator's own
+            # noise: on FS_250903_022, whose profile is flat to 0.06 px, the
+            # search ran to the top of its grid and bent 3 px into every frame.
+            log.info(
+                "Creep fit: the two sweeps agree along the frame to %.2f px, "
+                "less than the %.1f px worth correcting, so no creep correction "
+                "is applied. Only the interpolation runs, and no rows are lost "
+                "to a correction that is not needed.",
+                measured,
+                MIN_CREEP,
+            )
+            return 0.0, float(self._neutral_shape())
+
         ceiling = min(max(4.0 * measured, 3.0), self._model_amplitude_ceiling())
         amplitudes = np.linspace(0.0, ceiling, 7)
         # By name, not by identity: attribute access builds a fresh bound
