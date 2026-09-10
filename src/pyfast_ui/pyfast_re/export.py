@@ -127,14 +127,59 @@ def _ffmpeg_has(encoder: str) -> bool:
     return f" {encoder} " in result.stdout
 
 
+def _bundled_ffmpeg() -> str | None:
+    """Path to the ffmpeg that ships with imageio-ffmpeg, if it is installed.
+
+    That build carries libx264, so it saves the export from depending on
+    whatever ffmpeg the machine happens to have.
+    """
+    try:
+        import imageio_ffmpeg
+    except ImportError:
+        return None
+
+    try:
+        return str(imageio_ffmpeg.get_ffmpeg_exe())
+    except Exception:
+        return None
+
+
+def _use_an_ffmpeg_with_x264() -> bool:
+    """Point matplotlib at an ffmpeg that can encode with x264.
+
+    Returns:
+        Whether one was found, either the machine's own or the bundled one.
+    """
+    if _ffmpeg_has("libx264"):
+        return True
+
+    bundled = _bundled_ffmpeg()
+    if bundled is None:
+        return False
+
+    previous = mpl.rcParams["animation.ffmpeg_path"]
+    mpl.rcParams["animation.ffmpeg_path"] = bundled
+    if _ffmpeg_has("libx264"):
+        log.info(
+            "The ffmpeg on this machine has no libx264, so the one bundled "
+            "with imageio-ffmpeg is used instead: %s",
+            bundled,
+        )
+        return True
+
+    mpl.rcParams["animation.ffmpeg_path"] = previous
+
+    return False
+
+
 def _movie_writer(fps: int) -> animation.AbstractMovieWriter:
     """The writer for a scientific movie, or the plain one if it cannot be had.
 
     Returns:
         An FFMpegWriter set to a quality worth keeping, or the default writer
-        when this ffmpeg has no x264 to set it on.
+        when no ffmpeg with x264 can be found.
     """
-    if _ffmpeg_has("libx264"):
+    if _use_an_ffmpeg_with_x264():
         return animation.FFMpegWriter(
             fps=fps,
             codec="libx264",
@@ -154,9 +199,10 @@ def _movie_writer(fps: int) -> animation.AbstractMovieWriter:
         )
 
     log.warning(
-        "This ffmpeg has no libx264, so the movie is written with whatever "
-        "encoder it defaults to and at that encoder's own quality. The frames "
-        "will be more strongly compressed than intended."
+        "No ffmpeg with libx264 was found, neither on this machine nor bundled "
+        "with imageio-ffmpeg, so the movie is written at the default encoder's "
+        "own quality and the frames will be more strongly compressed than "
+        "intended. `uv sync` installs the bundled one."
     )
 
     return animation.FFMpegWriter(fps=fps, bitrate=MOVIE_FALLBACK_BITRATE)
