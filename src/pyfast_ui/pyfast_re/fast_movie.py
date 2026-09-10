@@ -305,6 +305,15 @@ class FastMovie:
         if self.mode != DataMode.MOVIE:
             raise ValueError(f"`FastMovie` must be in mode {DataMode.MOVIE}")
 
+        if self.channels is None or not self.channels.is_up_and_down():
+            log.warning(
+                "This movie holds one sweep only, so there is no up against "
+                "down offset to measure: neighbouring frames are both up frames "
+                "or both down frames. Nothing is aligned. Any offset between the "
+                "sweeps has to be taken out on a channel that holds both."
+            )
+            return
+
         profile = updown.mismatch_profile(self.data)
         # The rigid estimator, not the one the y-phase uses: by this point the
         # creep correction has already measured itself against the turning
