@@ -18,7 +18,12 @@ from scipy.signal import convolve2d
 
 from pyfast_ui.pyfast_re import frame_corrections, updown
 from pyfast_ui.pyfast_re.channels import Channels
-from pyfast_ui.pyfast_re.creep import Creep, CreepMode
+from pyfast_ui.pyfast_re.creep import (
+    Creep,
+    CreepMode,
+    read_creep_file,
+    write_creep_file,
+)
 from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
 from pyfast_ui.pyfast_re.drift import (
     Drift,
@@ -404,7 +409,8 @@ class FastMovie:
         creep_mode: Literal["sin", "root"],
         initial_guess: float,
         guess_ind: float,
-        known_params: float | None,
+        known_params: float | tuple[float, float] | None,
+        use_previous: bool = False,
     ) -> None:
         """Create a compressed grid to correct for STM creep by virtue of
         interpolating measured values of successive up and down measurements
@@ -416,15 +422,36 @@ class FastMovie:
             guess_ind: How much of each frame is affected by creep (Only applicable for sin).
                 Values >= 1 are interpreted as lines of the frame, values between
                 0 and 1 will be interpreted as relative parts of the frames.
-            known_params: Known creep function parameters either from previous fit or manual determination.
-                If not `None`, no fit for the creep parameters will be perfomed.
+            known_params: Known creep function parameters, either the shape
+                alone or an (amplitude, shape) pair. If not `None`, no fit is
+                performed.
+            use_previous: Take the parameters from the '.creep.txt' file that an
+                earlier up and down evaluation of this file wrote, which is the
+                only way to correct a movie of a single sweep.
         """
         # must be movie mode now
         mode = CreepMode(creep_mode.lower())
         creep = Creep(self, index_to_linear=guess_ind, creep_mode=mode)
+
+        if use_previous and known_params is None:
+            # A movie of one sweep cannot be fitted, so it takes what an up and
+            # down evaluation of the same file wrote next to it.
+            known_params = read_creep_file(self.path, mode.value, guess_ind)
+
         self._grid = creep.fit_creep_measured(
             (initial_guess,), known_params=known_params
         )
+
+        if creep.fitted_parameters is not None and self.channels is not None:
+            amplitude, shape = creep.fitted_parameters
+            write_creep_file(
+                self.path,
+                mode.value,
+                amplitude,
+                shape,
+                guess_ind,
+                self.channels.value,
+            )
 
     def correct_creep_bezier(
         self,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+from pathlib import Path
 import traceback
 from copy import copy
 from enum import Enum
@@ -23,6 +24,125 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+
+
+CREEP_FILE_SUFFIX = ".creep.txt"
+"""Written next to the movie, like the drift path. It carries what an up and
+down evaluation found, so that the single sweep channels of the same file can
+be corrected with it: they cannot be fitted, because the fit compares an up
+frame with the following down frame."""
+
+
+def creep_file_path(movie_path: Path) -> Path:
+    """Where the creep parameters of a movie live."""
+    return movie_path.with_suffix("").with_suffix(CREEP_FILE_SUFFIX)
+
+
+def write_creep_file(
+    movie_path: Path,
+    mode: str,
+    amplitude: float,
+    shape: float,
+    guess_ind: float,
+    channel: str,
+) -> None:
+    """Record the creep parameters beside the movie.
+
+    A failure to write is reported and swallowed: the file is a convenience for
+    later runs and the correction of this movie does not depend on it.
+    """
+    path = creep_file_path(movie_path)
+    try:
+        with open(path, "w") as handle:
+            _ = handle.write(
+                f"# creep parameters for {movie_path.name}\n"
+                f"# fitted on the {channel} channel, which has both sweeps\n"
+                f"mode       {mode}\n"
+                f"amplitude  {amplitude:.4f}\n"
+                f"shape      {shape:.4f}\n"
+                f"guess_ind  {guess_ind:.4f}\n"
+            )
+    except OSError as error:
+        log.warning(
+            "Could not write the creep parameters to %s: %s. The correction "
+            "itself is unaffected.",
+            path,
+            error,
+        )
+        return
+
+    log.info("Creep parameters written to %s", path.name)
+
+
+def read_creep_file(
+    movie_path: Path, mode: str, guess_ind: float
+) -> tuple[float, float] | None:
+    """The creep parameters of an earlier up and down evaluation, if usable.
+
+    Returns `None` when there is no file, when it was written for a different
+    creep function, or when it was written with a different transition point,
+    because the shape parameter means something else in each of those cases.
+    """
+    path = creep_file_path(movie_path)
+    if not path.is_file():
+        log.warning(
+            "No creep parameters found at %s. Run the same file in a channel "
+            "with both sweeps first; that writes the file.",
+            path.name,
+        )
+        return None
+
+    values: dict[str, str] = {}
+    try:
+        with open(path) as handle:
+            for line in handle:
+                if line.startswith("#") or not line.split():
+                    continue
+                key, _, value = line.partition(" ")
+                values[key.strip()] = value.strip()
+    except OSError as error:
+        log.warning("Could not read %s: %s", path.name, error)
+        return None
+
+    if values.get("mode") != mode:
+        log.warning(
+            "%s was written for the %s mode and this run uses %s. The shape "
+            "parameter of one does not mean the same in the other, so it is "
+            "ignored.",
+            path.name,
+            values.get("mode"),
+            mode,
+        )
+        return None
+
+    try:
+        amplitude = float(values["amplitude"])
+        shape = float(values["shape"])
+        written_guess_ind = float(values.get("guess_ind", guess_ind))
+    except (KeyError, ValueError):
+        log.warning("%s does not hold a usable pair of parameters.", path.name)
+        return None
+
+    if abs(written_guess_ind - guess_ind) > 1e-6:
+        log.warning(
+            "%s was written with guess ind %.3f and this run uses %.3f, which "
+            "changes what the shape parameter means. Set guess ind to %.3f to "
+            "use it.",
+            path.name,
+            written_guess_ind,
+            guess_ind,
+            written_guess_ind,
+        )
+        return None
+
+    log.info(
+        "Creep parameters from %s: amplitude %.2f px, shape %.4g.",
+        path.name,
+        amplitude,
+        shape,
+    )
+
+    return amplitude, shape
 
 def _displace_rows(frame, amplitude):
     """Move the rows of a frame by a bulge of `amplitude` px in the middle."""
@@ -91,6 +211,9 @@ class Creep:
             "sin": self.sin_limit_function,
             "root": self.root_limit_function,
         }
+        self.creep_mode = creep_mode
+        self.fitted_parameters: tuple[float, float] | None = None
+        """Amplitude and shape, once they have been fitted rather than given."""
         self.creep_function = creep_functions[creep_mode.value]
         self.limit_function = creep_limit_function[creep_mode.value]
         self.limit_function()
@@ -641,6 +764,7 @@ class Creep:
             amplitude, shape = 0.0, self._neutral_shape()
         else:
             amplitude, shape = self.fit_creep_robust(float(params[0]))
+            self.fitted_parameters = (float(amplitude), float(shape))
             log.info(
                 "Creep parameters for this movie: known_params = [%.4f, %.4f]. "
                 "The same pair applies to any single sweep channel of the same "

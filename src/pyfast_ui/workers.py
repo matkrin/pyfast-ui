@@ -67,11 +67,13 @@ class CreepWorker(QRunnable):
         guess_ind: float,
         known_params: float | None,
         align_updown: bool = False,
+        use_previous_creep: bool = False,
     ) -> None:
         super().__init__()
 
         self.ft = fast_movie
         self.align_updown = align_updown
+        self.use_previous_creep = use_previous_creep
         self.creep_mode = creep_mode
         self.weight_boundary = weight_boundary
         self.creep_num_cols = creep_num_cols
@@ -97,6 +99,7 @@ class CreepWorker(QRunnable):
                 initial_guess=self.initial_guess,
                 guess_ind=self.guess_ind,
                 known_params=self.known_params,
+                use_previous=self.use_previous_creep,
             )
 
         self.ft.interpolate()

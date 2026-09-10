@@ -26,6 +26,7 @@ class CreepGroup(QGroupBox):
         guess_ind: float,
         known_params: float | None,
         align_updown: bool = False,
+        use_previous_creep: bool = False,
     ):
         super().__init__("Creep Correction")
         layout = QGridLayout()
@@ -83,6 +84,17 @@ class CreepGroup(QGroupBox):
         non_bezier_group_layout.addWidget(self._initial_guess)
         non_bezier_group_layout.addWidget(self._guess_ind)
 
+        # Reuse of an earlier evaluation
+        self._use_previous_creep = QCheckBox("Use previous ud evaluation")
+        self._use_previous_creep.setChecked(use_previous_creep)
+        self._use_previous_creep.setToolTip(
+            "Take the creep parameters from the '.creep.txt' file that an"
+            " earlier run of the same movie in a channel with both sweeps wrote"
+            " next to the .h5 file. A movie of one sweep, ui or di, cannot be"
+            " fitted on its own, because the fit compares an up frame with the"
+            " following down frame."
+        )
+
         # Alignment of the two sweeps against each other
         self._align_updown = QCheckBox("Align up/down frames")
         self._align_updown.setChecked(align_updown)
@@ -106,9 +118,10 @@ class CreepGroup(QGroupBox):
         layout.addWidget(bezier_group, 1, 0, 1, 2)
         layout.addWidget(non_bezier_group, 1, 2, 1, 2)
 
-        layout.addWidget(self._align_updown, 2, 0, 1, 4)
-        layout.addWidget(self.apply_btn, 3, 0, 1, 2)
-        layout.addWidget(self.new_btn, 3, 2, 1, 2)
+        layout.addWidget(self._use_previous_creep, 2, 0, 1, 4)
+        layout.addWidget(self._align_updown, 3, 0, 1, 4)
+        layout.addWidget(self.apply_btn, 4, 0, 1, 2)
+        layout.addWidget(self.new_btn, 4, 2, 1, 2)
 
     @property
     def creep_mode(self) -> str:
@@ -156,6 +169,14 @@ class CreepGroup(QGroupBox):
         self._initial_guess.setValue(value)
 
     @property
+    def use_previous_creep(self) -> bool:
+        return self._use_previous_creep.isChecked()
+
+    @use_previous_creep.setter
+    def use_previous_creep(self, value: bool) -> None:
+        self._use_previous_creep.setChecked(value)
+
+    @property
     def align_updown(self) -> bool:
         return self._align_updown.isChecked()
 
@@ -184,6 +205,7 @@ class CreepGroup(QGroupBox):
         self.known_input = creep_config.known_input
         self.known_params = creep_config.known_params
         self.align_updown = creep_config.align_updown
+        self.use_previous_creep = creep_config.use_previous_creep
 
     def to_config(self) -> CreepConfig:
         return CreepConfig(
@@ -195,4 +217,5 @@ class CreepGroup(QGroupBox):
             guess_ind=self.guess_ind,
             known_params=self.known_params,
             align_updown=self.align_updown,
+            use_previous_creep=self.use_previous_creep,
         )

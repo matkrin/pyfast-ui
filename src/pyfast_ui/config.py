@@ -77,6 +77,11 @@ class CreepConfig(BaseModel):
     """Creep parameters to use instead of fitting: either the shape alone, or
     an (amplitude, shape) pair. A movie of one sweep only cannot be fitted, so
     it takes the pair found on a channel that has both."""
+    use_previous_creep: bool = False
+    """Take the creep parameters from the '.creep.txt' file written by an
+    earlier up and down evaluation of the same movie, instead of fitting. A
+    movie of a single sweep cannot be fitted at all, so this is the only way to
+    correct one."""
     align_updown: bool = False
     """Remove the constant offset between the up and the down frames after the
     creep correction, in both directions and by interpolation. The y-phase can

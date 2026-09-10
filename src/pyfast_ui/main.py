@@ -679,6 +679,7 @@ class MainGui(QMainWindow):
             guess_ind=guess_ind,
             known_params=known_params,
             align_updown=self.creep_group.align_updown,
+            use_previous_creep=self.creep_group.use_previous_creep,
         )
         _ = creep_worker.signals.finished.connect(fast_movie_window.end_processing)
         self.threadpool.start(creep_worker)
