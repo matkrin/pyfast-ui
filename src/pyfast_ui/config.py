@@ -1,10 +1,13 @@
+import logging
 from dataclasses import field
 from pathlib import Path
-from typing import Literal, Self, TypeAlias
+from typing import Any, Literal, Self, TypeAlias, TypeVar
 
 import tomli_w
 import tomllib
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+
+log = logging.getLogger(__name__)
 
 ChannelType: TypeAlias = Literal[
     "udi",
@@ -139,23 +142,22 @@ class Config(BaseModel):
     def load_toml(cls, tomlfile: Path) -> Self:
         with open(tomlfile, "rb") as f:
             config_dict = tomllib.load(f)
-        fft_filter = config_dict["fft_filter"]
-        export = config_dict["export"]
+        # A section may be absent in a file written by another version, so
+        # nothing here may assume a key exists.
+        fft_filter = config_dict.get("fft_filter") or {}
+        export = config_dict.get("export") or {}
 
         # Change some values to tuples
-        fft_filter["fft_display_range"] = (
-            fft_filter["fft_display_range"][0],
-            fft_filter["fft_display_range"][1],
-        )
-        fft_filter["fft_display_range"] = (
-            fft_filter["fft_display_range"][0],
-            fft_filter["fft_display_range"][1],
-        )
-        export["scaling"] = export["scaling"]
-        export["frame_export_images"] = (
-            export["frame_export_images"][0],
-            export["frame_export_images"][1],
-        )
+        if "fft_display_range" in fft_filter:
+            fft_filter["fft_display_range"] = (
+                fft_filter["fft_display_range"][0],
+                fft_filter["fft_display_range"][1],
+            )
+        if "frame_export_images" in export:
+            export["frame_export_images"] = (
+                export["frame_export_images"][0],
+                export["frame_export_images"][1],
+            )
 
         # Replace "None" strings to None
         for key, value in config_dict.items():
@@ -165,15 +167,74 @@ class Config(BaseModel):
                         config_dict[key][k] = None
 
         return cls(
-            general=GeneralConfig(**config_dict["general"]),
-            phase=PhaseConfig(**config_dict["phase"]),
-            fft_filter=FftFilterConfig(**config_dict["fft_filter"]),
-            creep=CreepConfig(**config_dict["creep"]),
-            drift=DriftConfig(**config_dict["drift"]),
-            image_correction=ImageCorrectionConfig(**config_dict["image_correction"]),
-            image_filter=ImageFilterConfig(**config_dict["image_filter"]),
-            export=ExportConfig(**config_dict["export"]),
+            general=_lenient(GeneralConfig, config_dict, "general"),
+            phase=_lenient(PhaseConfig, config_dict, "phase"),
+            fft_filter=_lenient(FftFilterConfig, config_dict, "fft_filter"),
+            creep=_lenient(CreepConfig, config_dict, "creep"),
+            drift=_lenient(DriftConfig, config_dict, "drift"),
+            image_correction=_lenient(
+                ImageCorrectionConfig, config_dict, "image_correction"
+            ),
+            image_filter=_lenient(ImageFilterConfig, config_dict, "image_filter"),
+            export=_lenient(ExportConfig, config_dict, "export"),
         )
+
+
+SectionT = TypeVar("SectionT", bound=BaseModel)
+
+
+def _lenient(
+    model: type[SectionT],
+    config_dict: dict[str, Any],
+    section: str,
+) -> SectionT:
+    """Build one config section, dropping entries the model cannot accept.
+
+    A config file written by a newer version can contain a value this version
+    does not know, for instance a correction algorithm added since. Rejecting
+    the whole file for that leaves the program unable to start at all, and with
+    no way to recover from inside it, because the file is read before the window
+    is built. Anything that does not validate therefore falls back to the field
+    default and is reported in the log.
+
+    Args:
+        model: The config model for the section.
+        config_dict: The parsed file.
+        section: Name of the section.
+
+    Returns:
+        The section, with unusable entries replaced by their defaults.
+    """
+    values = dict(config_dict.get(section) or {})
+
+    try:
+        return model(**values)
+    except ValidationError as first_error:
+        rejected = {
+            str(error["loc"][0])
+            for error in first_error.errors()
+            if error.get("loc")
+        }
+
+    for name in rejected:
+        log.warning(
+            "Ignoring '%s' in section [%s] of the config file: %r is not a value "
+            "this version accepts. Falling back to the default.",
+            name,
+            section,
+            values.get(name),
+        )
+        _ = values.pop(name, None)
+
+    try:
+        return model(**values)
+    except ValidationError:
+        log.warning(
+            "Section [%s] of the config file could not be used at all; "
+            "falling back to the defaults.",
+            section,
+        )
+        return model()
 
 
 def init_config() -> Config:
