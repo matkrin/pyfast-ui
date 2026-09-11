@@ -171,6 +171,7 @@ class MovieWindow(QWidget):
                 self.ft.metadata.num_images,
                 self.ft.metadata.scanner_x_points,
                 self.ft.metadata.scanner_y_points,
+                self.ft.updown_row_shift,
             )
             self.num_frames = data.shape[0]
             # self.ft.num_frames = self.num_frames

@@ -40,6 +40,8 @@ class PhaseConfig(BaseModel):
     manual_y_phase: int = 0
     index_frame_to_correlate: int = 0
     sigma_gauss: int = 0
+    apply_auto_yphase: bool = False
+    fractional_x_phase: bool = False
 
 
 class FftFilterConfig(BaseModel):

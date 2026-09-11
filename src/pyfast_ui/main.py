@@ -519,6 +519,8 @@ class MainGui(QMainWindow):
         sigma_gauss = self.phase_group.sigma_gauss
         additional_x_phase = self.phase_group.additional_x_phase
         manual_y_phase = self.phase_group.manual_y_phase
+        apply_auto_yphase = self.phase_group.apply_auto_yphase
+        fractional_x_phase = self.phase_group.fractional_x_phase
 
         _x_phase = ft.correct_phase(
             auto_x_phase=apply_auto_xphase,
@@ -526,6 +528,8 @@ class MainGui(QMainWindow):
             sigma_gauss=sigma_gauss,
             additional_x_phase=additional_x_phase,
             manual_y_phase=manual_y_phase,
+            auto_y_phase=apply_auto_yphase,
+            fractional_x_phase=fractional_x_phase,
         )
         print(f"{_x_phase}")
 

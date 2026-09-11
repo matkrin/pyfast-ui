@@ -77,6 +77,10 @@ class FastMovie:
         self._drift_path_integrated = None
         self._drift_path_sequential = None
 
+        self.applied_x_phase: float = 0.0
+        self.applied_y_phase: int = 0
+        self.updown_row_shift: int = 0
+
         # Initial phase correction from either parameters or file metadata
         if x_phase is None:
             x_phase = self.metadata.acquisition_x_phase
@@ -135,6 +139,7 @@ class FastMovie:
             self.metadata.num_images,
             self.metadata.scanner_x_points,
             self.metadata.scanner_y_points,
+            self.updown_row_shift,
         )
         # Mutate data
         self.data = data
@@ -222,15 +227,23 @@ class FastMovie:
         sigma_gauss: int = 0,
         additional_x_phase: int = 0,
         manual_y_phase: int | None = None,
+        auto_y_phase: bool = False,
+        fractional_x_phase: bool = False,
     ) -> None:
         """Correct the phase of the `FastMovie`.
 
         Args:
             auto_x_phase: Determine x-phase via correlation.
-            frame_index_to_correlate: Index of the frame used for correlation.
-            sigma_gauss:
+            frame_index_to_correlate: Index of the first frame used for correlation.
+            sigma_gauss: Optional smoothing before the correlation.
             additional_x_phase: Value added to the x-phase.
-            manual_y_phase: Override y-phase value from metadata.
+            manual_y_phase: Override y-phase value from metadata. Ignored when
+                `auto_y_phase` is set.
+            auto_y_phase: Determine the y-phase from the vertical offset between
+                up and down frames. The file metadata carries no usable value,
+                so without this no y correction happens at all.
+            fractional_x_phase: Apply the x-phase by interpolation instead of
+                rounding it to whole samples.
 
         Returns:
             None: Updates the movie's data in-place.
@@ -242,10 +255,15 @@ class FastMovie:
             sigma_gauss=sigma_gauss,
             additional_x_phase=additional_x_phase,
             manual_y_phase=manual_y_phase,
+            auto_y_phase=auto_y_phase,
+            fractional_x_phase=fractional_x_phase,
         )
         result = phase_correction.correct_phase()
-        _applied_x_phase = result.applied_x_phase
-        _applied_y_phase = result.applied_y_phase
+        self.applied_x_phase = result.applied_x_phase
+        self.applied_y_phase = result.applied_y_phase
+        # Remembered rather than applied here: it is a shift of whole frames and
+        # can only be carried out once the series has been reshaped.
+        self.updown_row_shift = result.updown_row_shift
         # Mutate data
         self.data = result.data
 
