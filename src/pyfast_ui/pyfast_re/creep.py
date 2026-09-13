@@ -324,6 +324,40 @@ class Creep:
         return_val = newvals_up - newvals_down
         return return_val
 
+    def _clamp_to_bounds(self, params):
+        """Move the initial guess inside the fitted bounds if it lies outside.
+
+        The upper bound is not a constant: it follows from the pixel shift
+        measured in the movie, so a movie with little creep gets a tight bound.
+        The default guess of 0.3 sits above it for such a movie, and curve_fit
+        then raises "Initial guess is outside of provided bounds" for every
+        frame and row, so the fit never runs and the uncorrected input value is
+        used instead, itself out of range.
+
+        Args:
+            params: The initial guess as given by the caller.
+
+        Returns:
+            The guess, moved just inside the bounds where necessary.
+        """
+        lower, upper = self.bounds
+        margin = 0.02 * (upper - lower) if np.isfinite(upper - lower) else 0.0
+        clamped = []
+        for value in params:
+            inside = float(np.clip(value, lower + margin, upper - margin))
+            if inside != value:
+                log.warning(
+                    "Creep initial guess %.4g lies outside the bounds [%.4g, %.4g] "
+                    "that this movie allows; using %.4g instead.",
+                    value,
+                    lower,
+                    upper,
+                    inside,
+                )
+            clamped.append(inside)
+
+        return tuple(clamped)
+
     def fit_creep(self, params=(0.6,), frames=[0, 2], known_params=None):
         """
         Minimizes "_get_diff_from_grid" to obtain creep corrected
@@ -341,6 +375,7 @@ class Creep:
         """
         if known_params == None:
             log.info("Starting creep correction")
+            params = self._clamp_to_bounds(params)
             for frame_number_index in range(len(frames)):
                 if frames[frame_number_index] % 2 != 0:
                     frames[frame_number_index] += 1
@@ -361,10 +396,12 @@ class Creep:
                         fitresult += popt
                         count += 1
                     except Exception as e:
-                        log.warning(traceback.format_exc())
-                        log.warning(f"Caught Exception was '{e}'".format(e))
-                        log.info("Fit attempt failed, trying next...")
-                        pass
+                        # One line per failed fit; the full traceback of every
+                        # frame and row buried the actual message in a batch run.
+                        log.debug(traceback.format_exc())
+                        log.warning(
+                            "Creep fit failed for frame %d, row %d: %s", frame, row, e
+                        )
 
             if count == 0:  ## Only happens if all curve_fit attempts fail.
                 avg_result = np.array(params)
