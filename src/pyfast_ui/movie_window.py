@@ -14,7 +14,15 @@ from matplotlib.figure import Figure
 from matplotlib.widgets import RectangleSelector
 from numpy.typing import NDArray
 from PySide6.QtCore import QSize, Signal, SignalInstance
-from PySide6.QtGui import QCloseEvent, QFocusEvent, QKeySequence, QShortcut, Qt
+from PySide6.QtGui import (
+    QCloseEvent,
+    QFocusEvent,
+    QHideEvent,
+    QKeySequence,
+    QShortcut,
+    QShowEvent,
+    Qt,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -106,6 +114,7 @@ class MovieWindow(QWidget):
         self.ax = None
         self.img_plot = None
         self.rectangle_selection = None
+        self.timer = None
         self.create_plot()
 
         # Layout
@@ -139,7 +148,10 @@ class MovieWindow(QWidget):
         shortcut_prev = QShortcut(QKeySequence(Qt.CTRL | Qt.Key_Space), self)
         shortcut_prev.activated.connect(self.on_play_btn_clicked)
 
-        self.start_playing()
+        # The timer is not started here. A window created by batch mode is
+        # never shown, and a timer running on a hidden canvas still redraws it
+        # at the full frame rate; with one window per processed file that alone
+        # makes the program crawl once a batch has finished.
         self.movie_controls.play_btn.setChecked(True)
 
     def clone_fast_movie(self) -> FastMovie:
@@ -319,6 +331,7 @@ class MovieWindow(QWidget):
 
     def start_playing(self) -> None:
         """Starts playing the movie."""
+        self.stop_playing()
         fps = self.movie_controls.fps_input.value()
         update_time = 1 / fps * 1000
 
@@ -328,7 +341,40 @@ class MovieWindow(QWidget):
 
     def stop_playing(self) -> None:
         """Stops playing the movie."""
-        self.timer.stop()
+        if self.timer is not None:
+            self.timer.stop()
+
+    @override
+    def showEvent(self, event: QShowEvent) -> None:
+        """Start playing once the window actually appears."""
+        super().showEvent(event)
+        if self.timer is None and self.movie_controls.play_btn.isChecked():
+            self.start_playing()
+
+    @override
+    def hideEvent(self, event: QHideEvent) -> None:
+        """Stop redrawing a window nobody can see."""
+        super().hideEvent(event)
+        self.stop_playing()
+
+    def dispose(self) -> None:
+        """Release everything this window holds.
+
+        Batch mode builds one window per file and does not need it afterwards.
+        Without this each processed file leaves behind two copies of its movie,
+        a matplotlib figure and a running timer.
+        """
+        self.stop_playing()
+        self.timer = None
+        if self.img_plot is not None:
+            self.img_plot.remove()
+            self.img_plot = None
+        self.rectangle_selection = None
+        self.canvas.figure.clf()
+        self.plot_data = np.empty((0, 0, 0), dtype=np.float32)
+        self.ax = None
+        self.close()
+        self.deleteLater()
 
     def on_prev_btn_clicked(self) -> None:
         """Callback for the previous-frame-button (<<)."""
@@ -395,7 +441,7 @@ class MovieWindow(QWidget):
         default behavior, a signal is sent that the window was is closed.
         """
         print(f"Closed {self.info}")
-        self.timer.stop()
+        self.stop_playing()
         self.window_closed.emit(self.info)
         super().closeEvent(event)
 

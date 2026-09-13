@@ -1,3 +1,4 @@
+import gc
 import logging
 import sys
 from pathlib import Path
@@ -386,6 +387,16 @@ class MainGui(QMainWindow):
 
                 self.on_export_apply()
                 _ = self.threadpool.waitForDone()
+
+                # The window has served its purpose. Keeping it would hold two
+                # copies of the movie and a figure per processed file.
+                _ = self.movie_windows.pop(movie_window.info.id_, None)
+                _ = self.histogram_windows.pop(movie_window.info.id_, None)
+                if self.operate_on == movie_window.info.id_:
+                    self.operate_on = None
+                movie_window.dispose()
+                del movie_window, ft
+                gc.collect()
 
     def update_colormap(self, value: str) -> None:
         """Changes the colormap for all open `MovieWindow`s.
