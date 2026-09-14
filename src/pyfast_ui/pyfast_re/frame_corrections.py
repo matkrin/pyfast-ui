@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import re
+
 import numpy as np
 from numpy.typing import NDArray
 from typing import Callable, cast
@@ -7,6 +10,8 @@ from scipy import sparse
 from scipy.signal import convolve2d
 from scipy.sparse.linalg import lsqr
 
+
+log = logging.getLogger(__name__)
 
 AlignFunc = Callable[[NDArray[np.float32]], NDArray[np.float32]]
 
@@ -25,10 +30,34 @@ MIN_SPAN = 0.25
 is fitted to them alone. The row coordinate runs from -0.5 to 0.5."""
 
 
+DEFAULT_AREA_PERCENT = 30.0
+"""How much of the height histogram the band selections take, in percent.
+
+Thirty leaves the fit a clear majority of background on a frame whose features
+cover a third of it, and still enough pixels for a plane or a polynomial to be
+determined. It is a setting, not a constant of nature: a frame that is almost
+all background wants more, one carrying a large island wants less."""
+
+
+def _selection_percent(area_selection: str, percent: float) -> float:
+    """The width of the band, in percent.
+
+    A number written into the label wins over the argument, so that a config
+    file from an earlier version, which named the band "lowest 50%" rather than
+    "lowest x%", keeps meaning what it meant.
+    """
+    written = re.search(r"(\d+(?:\.\d+)?)\s*%", area_selection)
+    if written is not None:
+        return float(written.group(1))
+
+    return float(percent)
+
+
 def selection_mask(
     frame: NDArray[np.float32],
     area_selection: str = "whole image",
     roi: tuple[int, int, int, int] | None = None,
+    percent: float = DEFAULT_AREA_PERCENT,
 ) -> NDArray[np.bool_]:
     """Which pixels a background fit is allowed to use.
 
@@ -40,30 +69,49 @@ def selection_mask(
 
     Args:
         frame: The frame the fit will run on.
-        area_selection: One of "whole image", "lowest 50%", "middle 50%",
-            "highest 50%", "exclude ROI".
+        area_selection: One of "whole image", "lowest x%", "middle x%",
+            "highest x%", "exclude ROI". The older labels that carry their own
+            number, "lowest 50%" and the like, are still understood and that
+            number then takes precedence over `percent`.
         roi: Region to leave out, as (y_start, y_end, x_start, x_end). Only used
             for "exclude ROI".
+        percent: How much of the height histogram the band covers. The lowest
+            and highest bands start at their end of the histogram, the middle
+            band is centred on the median.
 
     Returns:
         Boolean mask, True where the fit may use the pixel.
     """
     mask = np.ones(frame.shape, dtype=bool)
 
-    match area_selection:
-        case "lowest 50%":
-            bounds = (0.0, 50.0)
-        case "middle 50%":
-            bounds = (25.0, 75.0)
-        case "highest 50%":
-            bounds = (50.0, 100.0)
-        case "exclude ROI":
-            if roi is not None:
-                y_start, y_end, x_start, x_end = roi
-                mask[y_start:y_end, x_start:x_end] = False
-            return mask
-        case _:
-            return mask
+    if area_selection == "exclude ROI":
+        if roi is not None:
+            y_start, y_end, x_start, x_end = roi
+            mask[y_start:y_end, x_start:x_end] = False
+        return mask
+
+    band = _selection_percent(area_selection, percent)
+    if not area_selection.startswith(("lowest", "middle", "highest")):
+        return mask
+
+    if band <= 0.0:
+        # An empty band leaves the fit nothing to work with, so it is read as
+        # "do not restrict" rather than as an error that stops a batch run.
+        log.warning(
+            "Area selection %r with a band of %.1f %% would leave no pixels for "
+            "the fit; the whole image is used instead.",
+            area_selection,
+            band,
+        )
+        return mask
+
+    band = min(band, 100.0)
+    if area_selection.startswith("lowest"):
+        bounds = (0.0, band)
+    elif area_selection.startswith("highest"):
+        bounds = (100.0 - band, 100.0)
+    else:
+        bounds = (50.0 - band / 2.0, 50.0 + band / 2.0)
 
     low, high = np.percentile(frame, bounds)
     return (frame >= low) & (frame <= high)

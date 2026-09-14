@@ -1,11 +1,12 @@
 import logging
+import re
 from dataclasses import field
 from pathlib import Path
 from typing import Any, Literal, Self, TypeAlias, TypeVar
 
 import tomli_w
 import tomllib
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, model_validator
 
 log = logging.getLogger(__name__)
 
@@ -114,8 +115,40 @@ class ImageCorrectionConfig(BaseModel):
         "poly3",
     ] = "median"
     area_selection: Literal[
-        "whole image", "lowest 50%", "middle 50%", "highest 50%", "exclude ROI"
+        "whole image", "lowest x%", "middle x%", "highest x%", "exclude ROI"
     ] = "whole image"
+    area_percent: float = 30.0
+    """Width of the height band the three "x%" selections take, in percent. The
+    lowest and highest bands start at their end of the height histogram, the
+    middle band is centred on the median."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_the_old_labels(cls, values: Any) -> Any:
+        """Read a config file that still names the band in the label.
+
+        The selections used to be fixed at half the histogram and were called
+        "lowest 50%" and so on. Such a file keeps its meaning: the number moves
+        into `area_percent` and the label becomes the general one.
+        """
+        if not isinstance(values, dict):
+            return values
+
+        selection = values.get("area_selection")
+        if not isinstance(selection, str):
+            return values
+
+        written = re.fullmatch(
+            r"(lowest|middle|highest)\s+(\d+(?:\.\d+)?)\s*%", selection.strip()
+        )
+        if written is None:
+            return values
+
+        values = dict(values)
+        values["area_selection"] = f"{written.group(1)} x%"
+        values.setdefault("area_percent", float(written.group(2)))
+
+        return values
 
 
 class ImageFilterConfig(BaseModel):

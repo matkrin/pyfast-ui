@@ -850,6 +850,7 @@ class MainGui(QMainWindow):
         align_type = self.image_correction_group.align_type
         correction_type = self.image_correction_group.correction_type
         area_selection = self.image_correction_group.area_selection
+        area_percent = self.image_correction_group.area_percent
 
         roi = None
         if area_selection == "exclude ROI":
@@ -864,10 +865,15 @@ class MainGui(QMainWindow):
         match correction_type:
             case "align":
                 ft.align_rows(
-                    align_type=align_type, area_selection=area_selection, roi=roi
+                    align_type=align_type,
+                    area_selection=area_selection,
+                    roi=roi,
+                    area_percent=area_percent,
                 )
             case "plane":
-                ft.level_plane(area_selection=area_selection, roi=roi)
+                ft.level_plane(
+                    area_selection=area_selection, roi=roi, area_percent=area_percent
+                )
             case "fixzero":
                 ft.fix_zero()
             case "frame level":

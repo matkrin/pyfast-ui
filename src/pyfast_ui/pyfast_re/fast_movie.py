@@ -720,6 +720,7 @@ class FastMovie:
         ],
         area_selection: str = "whole image",
         roi: tuple[int, int, int, int] | None = None,
+        area_percent: float = frame_corrections.DEFAULT_AREA_PERCENT,
     ) -> None:
         """Frame background correction by row alignment.
 
@@ -729,6 +730,8 @@ class FastMovie:
                 `frame_corrections.selection_mask`.
             roi: Region to leave out, (y_start, y_end, x_start, x_end), for
                 `area_selection="exclude ROI"`.
+            area_percent: Width of the height band for the "lowest x%",
+                "middle x%" and "highest x%" selections.
 
         Returns:
             None: Updates the movie's data in-place.
@@ -739,7 +742,9 @@ class FastMovie:
         for i in TqdmLogger(range(self.data.shape[0]), desc="Aligning rows"):
             # The mask is rebuilt per frame and per call, so a height based
             # selection follows the data as successive corrections change it.
-            mask = frame_corrections.selection_mask(self.data[i], area_selection, roi)  # pyright: ignore[reportAny]
+            mask = frame_corrections.selection_mask(  # pyright: ignore[reportAny]
+                self.data[i], area_selection, roi, area_percent
+            )
             background = frame_corrections.align_rows(self.data[i], align_type, mask)  # pyright: ignore[reportAny]
             # Mutate data
             self.data[i] -= background
@@ -774,6 +779,7 @@ class FastMovie:
         self,
         area_selection: str = "whole image",
         roi: tuple[int, int, int, int] | None = None,
+        area_percent: float = frame_corrections.DEFAULT_AREA_PERCENT,
     ) -> None:
         """Frame background correction by subtraction of a fitted background plane.
 
@@ -782,6 +788,8 @@ class FastMovie:
                 `frame_corrections.selection_mask`.
             roi: Region to leave out, (y_start, y_end, x_start, x_end), for
                 `area_selection="exclude ROI"`.
+            area_percent: Width of the height band for the "lowest x%",
+                "middle x%" and "highest x%" selections.
 
         Returns:
             None: Updates the movie's data in-place.
@@ -790,7 +798,9 @@ class FastMovie:
             raise ValueError("Data must be reshaped into movie mode")
 
         for i in TqdmLogger(range(self.data.shape[0]), desc="Leveling planes"):
-            mask = frame_corrections.selection_mask(self.data[i], area_selection, roi)  # pyright: ignore[reportAny]
+            mask = frame_corrections.selection_mask(  # pyright: ignore[reportAny]
+                self.data[i], area_selection, roi, area_percent
+            )
             background = frame_corrections.level_plane(self.data[i], mask)  # pyright: ignore[reportAny]
             # Mutate data
             self.data[i] -= background
