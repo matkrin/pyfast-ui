@@ -53,11 +53,25 @@ def _selection_percent(area_selection: str, percent: float) -> float:
     return float(percent)
 
 
+MAX_STARVED_ROWS = 0.5
+"""Share of rows that may take their background from the row above before the
+selection is declared unusable for that frame. Beyond this the frame would end
+up at the level of its first row rather than corrected."""
+
+MIN_ROW_PERCENT = 5.0
+"""Share of a row that has to survive the selection before the row is fitted on
+its own, in percent. A row left with less than this, because the excluded region
+covers it or because its values are tied, carries the background of the row above
+instead: a fit to a handful of pixels is worse than the neighbour's answer, and
+the neighbour is one scan line away."""
+
+
 def selection_mask(
     frame: NDArray[np.float32],
     area_selection: str = "whole image",
     roi: tuple[int, int, int, int] | None = None,
     percent: float = DEFAULT_AREA_PERCENT,
+    per_row: bool = False,
 ) -> NDArray[np.bool_]:
     """Which pixels a background fit is allowed to use.
 
@@ -78,6 +92,14 @@ def selection_mask(
         percent: How much of the height histogram the band covers. The lowest
             and highest bands start at their end of the histogram, the middle
             band is centred on the median.
+        per_row: Take the band from each row separately rather than from the
+            whole frame. This is what a row alignment wants: the correction is
+            fitted per row, so the pixels it is fitted to should be that row's
+            own background. Taken over the whole frame instead, a row lying
+            below the rest of the image contributes all of its pixels and a row
+            lying above contributes none, and the rows with none are then fitted
+            to whatever the fallback offers. A plane is fitted to the frame as a
+            whole and wants the frame as a whole, so it leaves this off.
 
     Returns:
         Boolean mask, True where the fit may use the pixel.
@@ -113,7 +135,11 @@ def selection_mask(
     else:
         bounds = (50.0 - band / 2.0, 50.0 + band / 2.0)
 
-    low, high = np.percentile(frame, bounds)
+    if per_row:
+        low, high = np.percentile(frame, bounds, axis=1, keepdims=True)
+    else:
+        low, high = np.percentile(frame, bounds)
+
     return (frame >= low) & (frame <= high)
 
 
@@ -224,6 +250,7 @@ def align_rows(
     frame: NDArray[np.float32],
     align_type: str = "median",
     mask: NDArray[np.bool_] | None = None,
+    band: float | None = None,
 ) -> NDArray[np.float32]:
     """Background of a frame from a fit to each row separately.
 
@@ -232,6 +259,10 @@ def align_rows(
         align_type: "median", "median of diff", "mean", "line", "poly2" or
             "poly3".
         mask: Pixels the fit may use, see `selection_mask`. `None` uses all.
+        band: Width of the height band the mask was built from, in percent, if
+            it was built from one. Only used to decide how few selected pixels
+            are too few, so that a narrow band is not mistaken for a row the
+            selection has emptied.
 
     Returns:
         The background to subtract.
@@ -245,11 +276,61 @@ def align_rows(
         lags = MULTILAG_LAGS if "multi-lag" in align_type else (1,)
         return _median_of_diff_background(frame, mask, lags)
 
+    needed = _min_row_pixels(frame.shape[1], band)
+    starved = mask.sum(axis=1) < needed
+    if starved.mean() > MAX_STARVED_ROWS:
+        # Carrying the row above down through a frame where almost no row has
+        # anything to fit would leave the whole frame at the level of its first
+        # row, which is not a correction at all. Better to use every pixel and
+        # say so.
+        log.warning(
+            "Row alignment: %.0f %% of the rows keep fewer than %d selected "
+            "pixels, so the selection cannot carry the correction. Every row is "
+            "fitted on all of its pixels instead; widen the area selection or "
+            "make the excluded region smaller.",
+            100.0 * starved.mean(),
+            needed,
+        )
+        mask = np.ones(frame.shape, dtype=bool)
+        starved = np.zeros(frame.shape[0], dtype=bool)
+
     background = np.empty(frame.shape, dtype=np.float32)
+    carried = 0
     for index in range(frame.shape[0]):
+        if index > 0 and starved[index]:
+            # Nothing left to fit this row on. The row above is one scan line
+            # away and was measured moments earlier, so its background is a
+            # better answer than a fit to two or three pixels, and a better one
+            # than falling back to the whole row, which would put the feature
+            # that swallowed the selection into the background.
+            background[index] = background[index - 1]
+            carried += 1
+            continue
+
         background[index] = _row_background(frame[index], mask[index], align_type)
 
+    if carried:
+        log.info(
+            "Row alignment: %d of %d rows kept fewer than %d selected pixels and "
+            "took the background of the row above.",
+            carried,
+            frame.shape[0],
+            needed,
+        )
+
     return cast(NDArray[np.float32], background)
+
+
+def _min_row_pixels(width: int, band: float | None = None) -> int:
+    """Fewest selected pixels a row needs before it is fitted on its own.
+
+    Five percent of the row, but never fewer than `MIN_SELECTED`, and never more
+    than the band asked for could deliver: a request for the lowest three percent
+    of every row must not declare every row unusable.
+    """
+    percent = MIN_ROW_PERCENT if band is None else min(MIN_ROW_PERCENT, band)
+
+    return max(MIN_SELECTED, int(np.ceil(percent / 100.0 * width)))
 
 
 def _median_of_diff_background(

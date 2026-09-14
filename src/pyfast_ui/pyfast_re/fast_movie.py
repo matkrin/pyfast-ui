@@ -731,7 +731,9 @@ class FastMovie:
             roi: Region to leave out, (y_start, y_end, x_start, x_end), for
                 `area_selection="exclude ROI"`.
             area_percent: Width of the height band for the "lowest x%",
-                "middle x%" and "highest x%" selections.
+                "middle x%" and "highest x%" selections. Taken from each row
+                separately here, because the correction itself is fitted per
+                row.
 
         Returns:
             None: Updates the movie's data in-place.
@@ -743,9 +745,11 @@ class FastMovie:
             # The mask is rebuilt per frame and per call, so a height based
             # selection follows the data as successive corrections change it.
             mask = frame_corrections.selection_mask(  # pyright: ignore[reportAny]
-                self.data[i], area_selection, roi, area_percent
+                self.data[i], area_selection, roi, area_percent, per_row=True
             )
-            background = frame_corrections.align_rows(self.data[i], align_type, mask)  # pyright: ignore[reportAny]
+            background = frame_corrections.align_rows(  # pyright: ignore[reportAny]
+                self.data[i], align_type, mask, band=area_percent
+            )
             # Mutate data
             self.data[i] -= background
 

@@ -64,7 +64,11 @@ class ImageCorrectionGroup(QGroupBox):
             " \"highest\" start at their end of the histogram, \"middle\" is"
             " centred on the median. Small values pick the flattest background"
             " but leave few pixels for the fit; large values approach the whole"
-            " image."
+            " image.\n\nFor the align corrections the band is taken from each"
+            " row separately, since the correction is fitted per row; a row"
+            " that keeps fewer than five percent of its pixels takes the"
+            " background of the row above. Plane subtraction fits the frame as"
+            " a whole and takes the band from the whole frame."
         )
 
         self.correction_type = correction_type
