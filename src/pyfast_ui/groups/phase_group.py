@@ -31,13 +31,32 @@ class PhaseGroup(QGroupBox):
         manual_y_phase: int,
         index_frame_to_correlate: int,
         sigma_gauss: int,
+        apply_auto_yphase: bool,
+        fractional_x_phase: bool,
     ) -> None:
         super().__init__("Phase Correction")
         layout = QGridLayout()
         self.setLayout(layout)
 
-        self._apply_auto_xphase = QCheckBox("Apply auto X-Phase", self)
+        self._apply_auto_xphase = QCheckBox("Apply auto x-Phase", self)
         self._apply_auto_xphase.setChecked(apply_auto_xphase)
+
+        self._apply_auto_yphase = QCheckBox("Apply auto y-Phase", self)
+        self._apply_auto_yphase.setChecked(apply_auto_yphase)
+        self._apply_auto_yphase.setToolTip(
+            "Determine the y-phase from the vertical offset between the up and"
+            " the down frame of each image. The file metadata carries no usable"
+            " value, so without this no y correction is applied at all."
+            " Overrides the manual y-phase."
+        )
+
+        self._fractional_x_phase = QCheckBox("Fractional x-phase", self)
+        self._fractional_x_phase.setChecked(fractional_x_phase)
+        self._fractional_x_phase.setToolTip(
+            "Apply the x-phase by interpolating the raw series instead of"
+            " rounding it to whole samples. Worth a few percent of the residual"
+            " doubling; the values become interpolated."
+        )
 
         additional_x_phase_lbl = QLabel("Additional x-phase")
         self._additional_x_phase = QSpinBox(self)
@@ -74,10 +93,15 @@ class PhaseGroup(QGroupBox):
         sigma_gause_layout.addWidget(self._sigma_gauss)
 
         layout.addWidget(self._apply_auto_xphase, 0, 0)
+        layout.addWidget(self._apply_auto_yphase, 0, 1)
         layout.addLayout(additional_x_phase_layout, 1, 0)
         layout.addLayout(manual_y_phase_layout, 2, 0)
         layout.addLayout(index_frame_to_correlate_layout, 1, 1)
         layout.addLayout(sigma_gause_layout, 2, 1)
+        layout.addWidget(self._fractional_x_phase, 3, 0, 1, 2)
+
+        _ = self._apply_auto_yphase.toggled.connect(self._update_enabled_controls)
+        self._update_enabled_controls()
 
         btn_layout = QHBoxLayout()
         self.apply_btn = QPushButton("Apply")
@@ -85,7 +109,11 @@ class PhaseGroup(QGroupBox):
 
         btn_layout.addWidget(self.apply_btn)
         btn_layout.addWidget(self.new_btn)
-        layout.addLayout(btn_layout, 3, 0, 1, 2)
+        layout.addLayout(btn_layout, 4, 0, 1, 2)
+
+    def _update_enabled_controls(self) -> None:
+        """The manual y-phase has no effect while the automatic one is on."""
+        self._manual_y_phase.setEnabled(not self._apply_auto_yphase.isChecked())
 
     @property
     def apply_auto_xphase(self) -> bool:
@@ -94,6 +122,22 @@ class PhaseGroup(QGroupBox):
     @apply_auto_xphase.setter
     def apply_auto_xphase(self, value: bool) -> None:
         self._apply_auto_xphase.setChecked(value)
+
+    @property
+    def apply_auto_yphase(self) -> bool:
+        return self._apply_auto_yphase.isChecked()
+
+    @apply_auto_yphase.setter
+    def apply_auto_yphase(self, value: bool) -> None:
+        self._apply_auto_yphase.setChecked(value)
+
+    @property
+    def fractional_x_phase(self) -> bool:
+        return self._fractional_x_phase.isChecked()
+
+    @fractional_x_phase.setter
+    def fractional_x_phase(self, value: bool) -> None:
+        self._fractional_x_phase.setChecked(value)
 
     @property
     def additional_x_phase(self) -> int:
@@ -135,6 +179,8 @@ class PhaseGroup(QGroupBox):
         self.apply_auto_xphase = phase_config.apply_auto_xphase
         self.additional_x_phase = phase_config.additional_x_phase
         self.manual_y_phase = phase_config.manual_y_phase
+        self.apply_auto_yphase = phase_config.apply_auto_yphase
+        self.fractional_x_phase = phase_config.fractional_x_phase
         self.index_frame_to_correlate = phase_config.index_frame_to_correlate
         self.sigma_gauss = phase_config.sigma_gauss
 
@@ -143,6 +189,8 @@ class PhaseGroup(QGroupBox):
             apply_auto_xphase=self.apply_auto_xphase,
             additional_x_phase=self.additional_x_phase,
             manual_y_phase=self.manual_y_phase,
+            apply_auto_yphase=self.apply_auto_yphase,
+            fractional_x_phase=self.fractional_x_phase,
             index_frame_to_correlate=self.index_frame_to_correlate,
             sigma_gauss=self.sigma_gauss,
         )

@@ -17,11 +17,13 @@ def align_rows(
     Align rows of a 2D frame based on the selected method.
     """
 
+    # "median of diff" couples neighbouring rows and cannot be expressed as a
+    # function of a single row.
+    if align_type == "median of diff":
+        return _median_of_diff_background(frame)
+
     match align_type:
         case "median":
-            func: AlignFunc = lambda row: np.full(row.shape[0], np.median(row))  # noqa: E731
-        case "median of diff":
-            # placeholder (actual implementation handled before apply_along_axis)
             func: AlignFunc = lambda row: np.full(row.shape[0], np.median(row))  # noqa: E731
         case "mean":
             func: AlignFunc = lambda row: np.full(row.shape[0], np.mean(row))  # noqa: E731
@@ -32,17 +34,33 @@ def align_rows(
         case _:
             func: AlignFunc = lambda row: np.full(row.shape[0], np.median(row))  # noqa: E731
 
-    # Special handling: "median of diff" depends on adjacent rows, not just a single row.
-    if align_type == "median of diff":
-        med = np.median(frame, axis=1).astype(np.float32)
-        diff = np.zeros_like(med, dtype=np.float32)
-        if med.shape[0] > 1:
-            diff[1:] = med[1:] - med[:-1]
-        background = np.repeat(diff[:, None], frame.shape[1], axis=1)
-        return cast(NDArray[np.float32], background)
-
     background = np.apply_along_axis(func, axis=1, arr=frame)
     return cast(NDArray[np.float32], background)
+
+
+def _median_of_diff_background(frame: NDArray[np.float32]) -> NDArray[np.float32]:
+    """Row offsets that drive the median of the vertical neighbour differences
+    to zero.
+
+    For each pair of neighbouring rows the median is taken over the pointwise
+    differences, and those steps are accumulated into an offset per row. That is
+    what makes the method robust: a feature covering less than half of a row
+    leaves the median of the differences untouched, so large objects survive
+    instead of being levelled away, which is the reason to prefer this over the
+    plain row median.
+
+    Taking the difference of the two row medians instead, as an earlier version
+    did, is not the same quantity. It loses the robustness, and it is identically
+    zero once the row medians have been removed, so a second correction appeared
+    to do nothing.
+    """
+    num_rows = frame.shape[0]
+    offsets = np.zeros(num_rows, dtype=np.float32)
+    if num_rows > 1:
+        steps = np.median(frame[1:] - frame[:-1], axis=1)
+        offsets[1:] = np.cumsum(steps)
+
+    return np.repeat(offsets[:, None], frame.shape[1], axis=1)
 
 
 def level_plane(frame: NDArray[np.float32]) -> NDArray[np.float32]:
@@ -54,18 +72,18 @@ def level_plane(frame: NDArray[np.float32]) -> NDArray[np.float32]:
     Returns:
         The background that needs to be substracted from the image for plane leveling.
     """
+    # One ramp per direction, from the profile averaged over the other one.
     background_x = _poly_background(frame.mean(axis=0), 1)  # pyright: ignore[reportAny]
     background_y = _poly_background(frame.mean(axis=1), 1)  # pyright: ignore[reportAny]
 
-    background_xx = np.apply_along_axis(
-        lambda _: background_x,
-        axis=1,
-        arr=frame,
-    )
-    background_yy = np.apply_along_axis(lambda _: background_y, axis=1, arr=frame)
-    background = background_xx + background_yy
+    # The x ramp varies along the columns and the y ramp along the rows, so they
+    # are broadcast along different axes. Writing both along axis 1, as an
+    # earlier version did, put the y ramp across the image and produced an array
+    # of shape (rows, rows), which is silently wrong on a square frame and
+    # raises on any other.
+    background = background_x[None, :] + background_y[:, None]
 
-    return background
+    return cast(NDArray[np.float32], background.astype(np.float32))
 
 
 def convolve_frame(

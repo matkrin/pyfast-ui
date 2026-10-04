@@ -23,6 +23,7 @@ def reshape_data(
     num_images: int,
     x_points: int,
     y_points: int,
+    updown_row_shift: int = 0,
 ) -> NDArray[np.float32]:
     """Reshape timeseries data into movie data.
 
@@ -32,6 +33,9 @@ def reshape_data(
         num_images: Number of images (__not__ frames!).
         x_points: Number of points in x dimension.
         y_points: Number of points in y dimension.
+        updown_row_shift: Rows by which the down frames are moved relative to
+            the up frames. A y-phase step can only reach multiples of four rows,
+            so an odd up/down offset leaves one row that is taken out here.
 
     Returns:
         3D numpy array of the shape (frame, y, x).
@@ -104,4 +108,26 @@ def reshape_data(
             # flip backwards lines horizontally
             data[:, 1 : y_points * 2 : 2, :] = data[:, 1 : y_points * 2 : 2, ::-1]
 
+    if updown_row_shift:
+        data = _shift_down_frames(data, updown_row_shift)
+
     return data
+
+
+def _shift_down_frames(
+    data: NDArray[np.float32], rows: int
+) -> NDArray[np.float32]:
+    """Move every second frame along y, repeating the edge row rather than
+    wrapping, so nothing from the far side of the image appears at the border."""
+    shifted = data.copy()
+    down = shifted[1::2]
+    if rows > 0:
+        down[:, rows:, :] = shifted[1::2][:, :-rows, :]
+        down[:, :rows, :] = shifted[1::2][:, :1, :]
+    else:
+        cut = -rows
+        down[:, :-cut, :] = shifted[1::2][:, cut:, :]
+        down[:, -cut:, :] = shifted[1::2][:, -1:, :]
+    shifted[1::2] = down
+
+    return shifted

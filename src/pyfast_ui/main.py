@@ -1,3 +1,4 @@
+import gc
 import logging
 import sys
 from pathlib import Path
@@ -398,6 +399,16 @@ class MainGui(QMainWindow):
                 self.on_export_apply()
                 _ = self.threadpool.waitForDone()
 
+                # The window has served its purpose. Keeping it would hold two
+                # copies of the movie and a figure per processed file.
+                _ = self.movie_windows.pop(movie_window.info.id_, None)
+                _ = self.histogram_windows.pop(movie_window.info.id_, None)
+                if self.operate_on == movie_window.info.id_:
+                    self.operate_on = None
+                movie_window.dispose()
+                del movie_window, ft
+                gc.collect()
+
     def update_colormap(self, value: str) -> None:
         """Changes the colormap for all open `MovieWindow`s.
 
@@ -530,6 +541,8 @@ class MainGui(QMainWindow):
         sigma_gauss = self.phase_group.sigma_gauss
         additional_x_phase = self.phase_group.additional_x_phase
         manual_y_phase = self.phase_group.manual_y_phase
+        apply_auto_yphase = self.phase_group.apply_auto_yphase
+        fractional_x_phase = self.phase_group.fractional_x_phase
 
         _x_phase = ft.correct_phase(
             auto_x_phase=apply_auto_xphase,
@@ -537,6 +550,8 @@ class MainGui(QMainWindow):
             sigma_gauss=sigma_gauss,
             additional_x_phase=additional_x_phase,
             manual_y_phase=manual_y_phase,
+            auto_y_phase=apply_auto_yphase,
+            fractional_x_phase=fractional_x_phase,
         )
         print(f"{_x_phase}")
 
@@ -668,6 +683,7 @@ class MainGui(QMainWindow):
         stackreg_reference = self.drift_group.stackreg_reference
         boxcar = self.drift_group.boxcar
         median_filter = self.drift_group.median_filter
+        subpixel = self.drift_group.subpixel
 
         image_range = None
         print(f"Drift correction with {drift_algorithm=}")
@@ -682,6 +698,7 @@ class MainGui(QMainWindow):
             stackreg_reference=stackreg_reference,
             boxcar=boxcar,
             median_filter=median_filter,
+            subpixel=subpixel,
         )
 
         _ = drift_worker.signals.finished.connect(fast_movie_window.end_processing)
