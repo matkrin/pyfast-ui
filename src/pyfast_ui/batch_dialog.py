@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
 )
 
+from pyfast_ui.config import BatchConfig
+
 
 @dataclass
 class BatchDialogResult:
@@ -21,19 +23,40 @@ class BatchDialogResult:
     drift: bool
     image_filter: bool
 
+    def to_config(self) -> BatchConfig:
+        return BatchConfig(
+            phase=self.phase,
+            fft_filter=self.fft_filter,
+            creep=self.creep,
+            image_correction=self.image_correction,
+            drift=self.drift,
+            image_filter=self.image_filter,
+        )
+
 
 @final
 class BatchDialog(QDialog):
-    def __init__(self) -> None:
+    """The dialog that selects which steps a batch run applies.
+
+    Args:
+        config: The ticks to start from. They come from the config file, so a
+            selection that has been saved there is offered again on the next
+            start instead of the built-in one.
+    """
+
+    def __init__(self, config: BatchConfig | None = None) -> None:
         super().__init__()
 
+        if config is None:
+            config = BatchConfig()
+
         self._selected_options = BatchDialogResult(
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
+            config.phase,
+            config.fft_filter,
+            config.creep,
+            config.image_correction,
+            config.drift,
+            config.image_filter,
         )
 
         # Set up the window
@@ -44,22 +67,22 @@ class BatchDialog(QDialog):
 
         # Create six checkboxes
         self._phase_checkbox = QCheckBox("Phase")
-        self._phase_checkbox.setChecked(True)
+        self._phase_checkbox.setChecked(config.phase)
 
         self._fft_filter_checkbox = QCheckBox("FFT Filter")
-        self._fft_filter_checkbox.setChecked(True)
+        self._fft_filter_checkbox.setChecked(config.fft_filter)
 
         self._creep_checkbox = QCheckBox("Creep")
-        self._creep_checkbox.setChecked(True)
+        self._creep_checkbox.setChecked(config.creep)
 
         self._image_correction_checkbox = QCheckBox("Image Correction")
-        self._image_correction_checkbox.setChecked(True)
+        self._image_correction_checkbox.setChecked(config.image_correction)
 
         self._drift_checkbox = QCheckBox("Drift")
-        self._drift_checkbox.setChecked(False)
+        self._drift_checkbox.setChecked(config.drift)
 
         self._image_filter_checkbox = QCheckBox("Image Filter")
-        self._image_filter_checkbox.setChecked(False)
+        self._image_filter_checkbox.setChecked(config.image_filter)
 
         # Add checkboxes to the layout
         layout.addWidget(self._phase_checkbox)
