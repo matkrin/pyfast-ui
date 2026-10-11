@@ -184,6 +184,7 @@ class Config(BaseModel):
                         config_dict[key][k] = None
 
         return cls(
+            batch=_lenient(BatchConfig, config_dict, "batch"),
             general=_lenient(GeneralConfig, config_dict, "general"),
             phase=_lenient(PhaseConfig, config_dict, "phase"),
             fft_filter=_lenient(FftFilterConfig, config_dict, "fft_filter"),
