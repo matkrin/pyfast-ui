@@ -47,6 +47,11 @@ class Creep:
     affect the rest of pyfastspm.
     """
 
+    MIN_INFORMATIVE_FITS = 3
+    """How many of the fifteen fit attempts must produce a value of their own
+    before the average is taken as a measurement. Below this the parameter is
+    not determined by the data and the initial guess is kept."""
+
     def __init__(
         self,
         fast_movie: FastMovie,
@@ -105,6 +110,21 @@ class Creep:
         log.info(
             f"Correlation of image rows retunred a shift of {abs(diff_in_pixels)} pixels in the middle of the frame."
         )
+
+        # Creep displaces the ends of a frame, not its middle, so a large shift
+        # measured here is a constant offset between the up and the down frames,
+        # that is an uncorrected y-phase. It is not creep, and letting it set the
+        # bounds lets the fit reach creep amplitudes the movie does not show.
+        if abs(diff_in_pixels) > 0.05 * self.number_ypixels:
+            log.warning(
+                "The up/down shift in the middle of the frame is %.1f px, %.0f %% "
+                "of the frame height. The middle of a frame is where creep is "
+                "smallest, so a shift of this size is a constant offset between "
+                "the up and the down frames: correct the y-phase before the creep, "
+                "or the creep fit is given a range several times too wide.",
+                abs(diff_in_pixels),
+                100.0 * abs(diff_in_pixels) / self.number_ypixels,
+            )
 
         return abs(diff_in_pixels)
 
@@ -325,7 +345,13 @@ class Creep:
         return return_val
 
     def _clamp_to_bounds(self, params):
-        """Move the initial guess inside the fitted bounds if it lies outside.
+        """Bring the initial guess inside the fitted bounds.
+
+        The guess is taken as a magnitude, so the same positive number works
+        for every mode. The sin parameter is positive and the root parameter
+        negative, and their ranges say which is wanted, so a value on the wrong
+        side is simply reflected. Nobody has to remember the sign of the mode
+        they picked, and the input box in the interface needs no negative range.
 
         The upper bound is not a constant: it follows from the pixel shift
         measured in the movie, so a movie with little creep gets a tight bound.
@@ -341,15 +367,37 @@ class Creep:
             The guess, moved just inside the bounds where necessary.
         """
         lower, upper = self.bounds
-        margin = 0.02 * (upper - lower) if np.isfinite(upper - lower) else 0.0
+        span = upper - lower
+        if np.isfinite(span):
+            margin = 0.02 * span
+        else:
+            # The root mode's range is (-inf, u] with u a hair below zero, and
+            # the function degenerates as the parameter approaches u: the grid
+            # comes out non-monotonic, every spline fit fails with "Error on
+            # input data" and the interpolation that follows keeps a single
+            # column of the movie. Clamping onto the bound is therefore the
+            # worst possible choice; a value well inside is needed.
+            margin = 0.5
         clamped = []
         for value in params:
-            inside = float(np.clip(value, lower + margin, upper - margin))
-            if inside != value:
+            wanted = float(value)
+            if not lower <= wanted <= upper and lower <= -wanted <= upper:
+                log.info(
+                    "Creep initial guess %+.4g reflected to %+.4g, which is the "
+                    "side of zero this mode works on.",
+                    wanted,
+                    -wanted,
+                )
+                wanted = -wanted
+
+            inside = float(np.clip(wanted, lower + margin, upper - margin))
+            if inside != wanted:
+                outside = not lower <= wanted <= upper
                 log.warning(
-                    "Creep initial guess %.4g lies outside the bounds [%.4g, %.4g] "
-                    "that this movie allows; using %.4g instead.",
-                    value,
+                    "Creep initial guess %.4g %s the bounds [%.4g, %.4g] that "
+                    "this movie allows; using %.4g instead.",
+                    wanted,
+                    "lies outside" if outside else "sits too close to",
                     lower,
                     upper,
                     inside,
@@ -358,7 +406,37 @@ class Creep:
 
         return tuple(clamped)
 
-    def fit_creep(self, params=(0.6,), frames=[0, 2], known_params=None):
+    def _sample_frames(self, count=5):
+        """Even frame numbers spread over the movie.
+
+        The fit used to run on frames 0 and 2 alone, so a creep that changes
+        over a movie of several hundred frames was represented by its first
+        second, and an atypical pair at the start decided the correction for
+        everything that followed.
+        """
+        last = max(int(self.data.shape[0]) - 2, 0)
+        frames = np.linspace(0, last, count).astype(int)
+        return sorted({int(frame) - int(frame) % 2 for frame in frames})
+
+    def _is_informative(self, value, guess):
+        """Whether a fitted value says anything about the movie.
+
+        curve_fit returns the initial guess when the first step does not
+        improve the residual, and a bound when the residual falls monotonically
+        towards it. Both mean that the data do not determine the parameter, and
+        averaging them in produces a number that looks like a measurement but is
+        not one.
+        """
+        lower, upper = self.bounds
+        span = upper - lower
+        tolerance = 1e-3 * span if np.isfinite(span) else 1e-3
+        if abs(value - guess) <= max(tolerance, 1e-9):
+            return False
+        return not (
+            abs(value - lower) <= tolerance or abs(value - upper) <= tolerance
+        )
+
+    def fit_creep(self, params=(0.6,), frames=None, known_params=None):
         """
         Minimizes "_get_diff_from_grid" to obtain creep corrected
         grid of predicted STM tip movement.
@@ -366,7 +444,8 @@ class Creep:
         Parameters:
             params: tupple containing initial guess for input parameters
                 of the creep function.
-            frames: n-Tuple/list deciding which frames are used for fit.
+            frames: n-Tuple/list deciding which frames are used for fit. `None`
+                spreads the samples over the whole movie.
             known_params: tuple or None. Params are only calculated if this is None.
                 Otherwise reestimatin is skipped and known_params is used as optimizer.
 
@@ -376,11 +455,15 @@ class Creep:
         if known_params == None:
             log.info("Starting creep correction")
             params = self._clamp_to_bounds(params)
-            for frame_number_index in range(len(frames)):
-                if frames[frame_number_index] % 2 != 0:
-                    frames[frame_number_index] += 1
-            fitresult = np.zeros(len(params))
-            count = 0
+            if frames is None:
+                frames = self._sample_frames()
+            else:
+                frames = [
+                    frame + 1 if frame % 2 != 0 else frame for frame in list(frames)
+                ]
+            guess = float(params[0])
+            informative = []
+            uninformative = 0
             for frame in frames:
                 for row in np.linspace(
                     self.data.shape[2] * 0.25, self.data.shape[2] * 0.75, 3
@@ -393,8 +476,6 @@ class Creep:
                             params,
                             bounds=self.bounds,
                         )
-                        fitresult += popt
-                        count += 1
                     except Exception as e:
                         # One line per failed fit; the full traceback of every
                         # frame and row buried the actual message in a batch run.
@@ -402,18 +483,42 @@ class Creep:
                         log.warning(
                             "Creep fit failed for frame %d, row %d: %s", frame, row, e
                         )
+                        continue
 
-            if count == 0:  ## Only happens if all curve_fit attempts fail.
+                    if self._is_informative(float(popt[0]), guess):
+                        informative.append(np.asarray(popt, dtype=float))
+                    else:
+                        uninformative += 1
+
+            attempts = len(frames) * 3
+            if len(informative) < self.MIN_INFORMATIVE_FITS:
                 avg_result = np.array(params)
-
-                log.info(
-                    f"Creep fitting failed on all iterations (all frames and rows). Using input parameter values {avg_result}:"
+                log.warning(
+                    "Creep fit: only %d of %d attempts determined a parameter, "
+                    "the rest stayed at the initial guess or ran into a bound. "
+                    "One or two values out of fifteen are noise, not a "
+                    "measurement, so the guess %s is kept and the creep "
+                    "correction for this movie is probably better switched off. "
+                    "A large measured up/down shift is the usual cause: check the "
+                    "y-phase first, since a constant offset between the up and the "
+                    "down frames enters that shift and inflates the bounds.",
+                    len(informative),
+                    attempts,
+                    avg_result,
                 )
             else:
-                avg_result = np.asarray(fitresult) / float(count)
-
+                # The median, not the mean: a single frame that ran into a bound
+                # would drag a mean of a handful of values a long way.
+                avg_result = np.median(np.stack(informative), axis=0)
                 log.info(
-                    f"Creep fitting returned {avg_result} as optimal parameter values."
+                    "Creep fitting returned %s, from %d of %d attempts; %d gave no "
+                    "information (initial guess or bound) and were left out. "
+                    "Spread of the usable values: %.4g.",
+                    avg_result,
+                    len(informative),
+                    attempts,
+                    uninformative,
+                    float(np.ptp(np.stack(informative), axis=0)[0]),
                 )
         else:
             avg_result = known_params
@@ -422,8 +527,33 @@ class Creep:
             )
         ycreep = self.creep_function(*avg_result)
         y_up, y_down, rest = self._shape_to_grid(ycreep)
+        self._check_grid(y_up, y_down, avg_result)
 
         return (y_up, y_down)
+
+    def _check_grid(self, y_up, y_down, params):
+        """Refuse a grid that is not a usable sampling of the frame.
+
+        The corrected grid has to rise along a column: it is the list of
+        positions the tip visited, and the interpolation reads it as one. A
+        parameter at the edge of its range can produce a grid that turns back
+        on itself, and then every spline fails, the interpolation marks nearly
+        every pixel invalid and the movie comes out one column wide. That is
+        worse than no correction, and silent, so it is caught here.
+        """
+        for name, grid in (("up", y_up), ("down", y_down)):
+            grid = np.asarray(grid)
+            column = grid[:, grid.shape[1] // 2]
+            steps = np.diff(column)
+            if steps.size and np.any(steps <= 0):
+                raise ValueError(
+                    f"The creep parameters {np.round(params, 5)} produce a "
+                    f"{name} grid that does not increase along the frame "
+                    f"({int(np.sum(steps <= 0))} of {steps.size} steps go "
+                    "backwards). The correction is refused; for the root mode "
+                    "the initial guess has to be negative and away from zero, "
+                    "-0.5 is a reasonable value."
+                )
 
     def _Bezier(self, y, shape, pixels, Bezier_points):
         """Corrects a given y meshgrid for probe creep, using a Bezier curve
