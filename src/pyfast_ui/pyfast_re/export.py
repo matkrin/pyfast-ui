@@ -18,6 +18,22 @@ if TYPE_CHECKING:
     from pyfast_ui.pyfast_re.fast_movie import FastMovie
 
 
+def drift_mode_suffix(fast_movie: FastMovie) -> str:
+    """Marker for the drift mode, to be put just before the file extension.
+
+    "_c" for the common area, "_f" for the full padded frame, nothing if no
+    drift correction was applied. Without it, running a movie through both
+    modes overwrites the first result with the second.
+    """
+    match getattr(fast_movie, "drift_mode", None):
+        case "common":
+            return "_c"
+        case "full":
+            return "_f"
+        case _:
+            return ""
+
+
 def _square_pixel_size(
     fast_movie: FastMovie, num_y_pixels: int, num_x_pixels: int, even: bool = False
 ) -> tuple[int, int]:
@@ -73,6 +89,7 @@ class MovieExport:
         self.export_filepath = (
             f"{save_folder / basename}_{frame_start}-"
             + f"{frame_end}_{fast_movie.channels.value}"
+            + drift_mode_suffix(fast_movie)
         )
 
     def export_mp4(
@@ -288,6 +305,7 @@ class FrameExport:
         self.frame_range = frame_range
         self.frame_offset, _ = self.fast_movie.cut_range()
         self.export_path = fast_movie.path.resolve().parent / fast_movie.path.stem
+        self.drift_suffix = drift_mode_suffix(fast_movie)
 
     def export_txt(self) -> None:
         """Export of frames as .txt files (Gwyddion ASCII matrix)."""
@@ -389,6 +407,7 @@ class FrameExport:
         export_filename = (
             f"{self.export_path}_{self.frame_range[0]}-"
             + f"{self.frame_range[1]}_{self.fast_movie.channels.value}"
+            + self.drift_suffix
         )
 
         match gwy_type:
@@ -411,7 +430,7 @@ class FrameExport:
             The filename without file extentions
             (e.g., for the 0th frame of a UDI movie: '<path>_Ou').
         """
-        return f"{self.export_path}_{frame_id}{channel_id}"
+        return f"{self.export_path}_{frame_id}{channel_id}{self.drift_suffix}"
 
 
 def _gwy_writer_images(
