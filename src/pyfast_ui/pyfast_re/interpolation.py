@@ -42,8 +42,16 @@ def valid_window(
     Target grid points outside the measured positions cannot be interpolated
     and end up as zeros. They form a rim, because the sinusoidal probe movement
     in x and the finite line spacing in y both fall slightly short of the
-    equidistant target grid. The width of that rim depends on the grid, in
-    particular on the creep correction, so it is measured rather than assumed.
+    equidistant target grid, and because a creep correction asks for positions
+    beyond the ones the tip visited at the turning points.
+
+    The rectangle is found exactly rather than by trimming the edges one line
+    at a time. Trimming coupled the two directions: a fully invalid row at the
+    top also has a pixel in the leftmost and in the rightmost column, so
+    removing it cost a column on each side as well. On FS_250903_037, whose
+    creep correction leaves fourteen unusable rows at each end, that turned a
+    necessary loss of fourteen rows and one column per side into fifteen rows
+    and fifteen columns, and the movie kept 63 % of its area instead of 85 %.
 
     Args:
         invalid_mask: Boolean mask of non-interpolatable pixels, in the shape of
@@ -54,45 +62,42 @@ def valid_window(
         (start, end) pairs ready to be passed to `FastMovie.crop`.
     """
     num_rows, num_cols = invalid_mask.shape
+    valid = ~np.asarray(invalid_mask, dtype=bool)
+
+    # Row by row: how many unbroken valid pixels stand above each column, then
+    # the largest rectangle that fits under that histogram.
+    heights = np.zeros(num_cols, dtype=int)
+    best_area = 0
     top, bottom, left, right = 0, num_rows, 0, num_cols
+    for row in range(num_rows):
+        heights = np.where(valid[row], heights + 1, 0)
+        stack: list[tuple[int, int]] = []
+        for column in range(num_cols + 1):
+            height = int(heights[column]) if column < num_cols else 0
+            start = column
+            while stack and stack[-1][1] > height:
+                start, tall = stack.pop()
+                area = tall * (column - start)
+                if area > best_area:
+                    best_area = area
+                    top, bottom = row - tall + 1, row + 1
+                    left, right = start, column
+            stack.append((start, height))
 
-    while bottom - top > 1 and right - left > 1:
-        window = invalid_mask[top:bottom, left:right]
-        if not window.any():
-            break
-
-        # Drop every edge line of the current window that holds invalid pixels.
-        # One pass removes one rim.
-        trimmed = False
-        if window[0, :].any():
-            top += 1
-            trimmed = True
-        if window[-1, :].any():
-            bottom -= 1
-            trimmed = True
-        if window[:, 0].any():
-            left += 1
-            trimmed = True
-        if window[:, -1].any():
-            right -= 1
-            trimmed = True
-
-        if not trimmed:
-            # Invalid pixels only in the interior; trimming edges cannot help.
-            log.warning(
-                "Interpolation left %d non-interpolatable pixels inside the frame.",
-                int(window.sum()),
-            )
-            break
+    if best_area == 0:
+        log.warning("The interpolation left no usable rectangle at all.")
+        return (0, num_cols), (0, num_rows)
 
     log.info(
-        "Interpolation valid window: rows %d:%d of %d, columns %d:%d of %d",
+        "Interpolation valid window: rows %d:%d of %d, columns %d:%d of %d "
+        "(%.0f %% of the frame)",
         top,
         bottom,
         num_rows,
         left,
         right,
         num_cols,
+        100.0 * best_area / valid.size,
     )
 
     return (left, right), (top, bottom)

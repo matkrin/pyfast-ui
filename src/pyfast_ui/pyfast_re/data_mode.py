@@ -108,7 +108,12 @@ def reshape_data(
             # flip backwards lines horizontally
             data[:, 1 : y_points * 2 : 2, :] = data[:, 1 : y_points * 2 : 2, ::-1]
 
-    if updown_row_shift:
+    if updown_row_shift and channels.is_up_and_down():
+        # Only where the frames really alternate. In a single sweep movie every
+        # frame is an up frame, or every frame a down frame, and shifting every
+        # second one puts an alternation into a movie that has none: measured on
+        # FS_251128_052 in the ui channel, one row of shift showed up as a 0.98
+        # px zigzag from frame to frame.
         data = _shift_down_frames(data, updown_row_shift)
 
     return data

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 from pathlib import Path
 from typing import Hashable, Literal, Self, final
 
@@ -12,11 +13,17 @@ import scipy
 import skimage
 from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter, median_filter
+from scipy.ndimage import shift as ndshift
 from scipy.signal import convolve2d
 
-from pyfast_ui.pyfast_re import frame_corrections
+from pyfast_ui.pyfast_re import frame_corrections, updown
 from pyfast_ui.pyfast_re.channels import Channels
-from pyfast_ui.pyfast_re.creep import Creep, CreepMode
+from pyfast_ui.pyfast_re.creep import (
+    Creep,
+    CreepMode,
+    read_creep_file,
+    write_creep_file,
+)
 from pyfast_ui.pyfast_re.data_mode import DataMode, reshape_data
 from pyfast_ui.pyfast_re.drift import (
     Drift,
@@ -31,6 +38,9 @@ from pyfast_ui.pyfast_re.interpolation import (
     valid_window,
 )
 from pyfast_ui.pyfast_re.phase import PhaseCorrection
+
+
+log = logging.getLogger(__name__)
 
 
 @final
@@ -84,6 +94,16 @@ class FastMovie:
         self.applied_x_phase: float = 0.0
         self.applied_y_phase: int = 0
         self.updown_row_shift: int = 0
+
+        self.updown_profile: NDArray[np.float64] | None = None
+        """Up/down mismatch per row block, as measured during the automatic
+        y-phase, together with the number of rows of the frame it was measured
+        on. Set there and used by the creep correction, which runs after the FFT
+        filter and can no longer measure it reliably itself: the filter leaves a
+        movie of nothing but lattice, and one lattice period of displacement
+        looks as good as none."""
+        self.updown_profile_rows: int = 0
+        self.fft_filtered: bool = False
 
         # Initial phase correction from either parameters or file metadata
         if x_phase is None:
@@ -268,8 +288,96 @@ class FastMovie:
         # Remembered rather than applied here: it is a shift of whole frames and
         # can only be carried out once the series has been reshaped.
         self.updown_row_shift = result.updown_row_shift
+        if result.updown_profile is not None:
+            self.updown_profile = result.updown_profile
+            # The measurement is made on the interlaced movie, whatever channel
+            # the movie is later built in, so the row count has to travel with
+            # it: half the rows mean half the pixels for the same displacement.
+            self.updown_profile_rows = self.metadata.scanner_y_points * 2
         # Mutate data
         self.data = result.data
+
+    def align_updown(self, align_y: bool = True, align_x: bool = True) -> None:
+        """Remove what is left of the rigid offset between up and down frames.
+
+        The y-phase moves the cut of the series and can only reach multiples of
+        four rows, so a fraction of a row always survives; and the two sweeps
+        can sit apart horizontally as well, which no correction addresses at
+        all. Both are constant over a movie and identical in every row, so they
+        are measured at the turning points, where creep has decayed, and applied
+        by interpolation, half to the up frames and half to the down frames so
+        that the movie as a whole does not move.
+
+        Only the constant part is touched. What varies along the frame is creep
+        and is left to the creep correction.
+
+        Args:
+            align_y: Apply the vertical part of the offset.
+            align_x: Apply the horizontal part.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
+        if self.mode != DataMode.MOVIE:
+            raise ValueError(f"`FastMovie` must be in mode {DataMode.MOVIE}")
+
+        if self.channels is None or not self.channels.is_up_and_down():
+            log.warning(
+                "This movie holds one sweep only, so there is no up against "
+                "down offset to measure: neighbouring frames are both up frames "
+                "or both down frames. Nothing is aligned. Any offset between the "
+                "sweeps has to be taken out on a channel that holds both."
+            )
+            return
+
+        # A narrow search: this runs after the y-phase and the creep correction,
+        # so whatever is left is a few rows at most, and a wide search on a
+        # lattice movie can prefer an offset a whole period out. On
+        # FS_251128_026 the wide search read +26.9 px where the movie is +1.0 px
+        # out, which is a shift this would then have applied.
+        profile = updown.mismatch_profile(self.data, coarse_limit=0.1)
+        # The rigid estimator, not the one the y-phase uses: by this point the
+        # creep correction has already measured itself against the turning
+        # points, so anchoring there again would push its residual into the
+        # middle of the frame.
+        constant = updown.rigid_offset(profile)
+        offset_y = float(constant[0]) if align_y else 0.0
+        offset_x = float(constant[1]) if align_x else 0.0
+
+        limit = 0.05 * self.data.shape[1]
+        if abs(offset_y) > limit:
+            log.warning(
+                "The up and down frames are %.1f rows apart, more than %.0f rows. "
+                "Shifting frames that far would interpolate away a strip at the "
+                "top and the bottom of every frame; the y-phase moves the cut of "
+                "the series instead and costs nothing. Correct the y-phase first, "
+                "the vertical part is left alone here.",
+                offset_y,
+                limit,
+            )
+            offset_y = 0.0
+
+        if abs(offset_y) < 0.02 and abs(offset_x) < 0.02:
+            log.info("Up and down frames are aligned to better than 0.02 px.")
+            return
+
+        log.info(
+            "Aligning up and down frames: y %+.2f px, x %+.2f px, applied half to "
+            "each so the movie does not move.",
+            offset_y,
+            offset_x,
+        )
+
+        for index in range(len(self.data)):
+            # The measurement is the position of the second frame of a pair
+            # relative to the first, and pairs start on even frames.
+            direction = 0.5 if index % 2 else -0.5
+            self.data[index] = ndshift(
+                self.data[index],
+                (direction * offset_y, direction * offset_x),
+                order=3,
+                mode="nearest",
+            ).astype(np.float32)
 
     def fft_filter(
         self,
@@ -308,6 +416,11 @@ class FastMovie:
             high_pass_params=high_pass_params,
         )
         filtered_data = fft_filtering.filter_movie()
+        # Remembered because the up/down measurement is only in doubt on a
+        # filtered movie: taking out the scan frequencies takes the slow,
+        # non-periodic part of the image with them and leaves a picture that
+        # registers as well one lattice period out as in the right place.
+        self.fft_filtered = True
         # Mutate data
         self.data = filtered_data
 
@@ -331,7 +444,8 @@ class FastMovie:
         creep_mode: Literal["sin", "root"],
         initial_guess: float,
         guess_ind: float,
-        known_params: float | None,
+        known_params: float | tuple[float, float] | None,
+        use_previous: bool = False,
     ) -> None:
         """Create a compressed grid to correct for STM creep by virtue of
         interpolating measured values of successive up and down measurements
@@ -343,13 +457,36 @@ class FastMovie:
             guess_ind: How much of each frame is affected by creep (Only applicable for sin).
                 Values >= 1 are interpreted as lines of the frame, values between
                 0 and 1 will be interpreted as relative parts of the frames.
-            known_params: Known creep function parameters either from previous fit or manual determination.
-                If not `None`, no fit for the creep parameters will be perfomed.
+            known_params: Known creep function parameters, either the shape
+                alone or an (amplitude, shape) pair. If not `None`, no fit is
+                performed.
+            use_previous: Take the parameters from the '.creep.txt' file that an
+                earlier up and down evaluation of this file wrote, which is the
+                only way to correct a movie of a single sweep.
         """
         # must be movie mode now
         mode = CreepMode(creep_mode.lower())
         creep = Creep(self, index_to_linear=guess_ind, creep_mode=mode)
-        self._grid = creep.fit_creep((initial_guess,), known_params=known_params)
+
+        if use_previous and known_params is None:
+            # A movie of one sweep cannot be fitted, so it takes what an up and
+            # down evaluation of the same file wrote next to it.
+            known_params = read_creep_file(self.path, mode.value, guess_ind)
+
+        self._grid = creep.fit_creep_measured(
+            (initial_guess,), known_params=known_params
+        )
+
+        if creep.fitted_parameters is not None and self.channels is not None:
+            amplitude, shape = creep.fitted_parameters
+            write_creep_file(
+                self.path,
+                mode.value,
+                amplitude,
+                shape,
+                guess_ind,
+                self.channels.value,
+            )
 
     def correct_creep_bezier(
         self,

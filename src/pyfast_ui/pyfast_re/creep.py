@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+from pathlib import Path
 import traceback
 from copy import copy
 from enum import Enum
@@ -9,9 +10,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
 from scipy.interpolate import Rbf, splev, splrep
+from scipy.ndimage import map_coordinates
 from scipy.optimize import LinearConstraint, NonlinearConstraint, curve_fit, minimize
 from scipy.signal import correlate
 
+from pyfast_ui.pyfast_re import updown
 from pyfast_ui.pyfast_re.data_mode import DataMode
 
 
@@ -20,6 +23,147 @@ if TYPE_CHECKING:
 
 
 log = logging.getLogger(__name__)
+
+
+
+MIN_CREEP = 0.5
+"""Smallest creep worth correcting, in pixels of the frame.
+
+Below half a pixel the correction cannot express what it would have to do, the
+interpolation that carries it out costs more than it removes, and the fit is
+left chasing the noise of its own residual estimator. The up/down profile is the
+direct measurement of the quantity, so it decides; a movie whose two sweeps
+agree along the whole frame is left alone."""
+
+
+CREEP_FILE_SUFFIX = ".creep.txt"
+"""Written next to the movie, like the drift path. It carries what an up and
+down evaluation found, so that the single sweep channels of the same file can
+be corrected with it: they cannot be fitted, because the fit compares an up
+frame with the following down frame."""
+
+
+def creep_file_path(movie_path: Path) -> Path:
+    """Where the creep parameters of a movie live."""
+    return movie_path.with_suffix("").with_suffix(CREEP_FILE_SUFFIX)
+
+
+def write_creep_file(
+    movie_path: Path,
+    mode: str,
+    amplitude: float,
+    shape: float,
+    guess_ind: float,
+    channel: str,
+) -> None:
+    """Record the creep parameters beside the movie.
+
+    A failure to write is reported and swallowed: the file is a convenience for
+    later runs and the correction of this movie does not depend on it.
+    """
+    path = creep_file_path(movie_path)
+    try:
+        with open(path, "w") as handle:
+            _ = handle.write(
+                f"# creep parameters for {movie_path.name}\n"
+                f"# fitted on the {channel} channel, which has both sweeps\n"
+                f"mode       {mode}\n"
+                f"amplitude  {amplitude:.4f}\n"
+                f"shape      {shape:.4f}\n"
+                f"guess_ind  {guess_ind:.4f}\n"
+            )
+    except OSError as error:
+        log.warning(
+            "Could not write the creep parameters to %s: %s. The correction "
+            "itself is unaffected.",
+            path,
+            error,
+        )
+        return
+
+    log.info("Creep parameters written to %s", path.name)
+
+
+def read_creep_file(
+    movie_path: Path, mode: str, guess_ind: float
+) -> tuple[float, float] | None:
+    """The creep parameters of an earlier up and down evaluation, if usable.
+
+    Returns `None` when there is no file, when it was written for a different
+    creep function, or when it was written with a different transition point,
+    because the shape parameter means something else in each of those cases.
+    """
+    path = creep_file_path(movie_path)
+    if not path.is_file():
+        log.warning(
+            "No creep parameters found at %s. Run the same file in a channel "
+            "with both sweeps first; that writes the file.",
+            path.name,
+        )
+        return None
+
+    values: dict[str, str] = {}
+    try:
+        with open(path) as handle:
+            for line in handle:
+                if line.startswith("#") or not line.split():
+                    continue
+                key, _, value = line.partition(" ")
+                values[key.strip()] = value.strip()
+    except OSError as error:
+        log.warning("Could not read %s: %s", path.name, error)
+        return None
+
+    if values.get("mode") != mode:
+        log.warning(
+            "%s was written for the %s mode and this run uses %s. The shape "
+            "parameter of one does not mean the same in the other, so it is "
+            "ignored.",
+            path.name,
+            values.get("mode"),
+            mode,
+        )
+        return None
+
+    try:
+        amplitude = float(values["amplitude"])
+        shape = float(values["shape"])
+        written_guess_ind = float(values.get("guess_ind", guess_ind))
+    except (KeyError, ValueError):
+        log.warning("%s does not hold a usable pair of parameters.", path.name)
+        return None
+
+    if abs(written_guess_ind - guess_ind) > 1e-6:
+        log.warning(
+            "%s was written with guess ind %.3f and this run uses %.3f, which "
+            "changes what the shape parameter means. Set guess ind to %.3f to "
+            "use it.",
+            path.name,
+            written_guess_ind,
+            guess_ind,
+            written_guess_ind,
+        )
+        return None
+
+    log.info(
+        "Creep parameters from %s: amplitude %.2f px, shape %.4g.",
+        path.name,
+        amplitude,
+        shape,
+    )
+
+    return amplitude, shape
+
+def _displace_rows(frame, amplitude):
+    """Move the rows of a frame by a bulge of `amplitude` px in the middle."""
+    rows, columns = frame.shape
+    positions = np.arange(rows)
+    bulge = amplitude * np.sin(np.pi * positions / max(rows - 1, 1))
+    grid_y, grid_x = np.meshgrid(positions, np.arange(columns), indexing="ij")
+
+    return map_coordinates(
+        frame, [grid_y + bulge[:, None], grid_x], order=3, mode="nearest"
+    ).astype(np.float32)
 
 
 class CreepMode(Enum):
@@ -69,6 +213,29 @@ class Creep:
         self.number_ypixels = fast_movie.metadata.scanner_y_points * 2
         self.rel_ind_raw = index_to_linear
         self.data = fast_movie.data
+        # Only of interest on a filtered movie: an unfiltered one measures its
+        # own creep perfectly well, and the value from the y-phase search is
+        # taken over fewer frame pairs, so it is the worse of the two.
+        self.measured_profile = (
+            fast_movie.updown_profile if fast_movie.fft_filtered else None
+        )
+        self.measured_profile_rows = fast_movie.updown_profile_rows
+        self._coarse_limit = (
+            0.05 if fast_movie.updown_profile is not None else updown.COARSE_LIMIT
+        )
+        """How far the up/down measurement may look for the frame offset, as a
+        fraction of the frame height. A movie whose y-phase was determined
+        automatically has its two sweeps within a few rows of each other, so a
+        narrow search suffices, and narrow is what a filtered movie needs: the
+        wide search then has whole lattice periods to choose from and takes the
+        wrong one. On a movie that arrives with an uncorrected y-phase the offset
+        can be thirty rows and the search has to be able to reach it."""
+
+        self._measured_preferred = False
+        """Set when the movie in hand no longer measures its own creep and the
+        value from before the FFT filter had to be used. Whatever blinds the
+        measurement blinds the fit that checks it, so the fit is told not to
+        read its own verdict as evidence that there is no creep."""
         self.ygridfold, self.ygridstraight = self.ygrid()
         self.pixel_shift = self._get_shift(0.5)
         creep_functions = {"sin": self.sin_one_param, "root": self.root_creep}
@@ -77,13 +244,89 @@ class Creep:
             "sin": self.sin_limit_function,
             "root": self.root_limit_function,
         }
+        self.creep_mode = creep_mode
+        self.fitted_parameters: tuple[float, float] | None = None
+        """Amplitude and shape, once they have been fitted rather than given."""
         self.creep_function = creep_functions[creep_mode.value]
         self.limit_function = creep_limit_function[creep_mode.value]
         self.limit_function()
         self.bounds = self.creep_bounds[creep_mode.value]
 
     def _get_shift(self, imrange: float):
+        """How far creep displaces the middle of a frame, in pixels.
+
+        Measured as the difference between the middle of the frame and its two
+        ends. Up and down sweep share their turning points, so at the first and
+        the last line they are at the same height whatever the creep; a
+        displacement that is there as well is a constant offset between the
+        sweeps, that is the y-phase, and it is not creep. The old measurement
+        took the offset in the middle of frames 3 and 4 and returned the sum of
+        the two, so an uncorrected y-phase was fed to the creep correction as if
+        it were creep: on FS_251128_028, 29 rows of y-phase became a creep
+        amplitude of 12 px and bent the ends of every frame by 6 rows.
+
+        Args:
+            imrange: kept for the signature; the profile covers the whole frame.
+
+        Returns: number of pixels the middle of a frame is displaced by creep.
         """
+        profile = updown.mismatch_profile(self.data, coarse_limit=self._coarse_limit)
+        amplitude = abs(updown.creep_amplitude(profile))
+        constant = updown.constant_offset(profile)
+
+        log.info(
+            "Creep amplitude %.2f px (middle against the ends). Constant up/down "
+            "offset y %.2f px, x %.2f px, which is not creep.",
+            amplitude,
+            constant[0],
+            constant[1],
+        )
+
+        return self._prefer_measured_amplitude(amplitude)
+
+    def _prefer_measured_amplitude(self, amplitude: float) -> float:
+        """Fall back on the measurement made before the FFT filter, if there is one.
+
+        The filter removes the slow, non-periodic part of the image, and what is
+        left on a lattice movie registers as well one lattice period out as it
+        does in the right place. On FS_250903_037 the measurement then came back
+        at 15.5 px instead of 7.7 px, which the creep correction duly bent into
+        every frame and paid for with fourteen unusable rows at each end. The
+        image itself does not move by the filter, measured at 0.00 px, so the
+        earlier number is the same quantity, measured where it can still be
+        measured.
+
+        The two are compared rather than the earlier one simply taken: the
+        y-phase search measures with fewer frame pairs, so where both are sound
+        the one taken here is the better of them.
+        """
+        if self.measured_profile is None or self.measured_profile_rows <= 0:
+            return amplitude
+
+        scale = self.data.shape[1] / self.measured_profile_rows
+        measured = abs(updown.creep_amplitude(self.measured_profile)) * scale
+        if measured <= 0.0:
+            return amplitude
+
+        # A lattice period out is a large disagreement, several pixels; the
+        # scatter between two honest measurements of the same movie is not.
+        if abs(amplitude - measured) <= 0.25 * max(amplitude, measured) + 0.5:
+            return amplitude
+
+        log.warning(
+            "Creep amplitude measured here is %.2f px, but %.2f px before the FFT "
+            "filter, on an image the filter does not move. The filtered movie is "
+            "periodic and registers a whole lattice period out just as well, so "
+            "the earlier value is used.",
+            amplitude,
+            measured,
+        )
+        self._measured_preferred = True
+        return measured
+
+    def _get_shift_middle_only(self, imrange: float):
+        """The previous measurement, kept for comparison.
+
         Args:
             imrange: percentage of movie that should be used to evaluate shift. 0.5 recommended
 
@@ -554,6 +797,529 @@ class Creep:
                     "the initial guess has to be negative and away from zero, "
                     "-0.5 is a reasonable value."
                 )
+
+    def fit_creep_measured(self, params=(0.3,), known_params=None):
+        """Creep grid from the robust fit.
+
+        Same contract as `fit_creep`, so the two can be swapped: it returns the
+        up and the down grid, and honours `known_params`, which may be the shape
+        alone or an (amplitude, shape) pair.
+        """
+        if known_params is not None:
+            given = np.atleast_1d(known_params).astype(float)
+            if given.size >= 2:
+                amplitude, shape = float(given[0]), float(given[1])
+                log.info(
+                    "Creep parameters known: amplitude %.2f px, shape %.4g.",
+                    amplitude,
+                    shape,
+                )
+            else:
+                amplitude, shape = self.pixel_shift, float(given[0])
+                log.info(
+                    "Creep parameters known. Using shape %.4g with the amplitude "
+                    "measured on this movie, %.2f px.",
+                    shape,
+                    amplitude,
+                )
+        elif not self.channels.is_up_and_down():
+            log.warning(
+                "This movie holds only the %s sweep, so there is nothing to "
+                "compare against: the creep parameters are found by measuring "
+                "how far an up frame and the following down frame disagree, and "
+                "one sweep alone cannot show that. No creep correction is "
+                "applied. To correct a single sweep movie, run the fit on the "
+                "same file in a channel that has both sweeps, note the amplitude "
+                "and shape from the log, and enter them as the known creep "
+                "parameters here.",
+                "up" if self.channels.is_up_not_down() else "down",
+            )
+            amplitude, shape = 0.0, self._neutral_shape()
+        else:
+            amplitude, shape = self.fit_creep_robust(float(params[0]))
+            self.fitted_parameters = (float(amplitude), float(shape))
+            log.info(
+                "Creep parameters for this movie: known_params = [%.4f, %.4f]. "
+                "The same pair applies to any single sweep channel of the same "
+                "file.",
+                amplitude,
+                shape,
+            )
+
+        self.pixel_shift = float(amplitude)
+        self.limit_function()
+        y_up, y_down, _, offset = self._balanced_grids(self.creep_function(shape))
+        if abs(offset) > 0.5:
+            log.info(
+                "Creep correction: the model displaced the two sweeps by %.1f px "
+                "against each other; that is a rigid shift, not creep, and has "
+                "been taken back out.",
+                offset,
+            )
+
+        return (y_up, y_down)
+
+    # --- robust fit -------------------------------------------------------
+
+    FIT_FRAMES = 6
+    """Frame pairs the fit is measured on, spread over the whole movie."""
+
+    FIT_COLUMNS = 40
+    """Columns per frame. More than this buys nothing; the estimate is already
+    dominated by how well the surface can be registered, not by counting."""
+
+    FIT_BLOCKS = 8
+    """Row blocks the residual displacement is measured in, at most. A block
+    has to be several times taller than whatever repeats along the frame: on an
+    atomically resolved surface a block one lattice period tall matches equally
+    well at every period and the measurement is then free to return anything."""
+
+    MIN_BLOCK_ROWS = 24
+    """Smallest block, in rows, whatever the surface."""
+
+    PERIODS_PER_BLOCK = 3.0
+    """How many repeats of the dominant vertical period a block must span."""
+
+    def _balanced_grids(self, path):
+        """Up and down grid for a creep path, with no rigid offset between them.
+
+        The model builds the down grid as the mirror of the up grid and recentres
+        both, which is meant to leave the movie where it was. It does not: the
+        larger the correction, the more the two sweeps end up displaced against
+        each other, and on a movie with strong creep that reaches a dozen rows,
+        which is far more than the distortion the correction removed. The offset
+        is not creep, it is a rigid shift, so it is taken out here and left to
+        the y-phase and the alignment, whose job it is.
+        """
+        up_grid, down_grid, rest = self._shape_to_grid(np.asarray(path))
+        offset = float(np.mean(up_grid) - np.mean(down_grid))
+        if offset:
+            up_grid = up_grid - offset / 2.0
+            down_grid = down_grid + offset / 2.0
+
+        return up_grid, down_grid, rest, offset
+
+    def _resampled_pair(
+        self, frame, up_grid, down_grid, rows, up_rows, down_rows, keep, target
+    ):
+        """One up frame and the following down frame, both put on the same grid."""
+        columns = self._fit_columns()
+        first = np.zeros((keep.size, columns.size), dtype=np.float32)
+        second = np.zeros_like(first)
+        for index, column in enumerate(columns):
+            source_up = up_grid[up_rows, column]
+            source_down = down_grid[down_rows, column]
+            positions = target[keep, column]
+            first[:, index] = splev(
+                positions, splrep(source_up, self.data[frame, rows, column], s=0)
+            )
+            second[:, index] = splev(
+                positions,
+                splrep(source_down, self.data[frame + 1, rows, column], s=0),
+            )
+        return first, second
+
+    def _fit_row_slices(self):
+        """Which rows of the frame and of the two grids belong together.
+
+        The grid always covers the interlaced sampling, two lines per y point,
+        while a frame holds what the channel selected. An interlaced frame has
+        both scan directions, and one of them is taken so that the doubling
+        between them cannot be mistaken for the surface. A forward or backward
+        frame holds every second line already, and then the up sweep sits on the
+        even rows of the grid and the down sweep on the odd ones, or the other
+        way round, exactly as the interpolation reads it.
+        """
+        if self.channels.is_interlaced():
+            return slice(0, None, 2), slice(0, None, 2), slice(0, None, 2)
+        if self.channels.is_backward():
+            return slice(None), slice(1, None, 2), slice(0, None, 2)
+
+        return slice(None), slice(0, None, 2), slice(1, None, 2)
+
+    def _fit_columns(self):
+        return np.unique(
+            (
+                np.linspace(0.05, 0.95, self.FIT_COLUMNS) * (self.data.shape[2] - 1)
+            ).astype(int)
+        )
+
+    def _vertical_period(self):
+        """Dominant repeat along the frame, in rows, or 0 if there is none.
+
+        Read off the mean power spectrum of a few frames. A lattice shows up as
+        a sharp line; a surface without one leaves the spectrum smooth and the
+        peak is not worth acting on.
+        """
+        frames = self.data[: min(len(self.data), 8)]
+        rows = frames.shape[1]
+        window = np.hanning(rows)[:, None]
+        spectrum = np.zeros(rows // 2 + 1)
+        for frame in frames:
+            centred = frame - frame.mean(axis=0, keepdims=True)
+            spectrum += np.abs(np.fft.rfft(centred * window, axis=0)).mean(axis=1)
+
+        # ignore the lowest frequencies, which carry the shape of the surface
+        low = max(3, rows // 60)
+        band = spectrum[low:]
+        if band.size < 4:
+            return 0.0
+        peak = int(np.argmax(band))
+        if band[peak] < 3.0 * float(np.median(band)):
+            return 0.0
+
+        return float(rows) / float(peak + low)
+
+    def _fit_block_count(self, rows):
+        if getattr(self, "_period_cache", None) is None:
+            self._period_cache = self._vertical_period()
+        period = self._period_cache
+        smallest = max(self.MIN_BLOCK_ROWS, self.PERIODS_PER_BLOCK * period)
+        count = int(min(self.FIT_BLOCKS, max(3, rows // max(smallest, 1))))
+        if period and not getattr(self, "_period_logged", False):
+            self._period_logged = True
+            log.info(
+                "Creep fit: the frame repeats every %.1f rows, so the residual is "
+                "measured in %d blocks of %d rows.",
+                period,
+                count,
+                int(rows / count),
+            )
+        return count
+
+    def _lattice_wavevector(self, frame):
+        """Dominant 2D Fourier component of a resampled frame.
+
+        On a surface that repeats, the displacement between two frames is read
+        off the phase of that component. A block correlation cannot do it: the
+        surface looks the same at every repeat, so every block returns much the
+        same number and the row dependence, which is the whole quantity of
+        interest, is lost. Measured on FS_251128_001 against a known
+        distortion, the correlation reported a flat 1.0 px where the truth ran
+        from 0.25 to 0.95 px, while the phase followed it to 0.05 px.
+        """
+        rows, columns = frame.shape
+        window = np.outer(np.hanning(rows), np.hanning(columns))
+        spectrum = np.abs(np.fft.fft2((frame - frame.mean()) * window)) ** 2
+        ky = np.fft.fftfreq(rows)[:, None] * np.ones((1, columns))
+        kx = np.ones((rows, 1)) * np.fft.fftfreq(columns)[None, :]
+        usable = (np.abs(ky) > 2.0 / rows) & (np.abs(ky) < 0.45) & (np.abs(kx) < 0.45)
+        index = np.unravel_index(np.argmax(np.where(usable, spectrum, 0.0)), spectrum.shape)
+
+        return float(ky[index[0], 0]), float(kx[0, index[1]])
+
+    def _phase_displacement(self, first, second, carrier, period):
+        """Displacement between two blocks from the phase of their lattice."""
+        amplitude_first = (first * carrier).sum()
+        amplitude_second = (second * carrier).sum()
+        difference = np.angle(amplitude_first * np.conjugate(amplitude_second))
+
+        return float(difference / (2.0 * np.pi) * period)
+
+    def _fit_frames(self):
+        num_frames = len(self.data)
+        return [
+            int(index) - int(index) % 2
+            for index in np.linspace(0, num_frames - 2, self.FIT_FRAMES)
+        ]
+
+    def residual_profile(self, amplitude, shape, estimator=None, probe=None):
+        """Displacement left between up and down frames, per row block.
+
+        The two sweeps are resampled onto the same grid with the creep
+        parameters given, and what remains is measured block by block. A
+        correction that is right leaves a flat profile; one that is too weak
+        leaves the bulge in the middle that creep produces, and one that is too
+        strong turns the bulge inside out.
+
+        Only one scan direction is used. An interlaced frame interleaves the
+        forward and the backward lines, and what is left of the doubling between
+        them is a zigzag along every column that the block registration locks
+        onto instead of the surface. Taking every second line removes it.
+
+        Returns:
+            The profile, or `None` if the parameters produce a grid that is not
+            usable.
+        """
+        self.pixel_shift = float(amplitude)
+        self.limit_function()
+        try:
+            path = np.asarray(self.creep_function(shape))
+        except Exception:
+            return None
+        up_grid, down_grid, _, _ = self._balanced_grids(path)
+
+        rows, up_rows, down_rows = self._fit_row_slices()
+        target = self.ygridfold
+        low = max(up_grid[up_rows][0, :].max(), down_grid[down_rows][0, :].max())
+        high = min(up_grid[up_rows][-1, :].min(), down_grid[down_rows][-1, :].min())
+        sub_target = target[up_rows, :]
+        keep = np.where(
+            (sub_target.min(axis=1) >= low) & (sub_target.max(axis=1) <= high)
+        )[0]
+        blocks = self._fit_block_count(keep.size)
+        if keep.size < 3 * blocks:
+            return None
+
+        columns = self._fit_columns()
+        if np.any(np.diff(up_grid[up_rows][:, columns], axis=0) <= 0) or np.any(
+            np.diff(down_grid[down_rows][:, columns], axis=0) <= 0
+        ):
+            # A grid that turns back on itself cannot be interpolated on.
+            return None
+
+        if estimator is None:
+            estimator = getattr(self, "_estimator", "correlation")
+
+        edges = np.linspace(1, keep.size - 1, blocks + 1).astype(int)
+        measured = [[] for _ in range(blocks)]
+        carrier = None
+        for frame in self._fit_frames():
+            first, second = self._resampled_pair(
+                frame, up_grid, down_grid, rows, up_rows, down_rows, keep, sub_target
+            )
+            if probe is not None:
+                # a known distortion, for choosing between the estimators
+                second = _displace_rows(second, probe)
+            prepared_first = updown._prepare(first)
+            prepared_second = updown._prepare(second)
+
+            if estimator == "phase" and carrier is None:
+                wave_y, wave_x = self._lattice_wavevector(prepared_first)
+                if not wave_y:
+                    estimator = "correlation"
+                else:
+                    grid_y = np.arange(first.shape[0])[:, None]
+                    grid_x = np.arange(first.shape[1])[None, :]
+                    carrier = np.exp(
+                        -2j * np.pi * (wave_y * grid_y + wave_x * grid_x)
+                    )
+                    self._carrier_period = 1.0 / abs(wave_y)
+
+            for block in range(blocks):
+                low_row, high_row = edges[block], edges[block + 1]
+                if estimator == "phase" and carrier is not None:
+                    measured[block].append(
+                        self._phase_displacement(
+                            prepared_first[low_row:high_row],
+                            prepared_second[low_row:high_row],
+                            carrier[low_row:high_row],
+                            self._carrier_period,
+                        )
+                    )
+                else:
+                    measured[block].append(
+                        float(
+                            updown._shift(
+                                prepared_first[low_row:high_row],
+                                prepared_second[low_row:high_row],
+                            )[0]
+                        )
+                    )
+
+        return np.array([np.median(values) for values in measured])
+
+    def _model_amplitude_ceiling(self) -> float:
+        """Largest amplitude the creep model can express, in pixels.
+
+        The sin model reaches its limit where the compressed part of the sweep
+        would have to run backwards: `sin_limit_function` writes that as
+        `y_max = 1 - shift / (rows * index_to_linear)` and refuses below 0.5, so
+        the amplitude cannot pass half the rows that the transition point leaves
+        for it. The search is kept a little short of that, where the polynomial
+        inversion behind the limit is still sound.
+        """
+        if getattr(self.creep_function, "__name__", "") == "root_creep":
+            return float(self.number_ypixels)
+
+        return 0.45 * self.number_ypixels * self.rel_ind_raw
+
+    def _fit_score(self, amplitude, shape):
+        """How much of the row dependence is left, in pixels. Lower is better."""
+        previous_shift = self.pixel_shift
+        try:
+            profile = self.residual_profile(amplitude, shape)
+        except ValueError as error:
+            self.pixel_shift = previous_shift
+            # The model refuses amplitudes beyond what its geometry admits, and
+            # the search is allowed to ask for them: an amplitude the model
+            # cannot express is simply not a candidate. Before this, one such
+            # trial ended the whole correction with "y_max seems to be smaller
+            # than 0.5", on FS_250903_037 for instance, where the measured 8.5 px
+            # put the top of the search grid at 34 px and the sin model tops out
+            # at 33 px.
+            log.debug("Creep fit: amplitude %.2f rejected by the model: %s",
+                      amplitude, error)
+            return np.inf
+        if profile is None or not np.all(np.isfinite(profile)):
+            return np.inf
+        # The rigid part is the y-phase's business and is taken out later, so
+        # only the spread counts here.
+        return float(np.ptp(profile))
+
+    def _choose_estimator(self):
+        """Decide how to measure the residual, by trying both on a known case.
+
+        A displacement between two frames can be read from a block correlation
+        or, where the surface repeats, from the phase of the repeat. Neither
+        wins everywhere: the correlation goes blind when a block is not much
+        taller than the repeat, and the phase is meaningless when there is no
+        repeat to speak of. Rather than guess from the spectrum, a known
+        distortion is imposed on the second frame of each pair and whichever
+        estimator recovers it more closely is used for the fit.
+        """
+        rows_kept = self.residual_profile(0.0, self._neutral_shape(),
+                                          estimator="correlation")
+        if rows_kept is None:
+            return "correlation"
+
+        blocks = rows_kept.size
+        centre = np.linspace(0.0, np.pi, blocks + 2)[1:-1]
+        truth = np.sin(centre)          # a one pixel bulge in the middle
+        errors = {}
+        for estimator in ("correlation", "phase"):
+            base = self.residual_profile(0.0, self._neutral_shape(),
+                                         estimator=estimator)
+            with_probe = self.residual_profile(
+                0.0, self._neutral_shape(), estimator=estimator, probe=1.0
+            )
+            if base is None or with_probe is None:
+                errors[estimator] = np.inf
+                continue
+            recovered = np.abs(with_probe - base)
+            errors[estimator] = float(np.abs(recovered - truth).mean())
+
+        choice = min(errors, key=lambda key: errors[key])
+        log.info(
+            "Creep fit: a known one pixel bulge is recovered to %.2f px by the "
+            "correlation and %.2f px by the lattice phase; using the %s.",
+            errors["correlation"],
+            errors["phase"],
+            choice,
+        )
+        return choice
+
+    def _neutral_shape(self):
+        return -0.3 if getattr(self.creep_function, "__name__", "") == "root_creep" else 0.3
+
+    def fit_creep_robust(self, shape_guess):
+        """Find the creep parameters by measuring what the correction leaves.
+
+        The fit that came with the code minimised the pixel difference between
+        the two sweeps with `curve_fit`. That does not work here: the difference
+        is dominated by how the surface images differently in the two scan
+        directions, the geometry is a small term on top, and the numerical
+        gradient of the whole thing is zero to fifteen digits, so the optimiser
+        returns the value it started from. Measured on five movies, not one of
+        the fifteen attempts per movie ever moved off its starting point.
+
+        What is measured instead is the displacement the correction leaves
+        between the sweeps, block by block along the frame, which is what the
+        eye sees as the ends of the frame breathing. Both the amplitude and the
+        shape are searched, on a coarse grid first and then locally, because the
+        landscape is smooth but the gradient is not worth trusting.
+
+        Returns:
+            Amplitude and shape.
+        """
+        self._estimator = self._choose_estimator()
+        measured = self._prefer_measured_amplitude(
+            abs(
+                updown.creep_amplitude(
+                    updown.mismatch_profile(
+                        self.data, coarse_limit=self._coarse_limit
+                    )
+                )
+            )
+        )
+        if measured < MIN_CREEP:
+            # The up and down sweeps agree along the whole frame, to less than
+            # the correction could express, so there is nothing for the model to
+            # take out. Fitting anyway means fitting the residual estimator's own
+            # noise: on FS_250903_022, whose profile is flat to 0.06 px, the
+            # search ran to the top of its grid and bent 3 px into every frame.
+            log.info(
+                "Creep fit: the two sweeps agree along the frame to %.2f px, "
+                "less than the %.1f px worth correcting, so no creep correction "
+                "is applied. Only the interpolation runs, and no rows are lost "
+                "to a correction that is not needed.",
+                measured,
+                MIN_CREEP,
+            )
+            return 0.0, float(self._neutral_shape())
+
+        ceiling = min(max(4.0 * measured, 3.0), self._model_amplitude_ceiling())
+        amplitudes = np.linspace(0.0, ceiling, 7)
+        # By name, not by identity: attribute access builds a fresh bound
+        # method every time, so `is` never matches.
+        if getattr(self.creep_function, "__name__", "") == "root_creep":
+            shapes = np.array([-0.05, -0.3, -1.0, -3.0, -8.0])
+        else:
+            shapes = np.array([0.05, 0.3, 0.7, 1.1, 1.4])
+
+        best = (np.inf, 0.0, float(shapes[0]))
+        for amplitude in amplitudes:
+            for shape in shapes:
+                score = self._fit_score(amplitude, shape)
+                if score < best[0]:
+                    best = (score, float(amplitude), float(shape))
+
+        # Local refinement of the amplitude, which is the parameter that matters:
+        # the shape only sets how the compression is distributed over the ends.
+        step = float(amplitudes[1] - amplitudes[0]) / 2.0
+        score, amplitude, shape = best
+        for _ in range(3):
+            for candidate in (amplitude - step, amplitude + step):
+                if candidate < 0.0:
+                    continue
+                trial = self._fit_score(candidate, shape)
+                if trial < score:
+                    score, amplitude = trial, candidate
+            step /= 2.0
+
+        without = self._fit_score(0.0, shape)
+        if not score < without and self._measured_preferred:
+            # The residual is read off the movie in hand, and this movie no
+            # longer answers that question: the FFT filter has left it periodic,
+            # so a frame put back one period out scores as well as one put back
+            # correctly and every amplitude looks the same. The amplitude
+            # measured before the filter is the evidence there is, so it is
+            # applied with the default shape rather than thrown away.
+            log.warning(
+                "Creep fit: the filtered movie cannot tell the amplitudes apart "
+                "(best %.3f px against %.3f px uncorrected). Applying the %.2f px "
+                "measured before the FFT filter with the default shape %.3f; check "
+                "the result, or measure the creep on the unfiltered movie.",
+                score,
+                without,
+                measured,
+                shape,
+            )
+            return float(measured), float(shape)
+
+        if not score < without:
+            log.warning(
+                "Creep fit: no amplitude improved on leaving the movie alone "
+                "(best %.3f px against %.3f px), so no creep correction is "
+                "applied. The up and down frames of this movie disagree in a way "
+                "the model does not describe.",
+                score,
+                without,
+            )
+            return 0.0, float(shape)
+
+        log.info(
+            "Creep fit: amplitude %.2f px, shape %.3f. Residual displacement "
+            "between the sweeps %.3f px, against %.3f px uncorrected and %.3f px "
+            "for the amplitude the up/down profile suggests (%.2f px).",
+            amplitude,
+            shape,
+            score,
+            without,
+            self._fit_score(measured, shape),
+            measured,
+        )
+        return float(amplitude), float(shape)
 
     def _Bezier(self, y, shape, pixels, Bezier_points):
         """Corrects a given y meshgrid for probe creep, using a Bezier curve
