@@ -174,10 +174,17 @@ class DriftWorker(QRunnable):
                     self.ft.correct_drift_known(
                         mode=self.drifttype, subpixel=self.subpixel
                     )
-        except Exception:
+        except Exception as error:
             # A batch run walks over many files; one that cannot be corrected
             # must not take the rest of the run with it, and `finished` has to
-            # be emitted either way or the movie window stays blocked.
-            log.exception("Drift correction failed; the movie is left uncorrected.")
+            # be emitted either way or the movie window stays blocked. The file
+            # is named because in a batch the uncorrected movie is otherwise
+            # only recognisable by the missing drift suffix in its exports.
+            log.error(
+                "Drift correction failed for %s, the movie is left uncorrected: %s",
+                self.ft.path.name,
+                error,
+            )
+            log.debug("Drift correction traceback", exc_info=True)
 
         self.signals.finished.emit()
