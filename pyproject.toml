@@ -7,6 +7,11 @@ authors = [
 ]
 dependencies = [
     "h5py>=3.12.1",
+    # A build of ffmpeg that carries libx264, so that the movie export does not
+    # depend on what happens to be installed on the machine. Not every system
+    # ffmpeg has x264: the licence keeps it out of some distributions, and such
+    # a build refuses the quality settings a scientific movie needs.
+    "imageio-ffmpeg>=0.5.1",
     "matplotlib>=3.9.2",
     "numpy>=2.0.2",
     "pillow>=11.1.0",
@@ -25,6 +30,8 @@ dependencies = [
     "scipy>=1.16.0",
     "setuptools>=75.5.0",
     "tomli-w>=1.2.0",
+    # The progress bars of the drift and interpolation steps.
+    "tqdm>=4.66.0",
 ]
 readme = "README.md"
 requires-python = ">= 3.12"

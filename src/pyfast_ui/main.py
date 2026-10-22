@@ -786,15 +786,16 @@ class MainGui(QMainWindow):
         data_copy = ft.data.copy()
 
         if export_movie:
-            ft.rescale((scaling, scaling))
+            # The scaling enlarges the picture, it does not resample the data:
+            # interpolating the frames first made every pixel soft, which is
+            # the opposite of what a movie of an atomic lattice needs.
             ft.export_mp4(
                 fps_factor=fps_factor,
                 contrast=contrast,
                 color_map=color_map,
                 label_frames=auto_label,
+                scaling=scaling,
             )
-
-            ft.data = data_copy
 
         if export_frames:
             if frame_export_format == "gwy":
