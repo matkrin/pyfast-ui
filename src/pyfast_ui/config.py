@@ -118,6 +118,10 @@ class ExportConfig(BaseModel):
     export_frames: bool = False
     double_x_pixels_tiff: bool = False
     scaling: int = 2
+    """Output pixels per measured pixel for the movie and the raster images.
+    The frames are not resampled for it: the picture is drawn larger and
+    enlarged by nearest neighbour, so no value is invented. Raise it when the
+    labels are too small to read."""
     fps_factor: int = 5
     auto_label: bool = True
     frame_export_images: tuple[int, int] = (0, 1)

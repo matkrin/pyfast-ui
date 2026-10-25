@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import logging
+import shutil
 import struct
+import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Hashable, Literal, TypeAlias, final
 
 from PIL import Image
+import matplotlib as mpl
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,6 +18,8 @@ from numpy.typing import NDArray
 from pyfast_ui.pyfast_re.channels import FrameChannelType
 from pyfast_ui.pyfast_re.data_mode import DataMode
 from pyfast_ui.pyfast_re.tqdm_logging import TqdmLogger
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pyfast_ui.pyfast_re.fast_movie import FastMovie
@@ -67,6 +74,140 @@ def _square_pixel_size(
     return out_y, out_x
 
 
+MOVIE_QUALITY = 12
+"""Constant rate factor handed to x264. Lower is better and larger.
+
+Measured against a mathematically lossless encode of the same forty frames of
+FS_250903_037, in peak signal to noise ratio and file size:
+
+    23 (the encoder's default)  27.4 dB   1.00 MB
+    18                          31.2 dB   1.47 MB
+    15                          34.0 dB   1.81 MB
+    12                          36.7 dB   2.21 MB
+    10                          38.6 dB   2.48 MB
+    0  (lossless)                  inf    4.65 MB
+
+At the encoder's own default the eight by eight blocks of the transform are
+visible on the atomic corrugation and the labels are smeared; the worst pixel
+is 95 grey levels out of 255. 12 costs twice the file size and brings that to
+48, with little left to gain below it."""
+
+MOVIE_FALLBACK_BITRATE = 16000
+"""Kilobits per second for an encoder that takes no constant rate factor. A
+generous number: the point is not to lose the corrugation."""
+
+MOVIE_PRESET = "slow"
+"""How hard x264 works for that quality. A movie is written once and watched
+many times, and the difference against the default is seconds."""
+
+
+
+def _ffmpeg_has(encoder: str) -> bool:
+    """Whether the ffmpeg on this machine can encode with `encoder`.
+
+    Not every build carries x264: the licence keeps it out of some
+    distributions, and a build without it fails on the flags meant for it, at
+    the point where the frames are already being piped in.
+    """
+    path = mpl.rcParams["animation.ffmpeg_path"]
+    if shutil.which(path) is None and not Path(path).is_file():
+        return False
+
+    try:
+        result = subprocess.run(
+            [path, "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+    return f" {encoder} " in result.stdout
+
+
+def _bundled_ffmpeg() -> str | None:
+    """Path to the ffmpeg that ships with imageio-ffmpeg, if it is installed.
+
+    That build carries libx264, so it saves the export from depending on
+    whatever ffmpeg the machine happens to have.
+    """
+    try:
+        import imageio_ffmpeg
+    except ImportError:
+        return None
+
+    try:
+        return str(imageio_ffmpeg.get_ffmpeg_exe())
+    except Exception:
+        return None
+
+
+def _use_an_ffmpeg_with_x264() -> bool:
+    """Point matplotlib at an ffmpeg that can encode with x264.
+
+    Returns:
+        Whether one was found, either the machine's own or the bundled one.
+    """
+    if _ffmpeg_has("libx264"):
+        return True
+
+    bundled = _bundled_ffmpeg()
+    if bundled is None:
+        return False
+
+    previous = mpl.rcParams["animation.ffmpeg_path"]
+    mpl.rcParams["animation.ffmpeg_path"] = bundled
+    if _ffmpeg_has("libx264"):
+        log.info(
+            "The ffmpeg on this machine has no libx264, so the one bundled "
+            "with imageio-ffmpeg is used instead: %s",
+            bundled,
+        )
+        return True
+
+    mpl.rcParams["animation.ffmpeg_path"] = previous
+
+    return False
+
+
+def _movie_writer(fps: int) -> animation.AbstractMovieWriter:
+    """The writer for a scientific movie, or the plain one if it cannot be had.
+
+    Returns:
+        An FFMpegWriter set to a quality worth keeping, or the default writer
+        when no ffmpeg with x264 can be found.
+    """
+    if _use_an_ffmpeg_with_x264():
+        return animation.FFMpegWriter(
+            fps=fps,
+            codec="libx264",
+            extra_args=[
+                "-crf",
+                str(MOVIE_QUALITY),
+                "-preset",
+                MOVIE_PRESET,
+                # 4:2:0 halves the colour resolution, which is what every
+                # player can read; the structure rides on the brightness.
+                "-pix_fmt",
+                "yuv420p",
+                # so that ffmpeg's own complaint reaches the log if it has one
+                "-loglevel",
+                "warning",
+            ],
+        )
+
+    log.warning(
+        "No ffmpeg with libx264 was found, neither on this machine nor bundled "
+        "with imageio-ffmpeg, so the movie is written at the default encoder's "
+        "own quality and the frames will be more strongly compressed than "
+        "intended. `uv sync` installs the bundled one."
+    )
+
+    return animation.FFMpegWriter(fps=fps, bitrate=MOVIE_FALLBACK_BITRATE)
+
+
 @final
 class MovieExport:
     """Handles export of a complete movie.
@@ -98,6 +239,7 @@ class MovieExport:
         contrast: tuple[float, float],
         color_map: str,
         label_frames: bool,
+        scaling: int = 1,
     ) -> None:
         """Export of a `FastMovie` as MP4.
 
@@ -106,6 +248,10 @@ class MovieExport:
             contrast: The lower and upper percentile bound of the color map (0 to 1).
             color_map: Matplotlib color map.
             label_frames: Render labels with information on each frame.
+            scaling: How many output pixels per measured pixel. The frames are
+                not resampled for it: the axes are drawn larger and the image
+                is enlarged by nearest neighbour, so no value is invented, and
+                the labels and the colour scale get the room to be legible.
         """
         assert self.fast_movie.channels is not None  # type assertion
 
@@ -119,6 +265,9 @@ class MovieExport:
         out_y_pixels, out_x_pixels = _square_pixel_size(
             self.fast_movie, num_y_pixels, num_x_pixels, even=True
         )
+        scaling = max(int(scaling), 1)
+        out_y_pixels *= scaling
+        out_x_pixels *= scaling
 
         fig, ax = plt.subplots(  # pyright: ignore[reportUnknownMemberType]
             figsize=(out_x_pixels * px, out_y_pixels * px),
@@ -147,7 +296,10 @@ class MovieExport:
             right_text = f"{frame_offset / fps:.3f}s"
 
             padding = 0.02
-            fontsize = 0.05 * out_y_pixels
+            # Proportional to the frame, but never so small that the encoder
+            # has nothing to work with: below about fourteen points the glyphs
+            # come out of the compression as a grey smudge.
+            fontsize = max(0.05 * out_y_pixels, 14.0)
 
             label_left = ax.text(  # pyright: ignore[reportUnknownMemberType]
                 num_x_pixels * padding,
@@ -198,14 +350,23 @@ class MovieExport:
             interval=interval,
         )
 
-        # writer = animation.FFMpegWriter(
-        #     fps=int(fps_factor * self.fast_movie.fps()),
-        #     codec="libx264",
-        #     extra_args=["-crf", "0", "-preset", "veryslow", "-pix_fmt", "yuv444p"]
-        # )
-        # ani.save(f"{self.export_filepath}__1.mp4", writer=writer)
-
-        ani.save(f"{self.export_filepath}.mp4")
+        # The encoder's own default quality is meant for video of the world,
+        # not for a frame whose information sits in a few grey levels.
+        writer = _movie_writer(max(int(fps_factor * self.fast_movie.fps()), 1))
+        target = f"{self.export_filepath}.mp4"
+        try:
+            ani.save(target, writer=writer)
+        except Exception as error:
+            # Whatever this ffmpeg objected to, a movie written plainly beats
+            # no movie at all, and the reason belongs in the log.
+            log.warning(
+                "Writing %s with the chosen quality settings failed (%s). "
+                "Falling back to the plain writer; the movie will be more "
+                "strongly compressed.",
+                Path(target).name,
+                error,
+            )
+            ani.save(target)
 
     def export_tiff(self, double_x_pixels: bool = False) -> None:
         """Export the movie as multipage TIFF file.

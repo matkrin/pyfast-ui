@@ -727,6 +727,7 @@ class FastMovie:
         contrast: tuple[float, float] = (0.0, 1.0),
         color_map: str = "bone",
         label_frames: bool = True,
+        scaling: int = 1,
     ) -> None:
         """Export the movie as MP4 file.
 
@@ -735,9 +736,14 @@ class FastMovie:
             contrast: The lower and upper percentile bound of the color map.
             color_map: Matplotlib color map
             label_frames: Render labels with information on each frame.
+            scaling: Output pixels per measured pixel. The frames are not
+                resampled: the picture is drawn larger and enlarged by nearest
+                neighbour, so no value is invented and the labels become legible.
         """
         movie_export = MovieExport(self)
-        movie_export.export_mp4(fps_factor, contrast, color_map, label_frames)
+        movie_export.export_mp4(
+            fps_factor, contrast, color_map, label_frames, scaling
+        )
 
     def export_tiff(self, double_x_pixels: bool = False) -> None:
         """Export the movie as multipage TIFF file.
