@@ -73,7 +73,19 @@ class CreepConfig(BaseModel):
     known_input: tuple[float, float, float] | None = None
     initial_guess: float = 0.3
     guess_ind: float = 0.2
-    known_params: float | None = None
+    known_params: tuple[float, float] | float | None = None
+    """Creep parameters to use instead of fitting: either the shape alone, or
+    an (amplitude, shape) pair. A movie of one sweep only cannot be fitted, so
+    it takes the pair found on a channel that has both."""
+    use_previous_creep: bool = False
+    """Take the creep parameters from the '.creep.txt' file written by an
+    earlier up and down evaluation of the same movie, instead of fitting. A
+    movie of a single sweep cannot be fitted at all, so this is the only way to
+    correct one."""
+    align_updown: bool = False
+    """Remove the constant offset between the up and the down frames after the
+    creep correction, in both directions and by interpolation. The y-phase can
+    only reach multiples of four rows and does nothing at all horizontally."""
 
 
 class DriftConfig(BaseModel):
