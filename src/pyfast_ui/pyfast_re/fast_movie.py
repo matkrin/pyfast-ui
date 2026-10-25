@@ -571,12 +571,27 @@ class FastMovie:
             self.data[i] = frame_corrections.convolve_frame(self.data[i], edge_removal)  # pyright: ignore[reportAny]
 
     def align_rows(
-        self, align_type: Literal["median", "median of diff", "mean", "poly2", "poly3"]
+        self,
+        align_type: Literal[
+            "median",
+            "median of diff",
+            "median of diff (multi-lag)",
+            "mean",
+            "line",
+            "poly2",
+            "poly3",
+        ],
+        area_selection: str = "whole image",
+        roi: tuple[int, int, int, int] | None = None,
     ) -> None:
         """Frame background correction by row alignment.
 
         Args:
             align_type: Correction algorithm for row alignment.
+            area_selection: Which pixels the fit may use, see
+                `frame_corrections.selection_mask`.
+            roi: Region to leave out, (y_start, y_end, x_start, x_end), for
+                `area_selection="exclude ROI"`.
 
         Returns:
             None: Updates the movie's data in-place.
@@ -585,18 +600,61 @@ class FastMovie:
             raise ValueError("Data must be reshaped into movie mode")
 
         for i in TqdmLogger(range(self.data.shape[0]), desc="Aligning rows"):
-            background = frame_corrections.align_rows(self.data[i], align_type)  # pyright: ignore[reportAny]
+            # The mask is rebuilt per frame and per call, so a height based
+            # selection follows the data as successive corrections change it.
+            mask = frame_corrections.selection_mask(self.data[i], area_selection, roi)  # pyright: ignore[reportAny]
+            background = frame_corrections.align_rows(self.data[i], align_type, mask)  # pyright: ignore[reportAny]
             # Mutate data
             self.data[i] -= background
 
-    def level_plane(self) -> None:
-        """Frame background correction by subtraction of a fitted background plane.
+        if align_type.startswith("median of diff"):
+            # Unlike the other align types this one does not drive the rows to a
+            # common level, so it leaves the height of a whole frame undefined
+            # and the frames pump against each other. Level them here.
+            self.level_frames()
+
+    def level_frames(self) -> None:
+        """Put all frames at a common height level.
+
+        Every background correction fixes the level of a frame by a convention
+        of its own, and some fix it by nothing at all, so the frames can sit at
+        different heights and the movie appears to pump. The offsets are
+        measured as the median of the pixelwise difference between frames, which
+        a minority of the surface changing does not move.
 
         Returns:
             None: Updates the movie's data in-place.
         """
+        if self.mode != DataMode.MOVIE:
+            raise ValueError("Data must be reshaped into movie mode")
+
+        offsets = frame_corrections.frame_level_offsets(self.data)
+        for i in TqdmLogger(range(self.data.shape[0]), desc="Levelling frames"):
+            # Mutate data
+            self.data[i] -= np.float32(offsets[i])
+
+    def level_plane(
+        self,
+        area_selection: str = "whole image",
+        roi: tuple[int, int, int, int] | None = None,
+    ) -> None:
+        """Frame background correction by subtraction of a fitted background plane.
+
+        Args:
+            area_selection: Which pixels the fit may use, see
+                `frame_corrections.selection_mask`.
+            roi: Region to leave out, (y_start, y_end, x_start, x_end), for
+                `area_selection="exclude ROI"`.
+
+        Returns:
+            None: Updates the movie's data in-place.
+        """
+        if self.mode != DataMode.MOVIE:
+            raise ValueError("Data must be reshaped into movie mode")
+
         for i in TqdmLogger(range(self.data.shape[0]), desc="Leveling planes"):
-            background = frame_corrections.level_plane(self.data[i])  # pyright: ignore[reportAny]
+            mask = frame_corrections.selection_mask(self.data[i], area_selection, roi)  # pyright: ignore[reportAny]
+            background = frame_corrections.level_plane(self.data[i], mask)  # pyright: ignore[reportAny]
             # Mutate data
             self.data[i] -= background
 
