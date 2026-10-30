@@ -720,6 +720,7 @@ class FastMovie:
         ],
         area_selection: str = "whole image",
         roi: tuple[int, int, int, int] | None = None,
+        area_percent: float = frame_corrections.DEFAULT_AREA_PERCENT,
     ) -> None:
         """Frame background correction by row alignment.
 
@@ -729,6 +730,10 @@ class FastMovie:
                 `frame_corrections.selection_mask`.
             roi: Region to leave out, (y_start, y_end, x_start, x_end), for
                 `area_selection="exclude ROI"`.
+            area_percent: Width of the height band for the "lowest x%",
+                "middle x%" and "highest x%" selections. Taken from each row
+                separately here, because the correction itself is fitted per
+                row.
 
         Returns:
             None: Updates the movie's data in-place.
@@ -739,8 +744,12 @@ class FastMovie:
         for i in TqdmLogger(range(self.data.shape[0]), desc="Aligning rows"):
             # The mask is rebuilt per frame and per call, so a height based
             # selection follows the data as successive corrections change it.
-            mask = frame_corrections.selection_mask(self.data[i], area_selection, roi)  # pyright: ignore[reportAny]
-            background = frame_corrections.align_rows(self.data[i], align_type, mask)  # pyright: ignore[reportAny]
+            mask = frame_corrections.selection_mask(  # pyright: ignore[reportAny]
+                self.data[i], area_selection, roi, area_percent, per_row=True
+            )
+            background = frame_corrections.align_rows(  # pyright: ignore[reportAny]
+                self.data[i], align_type, mask, band=area_percent
+            )
             # Mutate data
             self.data[i] -= background
 
@@ -774,6 +783,7 @@ class FastMovie:
         self,
         area_selection: str = "whole image",
         roi: tuple[int, int, int, int] | None = None,
+        area_percent: float = frame_corrections.DEFAULT_AREA_PERCENT,
     ) -> None:
         """Frame background correction by subtraction of a fitted background plane.
 
@@ -782,6 +792,8 @@ class FastMovie:
                 `frame_corrections.selection_mask`.
             roi: Region to leave out, (y_start, y_end, x_start, x_end), for
                 `area_selection="exclude ROI"`.
+            area_percent: Width of the height band for the "lowest x%",
+                "middle x%" and "highest x%" selections.
 
         Returns:
             None: Updates the movie's data in-place.
@@ -790,7 +802,9 @@ class FastMovie:
             raise ValueError("Data must be reshaped into movie mode")
 
         for i in TqdmLogger(range(self.data.shape[0]), desc="Leveling planes"):
-            mask = frame_corrections.selection_mask(self.data[i], area_selection, roi)  # pyright: ignore[reportAny]
+            mask = frame_corrections.selection_mask(  # pyright: ignore[reportAny]
+                self.data[i], area_selection, roi, area_percent
+            )
             background = frame_corrections.level_plane(self.data[i], mask)  # pyright: ignore[reportAny]
             # Mutate data
             self.data[i] -= background
@@ -865,6 +879,7 @@ class FastMovie:
         color_map: str = "bone",
         label_frames: bool = True,
         scaling: int = 1,
+        smooth: bool = False,
     ) -> None:
         """Export the movie as MP4 file.
 
@@ -876,10 +891,13 @@ class FastMovie:
             scaling: Output pixels per measured pixel. The frames are not
                 resampled: the picture is drawn larger and enlarged by nearest
                 neighbour, so no value is invented and the labels become legible.
+            smooth: Draw the enlarged pixels with bilinear interpolation rather
+                than as blocks. A matter of how the frame is drawn; the data is
+                untouched either way.
         """
         movie_export = MovieExport(self)
         movie_export.export_mp4(
-            fps_factor, contrast, color_map, label_frames, scaling
+            fps_factor, contrast, color_map, label_frames, scaling, smooth
         )
 
     def export_tiff(self, double_x_pixels: bool = False) -> None:
@@ -920,6 +938,8 @@ class FastMovie:
         frame_range: tuple[int, int],
         contrast: tuple[float, float],
         color_map: str,
+        scaling: int = 1,
+        smooth: bool = False,
     ) -> None:
         """Export frame as image file.
 
@@ -928,9 +948,13 @@ class FastMovie:
             frame_range: Start (inclusive) and end (exclusive) frame to be exported.
             contrast: The lower and upper percentile bound of the color map.
             color_map: Matplotlib color map.
+            scaling: Output pixels per measured pixel; the picture is drawn
+                larger, the data is not resampled.
+            smooth: Draw the enlarged pixels with bilinear interpolation rather
+                than as blocks.
         """
         export = FrameExport(self, frame_range)
-        export.export_image(image_format, contrast, color_map)
+        export.export_image(image_format, contrast, color_map, scaling, smooth)
 
 
 @final
